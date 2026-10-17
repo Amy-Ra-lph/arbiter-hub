@@ -270,3 +270,92 @@ async def test_create_policy(app_client):
     })
     assert resp.status_code == 201
     assert resp.json()["name"] == "test-policy"
+
+
+class UnavailableBackend:
+    """Mock backend that returns UNAVAILABLE verdict."""
+
+    async def verify(self, workload):
+        return AttestationResult(
+            verdict=AttestationVerdict.UNAVAILABLE,
+            backend="keylime",
+            evidence_hash="",
+            detail={"error": "verifier unreachable"},
+        )
+
+    async def enroll(self, workload, policy):
+        return MagicMock(success=True, backend="keylime")
+
+    async def revoke(self, workload):
+        return MagicMock(success=True, backend="keylime")
+
+    async def health(self):
+        return MagicMock(healthy=False, backend="keylime")
+
+
+@pytest.fixture
+async def app_client_unavailable():
+    """Test client with backend that returns UNAVAILABLE."""
+    global _test_initialized
+    _test_initialized = False
+    app = create_app()
+    app.dependency_overrides[get_session] = mock_get_session
+    if not hasattr(app.state, 'backend_registry'):
+        app.state.backend_registry = BackendRegistry()
+    app.state.backend_registry.register("keylime", UnavailableBackend())
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest.mark.asyncio
+async def test_attest_workload_pass(app_client):
+    """Review Focus #1: attest endpoint transitions REGISTERED → HEALTHY on PASS."""
+    headers = {
+        "X-Caller-Principal": "admin@IPA.TEST",
+        "X-Caller-Type": "admin",
+        "X-Caller-Roles": "attestation-admin",
+        "X-Caller-Scopes": "*",
+    }
+    create_resp = await app_client.post("/workloads", headers=headers, json={
+        "ipa_principal": "attest-pass@EXAMPLE.COM",
+        "display_name": "Attest Pass Test",
+        "workload_type": "agentic",
+        "backend_type": "keylime",
+    })
+    assert create_resp.status_code == 201
+    wid = create_resp.json()["id"]
+
+    resp = await app_client.post(f"/workloads/{wid}/attest", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["verdict"] == "pass"
+    assert data["state"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_attest_unavailable_stays_in_state(app_client_unavailable):
+    """Review Focus #5: UNAVAILABLE != FAIL — workload stays in current state."""
+    headers = {
+        "X-Caller-Principal": "admin@IPA.TEST",
+        "X-Caller-Type": "admin",
+        "X-Caller-Roles": "attestation-admin",
+        "X-Caller-Scopes": "*",
+    }
+    create_resp = await app_client_unavailable.post("/workloads", headers=headers, json={
+        "ipa_principal": "attest-unavail@EXAMPLE.COM",
+        "display_name": "Attest Unavailable Test",
+        "workload_type": "agentic",
+        "backend_type": "keylime",
+    })
+    assert create_resp.status_code == 201
+    wid = create_resp.json()["id"]
+
+    resp = await app_client_unavailable.post(f"/workloads/{wid}/attest", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["verdict"] == "unavailable"
+    # CRITICAL: workload must NOT transition to failed
+    assert data["state"] != "failed"
+    assert "message" in data
