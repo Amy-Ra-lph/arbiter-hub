@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from server.api import workloads, audit, health, attestation, signing, kbs
 from server.backends.base import BackendRegistry
+from server.telemetry.otel import setup_telemetry, add_metrics_endpoint
+from server.config import settings
 
 
 @asynccontextmanager
@@ -19,6 +21,8 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    setup_telemetry(app, settings)
+    add_metrics_endpoint(app)
     app.include_router(health.router, tags=["health"])
     app.include_router(workloads.router, tags=["workloads"])
     app.include_router(audit.router, tags=["audit"])
