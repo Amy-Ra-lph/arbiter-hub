@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+# clevis-pin/clevis-pin-arbiter
+"""
+Clevis pin for Arbiter Hub attestation-gated key release.
+
+Usage:
+  clevis luks bind -d /dev/sda2 arbiter '{"url":"https://arbiter-hub:8400","workload":"vm-prod-01"}'
+
+Reads JSON config from stdin:
+  - url: Arbiter Hub API base URL (required)
+  - workload: workload identifier (required)
+  - repo: KBS secret repo (default: "luks")
+  - type: KBS secret type (default: "key")
+  - tag: KBS secret tag (default: "default")
+  - cert: client certificate path for mTLS (optional)
+  - key: client key path for mTLS (optional)
+  - ca: CA certificate path (optional)
+"""
+import json
+import sys
+import urllib.request
+import urllib.error
+import ssl
+
+
+def main():
+    try:
+        config = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON config: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    url = config.get("url")
+    if not url:
+        print("Error: 'url' is required in config", file=sys.stderr)
+        sys.exit(1)
+
+    workload = config.get("workload")
+    if not workload:
+        print("Error: 'workload' is required in config", file=sys.stderr)
+        sys.exit(1)
+
+    repo = config.get("repo", "luks")
+    secret_type = config.get("type", "key")
+    tag = config.get("tag", "default")
+
+    kbs_url = f"{url.rstrip('/')}/kbs/v0/resource/{repo}/{secret_type}/{tag}"
+
+    ctx = ssl.create_default_context()
+    if config.get("ca"):
+        ctx.load_verify_locations(config["ca"])
+    if config.get("cert") and config.get("key"):
+        ctx.load_cert_chain(config["cert"], config["key"])
+
+    headers = {
+        "X-Caller-Principal": workload,
+        "X-Caller-Type": "agent",
+        "X-Caller-Roles": "attestation-agent",
+        "X-Caller-Scopes": workload.split("@")[0] if "@" in workload else workload,
+    }
+
+    req = urllib.request.Request(kbs_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            data = json.loads(resp.read())
+            key_material = data.get("value", "")
+            if not key_material:
+                print("Error: empty key material from KBS", file=sys.stderr)
+                sys.exit(1)
+            sys.stdout.write(key_material)
+            sys.stdout.flush()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if e.fp else ""
+        print(f"Error: KBS returned {e.code}: {body}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"Error: cannot reach arbiter-hub: {e.reason}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
