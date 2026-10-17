@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from server.api import workloads, audit, health
+from server.api import workloads, audit, health, attestation, signing
 from server.backends.base import BackendRegistry
 
 
@@ -22,4 +22,6 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(workloads.router, tags=["workloads"])
     app.include_router(audit.router, tags=["audit"])
+    app.include_router(attestation.router, tags=["attestation"])
+    app.include_router(signing.router, tags=["signing"])
     return app

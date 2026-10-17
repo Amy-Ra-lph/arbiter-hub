@@ -2,19 +2,29 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 from server.models.db import (
-    Workload, AttestationRecord, Policy, WorkloadState, WorkloadType,
+    Workload, AttestationRecord, Policy, WorkloadState, WorkloadType, StateTransition, AuditLog,
     get_session,
 )
 from server.models.schemas import (
     WorkloadRead, WorkloadList, AttestationRecordRead,
-    PolicyRead, PaginatedResponse,
+    PolicyRead, PaginatedResponse, WorkloadCreate, PolicyCreate,
 )
 from server.auth.dependencies import get_caller, require_permission
 from server.auth.models import CallerIdentity
 from server.auth.rbac import check_scope
+from server.state.machine import transition, InvalidTransitionError
 
 router = APIRouter()
+
+
+class RevokeRequest(BaseModel):
+    justification: str
+
+
+class RemediateRequest(BaseModel):
+    justification: str | None = None
 
 
 @router.get("/workloads", response_model=WorkloadList)
@@ -128,3 +138,100 @@ async def list_policies(
     result = await session.execute(stmt)
     items = [PolicyRead.model_validate(p) for p in result.scalars()]
     return PaginatedResponse[PolicyRead](items=items, total=total, start_index=start_index, count=count)
+
+
+@router.post("/workloads", response_model=WorkloadRead, status_code=201)
+async def register_workload(
+    body: WorkloadCreate,
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("register_workload"),
+):
+    existing = await session.execute(
+        select(Workload).where(Workload.ipa_principal == body.ipa_principal)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="workload with this principal already exists")
+
+    workload = Workload(
+        ipa_principal=body.ipa_principal,
+        display_name=body.display_name,
+        workload_type=body.workload_type,
+        backend_type=body.backend_type,
+        stale_ttl_seconds=body.stale_ttl_seconds,
+        metadata_=body.metadata,
+    )
+    session.add(workload)
+    audit = AuditLog(
+        actor=caller.principal, actor_type=caller.actor_type,
+        action="register_workload", target_type="workload",
+        target_id=workload.id, detail={"principal": body.ipa_principal},
+    )
+    session.add(audit)
+    await session.commit()
+    await session.refresh(workload)
+    return WorkloadRead.model_validate(workload)
+
+
+@router.post("/workloads/{workload_id}/revoke")
+async def revoke_workload(
+    workload_id: UUID,
+    body: RevokeRequest,
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("revoke_workload"),
+):
+    stmt = select(Workload).where(Workload.id == workload_id)
+    result = await session.execute(stmt)
+    workload = result.scalar_one_or_none()
+    if not workload:
+        raise HTTPException(status_code=404, detail="workload not found")
+    try:
+        record = await transition(
+            session, workload, WorkloadState.REVOKED,
+            triggered_by=caller.principal, justification=body.justification,
+        )
+        await session.commit()
+        return {"status": "revoked", "transition_id": str(record.id)}
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/workloads/{workload_id}/remediate")
+async def remediate_workload(
+    workload_id: UUID,
+    body: RemediateRequest,
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("remediate_workload"),
+):
+    stmt = select(Workload).where(Workload.id == workload_id)
+    result = await session.execute(stmt)
+    workload = result.scalar_one_or_none()
+    if not workload:
+        raise HTTPException(status_code=404, detail="workload not found")
+    try:
+        record = await transition(
+            session, workload, WorkloadState.UNDER_REMEDIATION,
+            triggered_by=caller.principal, justification=body.justification,
+        )
+        await session.commit()
+        return {"status": "under_remediation", "transition_id": str(record.id)}
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/policies", status_code=201)
+async def create_policy(
+    body: PolicyCreate,
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("create_policy"),
+):
+    policy = Policy(
+        name=body.name,
+        policy_type=body.policy_type,
+        policy_content=body.policy_content,
+        scope=body.scope,
+        created_by=caller.principal,
+    )
+    session.add(policy)
+    await session.commit()
+    await session.refresh(policy)
+    return PolicyRead.model_validate(policy)
