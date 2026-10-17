@@ -12,9 +12,17 @@ log = logging.getLogger(__name__)
 
 
 class CosignBackend:
-    def __init__(self, cosign_binary: str = "cosign", rekor_url: str = ""):
+    def __init__(
+        self,
+        cosign_binary: str = "cosign",
+        rekor_url: str = "",
+        fulcio_url: str = "",
+        tuf_root: str = "",
+    ):
         self._binary = cosign_binary
         self._rekor_url = rekor_url
+        self._fulcio_url = fulcio_url
+        self._tuf_root = tuf_root
 
     async def verify(self, workload: Workload) -> AttestationResult:
         artifact_ref = workload.metadata_.get("artifact_ref", "")
@@ -29,6 +37,10 @@ class CosignBackend:
             cmd = [self._binary, "verify", "--yes", artifact_ref]
             if self._rekor_url:
                 cmd.extend(["--rekor-url", self._rekor_url])
+            if self._fulcio_url:
+                cmd.extend(["--fulcio-url", self._fulcio_url])
+            if self._tuf_root:
+                cmd.extend(["--tuf-root", self._tuf_root])
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,

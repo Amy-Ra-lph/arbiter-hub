@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     trustee_url: str = ""
     cosign_binary: str = "cosign"
     rekor_url: str = ""
+    rhtas_fulcio_url: str = ""
+    rhtas_tuf_root: str = ""
 
     oidc_issuer: str = ""
     oidc_client_id: str = "arbiter-hub"
