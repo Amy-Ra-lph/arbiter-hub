@@ -29,7 +29,7 @@ class WebhookDelivery:
         if not p.exists():
             return cls([])
         with open(p) as f:
-            data = yaml.safe_load(f)
+            data = yaml.safe_load(f) or {}
         configs = []
         for wh in data.get("webhooks", []):
             configs.append(WebhookConfig(**wh))
