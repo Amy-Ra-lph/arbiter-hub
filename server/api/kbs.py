@@ -79,8 +79,8 @@ async def retrieve_secret(
     if secret.workload_scope and not check_scope(caller, secret.workload_scope):
         raise HTTPException(status_code=404, detail="secret not found")
 
-    # Gate check: find workload by caller principal
-    wl_stmt = select(Workload).where(Workload.ipa_principal == caller.principal)
+    # Gate check: lock workload row to prevent concurrent revocation during release
+    wl_stmt = select(Workload).where(Workload.ipa_principal == caller.principal).with_for_update()
     wl_result = await session.execute(wl_stmt)
     workload = wl_result.scalar_one_or_none()
 
