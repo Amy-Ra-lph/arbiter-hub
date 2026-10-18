@@ -74,13 +74,20 @@ const AuditLog: React.FC = () => {
     });
   };
 
+  const csvEscape = (val: string) => {
+    const escaped = val.replace(/"/g, '""');
+    return `"${escaped}"`;
+  };
+
   const exportCsv = () => {
     const header =
       "timestamp,actor,actor_type,action,target_type,target_id\n";
     const rows = filtered
       .map(
         (e) =>
-          `${e.created_at},${e.actor},${e.actor_type},${e.action},${e.target_type ?? ""},${e.target_id ?? ""}`
+          [e.created_at, e.actor, e.actor_type, e.action, e.target_type ?? "", e.target_id ?? ""]
+            .map(csvEscape)
+            .join(",")
       )
       .join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });

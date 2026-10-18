@@ -26,6 +26,7 @@ const EDGES: [WorkloadState, WorkloadState][] = [
   [WorkloadState.REGISTERED, WorkloadState.ATTESTING],
   [WorkloadState.ATTESTING, WorkloadState.HEALTHY],
   [WorkloadState.ATTESTING, WorkloadState.FAILED],
+  [WorkloadState.HEALTHY, WorkloadState.ATTESTING],
   [WorkloadState.HEALTHY, WorkloadState.STALE],
   [WorkloadState.HEALTHY, WorkloadState.REVOKED],
   [WorkloadState.STALE, WorkloadState.ATTESTING],

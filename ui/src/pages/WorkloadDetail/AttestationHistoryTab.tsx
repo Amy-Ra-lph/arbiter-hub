@@ -38,8 +38,8 @@ const AttestationHistoryTab: React.FC<AttestationHistoryTabProps> = ({
 
   const { data, isLoading } = useGetWorkloadAttestationsQuery({
     id: workloadId,
-    startIndex: (page - 1) * perPage,
-    count: perPage,
+    startIndex: 0,
+    count: 500,
   });
 
   const items = data?.items ?? [];
@@ -92,7 +92,7 @@ const AttestationHistoryTab: React.FC<AttestationHistoryTabProps> = ({
           </ToolbarItem>
           <ToolbarItem variant="pagination">
             <PaginationLayout
-              itemCount={data?.total ?? 0}
+              itemCount={filtered.length}
               page={page}
               perPage={perPage}
               onSetPage={setPage}
@@ -114,7 +114,7 @@ const AttestationHistoryTab: React.FC<AttestationHistoryTabProps> = ({
           </Tr>
         </Thead>
         <Tbody>
-          {filtered.map((record, rowIndex) => {
+          {filtered.slice((page - 1) * perPage, page * perPage).map((record, rowIndex) => {
             const isExpanded = expandedIds.has(record.id);
             return (
               <React.Fragment key={record.id}>

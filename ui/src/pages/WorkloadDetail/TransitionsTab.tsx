@@ -33,8 +33,8 @@ const TransitionsTab: React.FC<TransitionsTabProps> = ({ workloadId }) => {
 
   const { data, isLoading } = useGetWorkloadTransitionsQuery({
     id: workloadId,
-    startIndex: (page - 1) * perPage,
-    count: perPage,
+    startIndex: 0,
+    count: 500,
   });
 
   const items = data?.items ?? [];
@@ -84,7 +84,7 @@ const TransitionsTab: React.FC<TransitionsTabProps> = ({ workloadId }) => {
           </ToolbarItem>
           <ToolbarItem variant="pagination">
             <PaginationLayout
-              itemCount={data?.total ?? 0}
+              itemCount={filtered.length}
               page={page}
               perPage={perPage}
               onSetPage={setPage}
@@ -105,7 +105,7 @@ const TransitionsTab: React.FC<TransitionsTabProps> = ({ workloadId }) => {
           </Tr>
         </Thead>
         <Tbody>
-          {filtered.map((t) => (
+          {filtered.slice((page - 1) * perPage, page * perPage).map((t) => (
             <Tr key={t.id}>
               <Td dataLabel="Time">
                 {new Date(t.created_at).toLocaleString()}

@@ -71,7 +71,7 @@ const workloadsApi = api.injectEndpoints({
         url: `/workloads/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Workload"],
+      invalidatesTags: ["Workload", "Audit"],
     }),
 
     attestWorkload: builder.mutation<AttestResponse, string>({
@@ -79,7 +79,7 @@ const workloadsApi = api.injectEndpoints({
         url: `/workloads/${id}/attest`,
         method: "POST",
       }),
-      invalidatesTags: ["Workload"],
+      invalidatesTags: ["Workload", "Audit"],
     }),
 
     remediateWorkload: builder.mutation<
@@ -91,7 +91,7 @@ const workloadsApi = api.injectEndpoints({
         method: "POST",
         body: { justification },
       }),
-      invalidatesTags: ["Workload"],
+      invalidatesTags: ["Workload", "Audit"],
     }),
 
     revokeWorkload: builder.mutation<
@@ -103,14 +103,14 @@ const workloadsApi = api.injectEndpoints({
         method: "POST",
         body: { justification },
       }),
-      invalidatesTags: ["Workload"],
+      invalidatesTags: ["Workload", "Audit"],
     }),
 
     getWorkloadAttestations: builder.query<
       PaginatedResponse<AttestationRecord>,
       { id: string; startIndex?: number; count?: number }
     >({
-      query: ({ id, startIndex = 1, count = 25 }) =>
+      query: ({ id, startIndex = 0, count = 25 }) =>
         `/workloads/${id}/attestations?startIndex=${startIndex}&count=${count}`,
     }),
 
@@ -118,7 +118,7 @@ const workloadsApi = api.injectEndpoints({
       PaginatedResponse<StateTransition>,
       { id: string; startIndex?: number; count?: number }
     >({
-      query: ({ id, startIndex = 1, count = 25 }) =>
+      query: ({ id, startIndex = 0, count = 25 }) =>
         `/workloads/${id}/transitions?startIndex=${startIndex}&count=${count}`,
     }),
   }),

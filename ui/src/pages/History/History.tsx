@@ -60,15 +60,22 @@ const History: React.FC = () => {
 
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
+  const csvEscape = (val: string) => {
+    const escaped = val.replace(/"/g, '""');
+    return `"${escaped}"`;
+  };
+
   const exportCsv = () => {
     const header = "timestamp,actor,action,target_type,target_id,verdict\n";
     const rows = filtered
       .map((e) => {
         const verdict =
           e.detail && typeof e.detail === "object" && "verdict" in e.detail
-            ? e.detail.verdict
+            ? String(e.detail.verdict)
             : "";
-        return `${e.created_at},${e.actor},${e.action},${e.target_type ?? ""},${e.target_id ?? ""},${verdict}`;
+        return [e.created_at, e.actor, e.action, e.target_type ?? "", e.target_id ?? "", verdict]
+          .map(csvEscape)
+          .join(",");
       })
       .join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });

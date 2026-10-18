@@ -8,6 +8,7 @@ import {
   ToolbarGroup,
   FormSelect,
   FormSelectOption,
+  Alert,
 } from "@patternfly/react-core";
 import TitleLayout from "src/components/layouts/TitleLayout";
 import SearchInputLayout from "src/components/layouts/SearchInputLayout";
@@ -38,10 +39,11 @@ const Workloads: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [stateFilter, setStateFilter] = useState<string>("");
+  const initialState = new URLSearchParams(window.location.search).get("state") ?? "";
+  const [stateFilter, setStateFilter] = useState<string>(initialState);
   const [typeFilter, setTypeFilter] = useState<string>("");
 
-  const { data, isLoading } = useGetWorkloadsQuery({
+  const { data, isLoading, isError } = useGetWorkloadsQuery({
     count: 200,
   });
 
@@ -83,6 +85,14 @@ const Workloads: React.FC = () => {
     return (
       <PageSection>
         <DataSpinner />
+      </PageSection>
+    );
+  }
+
+  if (isError) {
+    return (
+      <PageSection>
+        <Alert variant="danger" title="Failed to load workloads" isInline />
       </PageSection>
     );
   }

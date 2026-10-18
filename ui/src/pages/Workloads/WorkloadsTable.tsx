@@ -108,11 +108,11 @@ const WorkloadsTable: React.FC<WorkloadsTableProps> = ({
         </Tr>
       </Thead>
       <Tbody>
-        {workloads.map((w) => (
+        {workloads.map((w, idx) => (
           <Tr key={w.id}>
             <Td
               select={{
-                rowIndex: 0,
+                rowIndex: idx,
                 onSelect: () => toggleOne(w.id),
                 isSelected: selectedIds.includes(w.id),
               }}

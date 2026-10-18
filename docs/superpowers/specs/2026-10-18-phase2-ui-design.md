@@ -361,9 +361,9 @@ ui/
 
 ## Branding
 
-- **Product name:** "Red Hat Arbiter" in all text references
-- **Logo:** Red Hat hat logo in masthead (same placement as freeipa-webui IpaLogo)
-- **Source:** Use SVG from `~/.claude/skills/powerpoint/redhat-assets/` or Red Hat icons repo
+- **Product name:** "Arbiter Hub" in all text references (upstream branding)
+- **Logo:** Fedora logo in masthead (same placement as freeipa-webui IpaLogo)
+- **Source:** Use Fedora logo SVG
 
 ## Container Deployment
 

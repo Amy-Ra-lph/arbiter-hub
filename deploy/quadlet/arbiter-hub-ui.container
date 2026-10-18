@@ -4,7 +4,7 @@ After=arbiter-hub-api.container
 
 [Container]
 Image=quay.io/rhel-security/arbiter-hub-ui:latest
-PublishPort=8443:8443
+PublishPort=8080:8080
 Network=arbiter-hub.network
 ReadOnly=true
 

@@ -18,6 +18,7 @@ import {
   Form,
   Flex,
   FlexItem,
+  Alert,
 } from "@patternfly/react-core";
 import StateBadge from "src/components/StateBadge";
 import DataSpinner from "src/components/DataSpinner";
@@ -58,6 +59,7 @@ const WorkloadDetail: React.FC = () => {
   const [isRemediateOpen, setIsRemediateOpen] = useState(false);
   const [isRevokeOpen, setIsRevokeOpen] = useState(false);
   const [justification, setJustification] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   if (isLoading || !workload) {
     return (
@@ -67,30 +69,48 @@ const WorkloadDetail: React.FC = () => {
     );
   }
 
-  const handleAttest = () => {
-    attestWorkload(workload.id);
+  const handleAttest = async () => {
+    try {
+      await attestWorkload(workload.id).unwrap();
+      setError(null);
+    } catch (e) {
+      setError(`Attestation failed: ${(e as { data?: { detail?: string } }).data?.detail ?? "unknown error"}`);
+    }
   };
 
-  const handleRemediate = () => {
-    remediateWorkload({
-      id: workload.id,
-      justification: justification || undefined,
-    });
+  const handleRemediate = async () => {
+    try {
+      await remediateWorkload({
+        id: workload.id,
+        justification: justification || undefined,
+      }).unwrap();
+      setError(null);
+    } catch (e) {
+      setError(`Remediation failed: ${(e as { data?: { detail?: string } }).data?.detail ?? "unknown error"}`);
+    }
     setJustification("");
     setIsRemediateOpen(false);
   };
 
-  const handleRevoke = () => {
-    revokeWorkload({
-      id: workload.id,
-      justification,
-    });
+  const handleRevoke = async () => {
+    try {
+      await revokeWorkload({
+        id: workload.id,
+        justification,
+      }).unwrap();
+      setError(null);
+    } catch (e) {
+      setError(`Revocation failed: ${(e as { data?: { detail?: string } }).data?.detail ?? "unknown error"}`);
+    }
     setJustification("");
     setIsRevokeOpen(false);
   };
 
   return (
     <PageSection>
+      {error && (
+        <Alert variant="danger" title={error} isInline actionClose={<Button variant="plain" onClick={() => setError(null)}>×</Button>} style={{ marginBottom: "16px" }} />
+      )}
       <Flex>
         <FlexItem grow={{ default: "grow" }}>
           <Content component={ContentVariants.h1}>

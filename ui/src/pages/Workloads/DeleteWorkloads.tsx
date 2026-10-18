@@ -25,10 +25,17 @@ const DeleteWorkloads: React.FC<DeleteWorkloadsProps> = ({
   const [deleteWorkload, { isLoading }] = useDeleteWorkloadMutation();
 
   const handleDelete = async () => {
+    const failed: string[] = [];
     for (const id of selectedIds) {
-      await deleteWorkload(id);
+      try {
+        await deleteWorkload(id).unwrap();
+      } catch {
+        failed.push(id);
+      }
     }
-    onComplete();
+    if (failed.length === 0) {
+      onComplete();
+    }
     onClose();
   };
 

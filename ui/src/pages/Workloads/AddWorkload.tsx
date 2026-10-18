@@ -28,15 +28,19 @@ const AddWorkload: React.FC<AddWorkloadProps> = ({ isOpen, onClose }) => {
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
-    await createWorkload({
-      display_name: displayName.trim(),
-      ipa_principal: ipaPrincipal.trim(),
-      workload_type: workloadType,
-      backend_type: backendType,
-      stale_ttl_seconds: Number(staleTtl) || 3600,
-    });
-    resetForm();
-    onClose();
+    try {
+      await createWorkload({
+        display_name: displayName.trim(),
+        ipa_principal: ipaPrincipal.trim(),
+        workload_type: workloadType,
+        backend_type: backendType,
+        stale_ttl_seconds: Number(staleTtl) || 3600,
+      }).unwrap();
+      resetForm();
+      onClose();
+    } catch {
+      // RTK Query caches the error state on the mutation; modal stays open
+    }
   };
 
   const resetForm = () => {
