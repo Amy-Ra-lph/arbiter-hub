@@ -6,3 +6,5 @@ dist/
 .env
 *.key
 .ruff_cache/
+ui/node_modules/
+ui/dist/
