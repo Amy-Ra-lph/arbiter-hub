@@ -1,4 +1,5 @@
-from fastapi import Request, HTTPException, Depends
+from fastapi import Depends, HTTPException, Request
+
 from server.auth.models import CallerIdentity
 from server.auth.rbac import check_permission
 

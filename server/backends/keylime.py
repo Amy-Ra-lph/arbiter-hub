@@ -1,12 +1,14 @@
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import httpx
+
 from server.backends.base import (
     AttestationResult,
+    BackendHealth,
     EnrollResult,
     RevokeResult,
-    BackendHealth,
 )
 from server.models.db import AttestationVerdict, Workload
 
@@ -119,13 +121,16 @@ class KeylimeBackend:
                 return BackendHealth(
                     healthy=True,
                     backend="keylime",
-                    last_check=datetime.now(timezone.utc),
-                    detail=f"verifier reachable, {len(resp.json().get('results', {}).get('uuids', []))} agents",
+                    last_check=datetime.now(UTC),
+                    detail=(
+                        f"verifier reachable, "
+                        f"{len(resp.json().get('results', {}).get('uuids', []))} agents"
+                    ),
                 )
         except Exception as e:
             return BackendHealth(
                 healthy=False,
                 backend="keylime",
-                last_check=datetime.now(timezone.utc),
+                last_check=datetime.now(UTC),
                 detail=str(e),
             )

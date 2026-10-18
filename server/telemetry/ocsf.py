@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class OCSFEventFormatter:
@@ -22,7 +22,7 @@ class OCSFEventFormatter:
             "activity_id": 1,
             "activity_name": "Create",
             "status_id": 1,
-            "time": datetime.now(timezone.utc).isoformat(),
+            "time": datetime.now(UTC).isoformat(),
             "metadata": {"version": self.OCSF_VERSION, "product": {"name": "arbiter-hub"}},
             "finding_info": {
                 "title": finding_type,
@@ -48,7 +48,7 @@ class OCSFEventFormatter:
             "category_name": "Identity & Access Management",
             "activity_id": activity_map.get(action, 0),
             "activity_name": action,
-            "time": datetime.now(timezone.utc).isoformat(),
+            "time": datetime.now(UTC).isoformat(),
             "metadata": {"version": self.OCSF_VERSION, "product": {"name": "arbiter-hub"}},
             "entity": {"uid": entity_id, "type": entity_type},
             "actor": {"user": {"name": actor}},
@@ -70,7 +70,7 @@ class OCSFEventFormatter:
             "category_name": "Identity & Access Management",
             "activity_id": 1 if allowed else 2,
             "activity_name": "grant" if allowed else "deny",
-            "time": datetime.now(timezone.utc).isoformat(),
+            "time": datetime.now(UTC).isoformat(),
             "metadata": {"version": self.OCSF_VERSION, "product": {"name": "arbiter-hub"}},
             "actor": {"user": {"name": subject}},
             "dst_endpoint": {"name": resource},
@@ -91,7 +91,7 @@ class OCSFEventFormatter:
             "category_name": "Application Activity",
             "activity_id": 1,
             "activity_name": "api_call",
-            "time": datetime.now(timezone.utc).isoformat(),
+            "time": datetime.now(UTC).isoformat(),
             "metadata": {"version": self.OCSF_VERSION, "product": {"name": "arbiter-hub"}},
             "api": {"operation": method, "request": {"url": {"path": path}}},
             "actor": {"user": {"name": actor}},

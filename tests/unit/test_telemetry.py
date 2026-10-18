@@ -1,5 +1,5 @@
-from server.telemetry.ocsf import OCSFEventFormatter
 from server.telemetry.metrics import ATTESTATION_COUNTER, STATE_TRANSITION_COUNTER
+from server.telemetry.ocsf import OCSFEventFormatter
 
 
 def test_ocsf_security_finding_format():

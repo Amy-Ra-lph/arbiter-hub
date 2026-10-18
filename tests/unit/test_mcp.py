@@ -1,5 +1,6 @@
 # tests/unit/test_mcp.py
 import pytest
+
 from arbiter_mcp.client import ArbiterClient
 from arbiter_mcp.server import create_mcp_server
 

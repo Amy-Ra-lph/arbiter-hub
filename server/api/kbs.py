@@ -1,16 +1,18 @@
+from datetime import UTC, datetime
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
-from server.models.db import KBSSecret, Workload, AuditLog, get_session
-from server.models.schemas import KBSSecretCreate
-from server.kbs.store import encrypt_secret, decrypt_secret
-from server.kbs.gate import check_kbs_gate
+
 from server.auth.dependencies import get_caller, require_permission
 from server.auth.models import CallerIdentity
 from server.auth.rbac import check_scope
 from server.config import settings
-from pathlib import Path
+from server.kbs.gate import check_kbs_gate
+from server.kbs.store import decrypt_secret, encrypt_secret
+from server.models.db import AuditLog, KBSSecret, Workload, get_session
+from server.models.schemas import KBSSecretCreate
 
 router = APIRouter(prefix="/kbs/v0")
 
@@ -89,7 +91,7 @@ async def retrieve_secret(
     if workload:
         age = 0.0
         if workload.last_attested_at:
-            age = (datetime.now(timezone.utc) - workload.last_attested_at).total_seconds()
+            age = (datetime.now(UTC) - workload.last_attested_at).total_seconds()
         else:
             age = float("inf")
         gate = await check_kbs_gate(

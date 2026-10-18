@@ -1,6 +1,7 @@
 import pytest
+
 from server.models.db import WorkloadState
-from server.state.machine import VALID_TRANSITIONS, validate_transition, InvalidTransitionError
+from server.state.machine import VALID_TRANSITIONS, InvalidTransitionError, validate_transition
 
 
 def test_registered_can_go_to_attesting():

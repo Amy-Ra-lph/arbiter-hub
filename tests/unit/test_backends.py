@@ -1,13 +1,15 @@
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
+
+import pytest
+
 from server.backends.base import (
-    AttestationResult,
     AttestationBackend,
+    AttestationResult,
     BackendRegistry,
 )
 from server.backends.keylime import KeylimeBackend
-from server.models.db import AttestationVerdict, Workload, WorkloadType, BackendType, WorkloadState
+from server.models.db import AttestationVerdict, BackendType, Workload, WorkloadState, WorkloadType
 
 
 def _make_workload(**overrides):
@@ -21,7 +23,7 @@ def _make_workload(**overrides):
         current_state=WorkloadState.ATTESTING,
         backend_type=BackendType.KEYLIME,
         stale_ttl_seconds=3600,
-        registered_at=datetime.now(timezone.utc),
+        registered_at=datetime.now(UTC),
         last_attested_at=None,
         metadata_={},
     )
@@ -38,7 +40,7 @@ def test_attestation_result_fields():
         backend="keylime",
         evidence_hash="abc123",
         detail={"ima_count": 5508},
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
     assert r.verdict == AttestationVerdict.PASS
     assert r.backend == "keylime"

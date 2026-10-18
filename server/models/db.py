@@ -1,33 +1,36 @@
 import enum
 import uuid
-from datetime import datetime, timezone
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 from sqlalchemy import (
-    String,
-    Integer,
     Boolean,
-    Text,
     DateTime,
     ForeignKey,
     Index,
-    Enum as SAEnum,
+    Integer,
     LargeBinary,
+    String,
+    Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
 from server.config import settings
 
 
-class WorkloadType(str, enum.Enum):
+class WorkloadType(enum.StrEnum):
     AGENTIC = "agentic"
     CVM = "cvm"
     SERVICE = "service"
 
 
-class WorkloadState(str, enum.Enum):
+class WorkloadState(enum.StrEnum):
     REGISTERED = "registered"
     ATTESTING = "attesting"
     HEALTHY = "healthy"
@@ -37,14 +40,14 @@ class WorkloadState(str, enum.Enum):
     REVOKED = "revoked"
 
 
-class AttestationVerdict(str, enum.Enum):
+class AttestationVerdict(enum.StrEnum):
     PASS = "pass"
     FAIL = "fail"
     ERROR = "error"
     UNAVAILABLE = "unavailable"
 
 
-class BackendType(str, enum.Enum):
+class BackendType(enum.StrEnum):
     KEYLIME = "keylime"
     TRUSTEE = "trustee"
     COSIGN = "cosign"
@@ -68,7 +71,7 @@ class Workload(Base):
     backend_type: Mapped[BackendType] = mapped_column(SAEnum(BackendType), nullable=False)
     stale_ttl_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=3600)
     registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     last_attested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -91,7 +94,7 @@ class AttestationRecord(Base):
     detail: Mapped[dict] = mapped_column(JSONB, default=dict)
     rekor_entry_uuid: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     workload: Mapped["Workload"] = relationship(back_populates="attestation_records")
@@ -110,7 +113,7 @@ class StateTransition(Base):
     justification: Mapped[str | None] = mapped_column(Text)
     rekor_entry_uuid: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     workload: Mapped["Workload"] = relationship(back_populates="state_transitions")
@@ -129,10 +132,10 @@ class Policy(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
 
@@ -147,7 +150,7 @@ class AuditLog(Base):
     target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     detail: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
     __table_args__ = (
@@ -170,7 +173,7 @@ class KBSSecret(Base):
     workload_scope: Mapped[str | None] = mapped_column(String(255))
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -1,7 +1,9 @@
-import pytest
 import uuid
 from unittest.mock import MagicMock
-from httpx import AsyncClient, ASGITransport
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 from server.main import create_app
 from server.models.db import get_session
 

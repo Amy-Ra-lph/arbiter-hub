@@ -1,6 +1,7 @@
-from cryptography.fernet import Fernet
 import base64
 import hashlib
+
+from cryptography.fernet import Fernet
 
 
 def _derive_fernet_key(raw_key: bytes) -> bytes:

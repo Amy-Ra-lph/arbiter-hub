@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
+
 from server.models.db import AttestationVerdict, Workload
 
 

@@ -1,9 +1,10 @@
 import asyncio
 import logging
 from dataclasses import dataclass
+from pathlib import Path
+
 import httpx
 import yaml
-from pathlib import Path
 
 log = logging.getLogger(__name__)
 

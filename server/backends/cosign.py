@@ -1,13 +1,13 @@
 import asyncio
 import hashlib
 import logging
+from datetime import UTC, datetime
 
-from datetime import datetime, timezone
 from server.backends.base import (
     AttestationResult,
+    BackendHealth,
     EnrollResult,
     RevokeResult,
-    BackendHealth,
 )
 from server.models.db import AttestationVerdict, Workload
 
@@ -65,7 +65,7 @@ class CosignBackend:
                     evidence_hash=evidence_hash,
                     detail={"error": stderr.decode()[:500]},
                 )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return AttestationResult(
                 verdict=AttestationVerdict.ERROR,
                 backend="cosign",
@@ -106,7 +106,7 @@ class CosignBackend:
             return BackendHealth(
                 healthy=proc.returncode == 0,
                 backend="cosign",
-                last_check=datetime.now(timezone.utc),
+                last_check=datetime.now(UTC),
                 detail=stdout.decode().strip().split("\n")[0]
                 if proc.returncode == 0
                 else "cosign unhealthy",
@@ -115,6 +115,6 @@ class CosignBackend:
             return BackendHealth(
                 healthy=False,
                 backend="cosign",
-                last_check=datetime.now(timezone.utc),
+                last_check=datetime.now(UTC),
                 detail=str(e),
             )

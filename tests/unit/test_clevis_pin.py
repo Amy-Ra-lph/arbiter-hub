@@ -1,7 +1,7 @@
 # tests/unit/test_clevis_pin.py
 import json
-import subprocess
 import os
+import subprocess
 
 SCRIPT_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "clevis-pin", "clevis-pin-arbiter"

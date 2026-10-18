@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     ADMIN = "attestation-admin"
     OPERATOR = "attestation-operator"
     PIPELINE = "attestation-pipeline"

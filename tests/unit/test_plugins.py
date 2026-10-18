@@ -1,5 +1,5 @@
-from server.plugins.loader import load_entry_point_plugins, PluginRegistry
-from server.telemetry.webhooks import WebhookDelivery, WebhookConfig
+from server.plugins.loader import PluginRegistry, load_entry_point_plugins
+from server.telemetry.webhooks import WebhookConfig, WebhookDelivery
 
 
 def test_plugin_registry():

@@ -1,6 +1,7 @@
 # arbiter_mcp/client.py
-import httpx
 from typing import Any
+
+import httpx
 
 
 class ArbiterClient:

@@ -1,5 +1,6 @@
 # arbiter_mcp/server.py
 from fastmcp import FastMCP
+
 from arbiter_mcp.client import ArbiterClient
 
 
@@ -14,7 +15,7 @@ def create_mcp_server(api_url: str = "http://localhost:8400") -> FastMCP:
 
     @mcp.tool()
     async def list_workloads_by_state(state: str | None = None) -> dict:
-        """List workloads, optionally filtered by state (registered, attesting, healthy, stale, failed, under_remediation, revoked)."""
+        """List workloads, optionally filtered by state."""
         return await client.list_workloads(state=state)
 
     @mcp.tool()

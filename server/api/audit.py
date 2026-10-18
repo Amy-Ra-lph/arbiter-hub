@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from server.auth.dependencies import require_permission
 from server.models.db import AuditLog, get_session
 from server.models.schemas import AuditLogRead, PaginatedResponse
-from server.auth.dependencies import require_permission
 
 router = APIRouter()
 

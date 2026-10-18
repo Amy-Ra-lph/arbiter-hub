@@ -1,14 +1,15 @@
 import uuid
 from datetime import datetime
-from typing import Generic, TypeVar
-from pydantic import BaseModel, Field
-from server.models.db import WorkloadType, WorkloadState, AttestationVerdict, BackendType
+from typing import TypeVar
 
+from pydantic import BaseModel, Field
+
+from server.models.db import AttestationVerdict, BackendType, WorkloadState, WorkloadType
 
 T = TypeVar("T")
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     items: list[T]
     total: int
     start_index: int = 1

@@ -1,13 +1,15 @@
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import httpx
+
 from server.backends.base import (
     AttestationResult,
+    BackendHealth,
     EnrollResult,
     RevokeResult,
-    BackendHealth,
 )
 from server.models.db import AttestationVerdict, Workload
 
@@ -78,13 +80,13 @@ class RekorBackend:
                 return BackendHealth(
                     healthy=True,
                     backend="rekor",
-                    last_check=datetime.now(timezone.utc),
+                    last_check=datetime.now(UTC),
                     detail=f"tree size: {data.get('treeSize', 'unknown')}",
                 )
         except Exception as e:
             return BackendHealth(
                 healthy=False,
                 backend="rekor",
-                last_check=datetime.now(timezone.utc),
+                last_check=datetime.now(UTC),
                 detail=str(e),
             )

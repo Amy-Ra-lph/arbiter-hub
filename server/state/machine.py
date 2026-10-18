@@ -1,8 +1,10 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from server.models.db import Workload, StateTransition, WorkloadState, AuditLog
+
+from server.models.db import AuditLog, StateTransition, Workload, WorkloadState
 
 
 class InvalidTransitionError(Exception):
@@ -71,7 +73,7 @@ async def transition(
 
 
 async def check_stale_workloads(session: AsyncSession) -> list[uuid.UUID]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stmt = select(Workload).where(
         Workload.current_state == WorkloadState.HEALTHY,
         Workload.last_attested_at.isnot(None),

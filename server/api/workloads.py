@@ -1,32 +1,34 @@
+from datetime import UTC, datetime
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from server.models.db import (
-    Workload,
-    AttestationRecord,
-    Policy,
-    WorkloadState,
-    WorkloadType,
-    AuditLog,
-    get_session,
-)
-from datetime import datetime, timezone
-from server.models.schemas import (
-    WorkloadRead,
-    WorkloadList,
-    AttestationRecordRead,
-    PolicyRead,
-    PaginatedResponse,
-    WorkloadCreate,
-    PolicyCreate,
-    ComplianceResult,
-)
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
 from server.auth.rbac import check_scope
-from server.state.machine import transition, InvalidTransitionError
+from server.models.db import (
+    AttestationRecord,
+    AuditLog,
+    Policy,
+    Workload,
+    WorkloadState,
+    WorkloadType,
+    get_session,
+)
+from server.models.schemas import (
+    AttestationRecordRead,
+    ComplianceResult,
+    PaginatedResponse,
+    PolicyCreate,
+    PolicyRead,
+    WorkloadCreate,
+    WorkloadList,
+    WorkloadRead,
+)
+from server.state.machine import InvalidTransitionError, transition
 
 router = APIRouter()
 
@@ -178,7 +180,7 @@ async def check_compliance(
     )
     attestation_current = False
     if workload.last_attested_at:
-        age = (datetime.now(timezone.utc) - workload.last_attested_at).total_seconds()
+        age = (datetime.now(UTC) - workload.last_attested_at).total_seconds()
         attestation_current = age <= workload.stale_ttl_seconds
     checks.append(
         {
@@ -193,7 +195,7 @@ async def check_compliance(
         workload_id=workload.id,
         compliant=compliant,
         checks=checks,
-        evaluated_at=datetime.now(timezone.utc),
+        evaluated_at=datetime.now(UTC),
     )
 
 

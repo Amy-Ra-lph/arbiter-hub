@@ -1,19 +1,21 @@
+from datetime import UTC, datetime
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
-from server.models.db import (
-    Workload,
-    AttestationRecord,
-    WorkloadState,
-    AttestationVerdict,
-    get_session,
-)
-from server.backends.base import BackendRegistry
-from server.state.machine import transition, InvalidTransitionError
+
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
+from server.backends.base import BackendRegistry
+from server.models.db import (
+    AttestationRecord,
+    AttestationVerdict,
+    Workload,
+    WorkloadState,
+    get_session,
+)
+from server.state.machine import InvalidTransitionError, transition
 
 router = APIRouter()
 
@@ -72,7 +74,7 @@ async def trigger_attestation(
     # CRITICAL: UNAVAILABLE does NOT transition to Failed
     if att_result.verdict == AttestationVerdict.PASS:
         await transition(session, workload, WorkloadState.HEALTHY, "attestation_result")
-        workload.last_attested_at = datetime.now(timezone.utc)
+        workload.last_attested_at = datetime.now(UTC)
     elif att_result.verdict == AttestationVerdict.FAIL:
         await transition(session, workload, WorkloadState.FAILED, "attestation_result")
     # For UNAVAILABLE and ERROR: stay in Attesting, do not transition to Failed

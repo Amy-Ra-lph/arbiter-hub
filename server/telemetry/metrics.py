@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 
 ATTESTATION_COUNTER = Counter(
     "arbiter_attestations_total",

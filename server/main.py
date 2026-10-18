@@ -1,9 +1,11 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from server.api import workloads, audit, health, attestation, signing, kbs
+
+from fastapi import FastAPI
+
+from server.api import attestation, audit, health, kbs, signing, workloads
 from server.backends.base import BackendRegistry
-from server.telemetry.otel import setup_telemetry, add_metrics_endpoint
 from server.config import settings
+from server.telemetry.otel import add_metrics_endpoint, setup_telemetry
 
 
 @asynccontextmanager

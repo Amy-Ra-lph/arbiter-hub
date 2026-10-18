@@ -1,6 +1,8 @@
 import asyncio
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
 
@@ -33,7 +35,7 @@ async def sign_artifact(
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(status_code=504, detail="cosign sign operation timed out")
     except FileNotFoundError:
         raise HTTPException(status_code=503, detail="cosign binary not found")
@@ -63,7 +65,7 @@ async def verify_artifact(
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(status_code=504, detail="cosign verify operation timed out")
     except FileNotFoundError:
         raise HTTPException(status_code=503, detail="cosign binary not found")

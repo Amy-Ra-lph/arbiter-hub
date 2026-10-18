@@ -1,10 +1,10 @@
 from server.models.db import (
-    WorkloadType,
-    WorkloadState,
     AttestationVerdict,
     BackendType,
+    WorkloadState,
+    WorkloadType,
 )
-from server.models.schemas import WorkloadCreate, WorkloadRead, PaginatedResponse
+from server.models.schemas import PaginatedResponse, WorkloadCreate, WorkloadRead
 
 
 def test_workload_state_enum_has_seven_states():

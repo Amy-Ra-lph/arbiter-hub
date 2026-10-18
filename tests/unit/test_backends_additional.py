@@ -1,9 +1,11 @@
-import pytest
 from unittest.mock import MagicMock
-from server.backends.trustee import TrusteeBackend
+
+import pytest
+
+from server.backends.base import AttestationBackend
 from server.backends.cosign import CosignBackend
 from server.backends.rekor import RekorBackend
-from server.backends.base import AttestationBackend
+from server.backends.trustee import TrusteeBackend
 from server.models.db import AttestationVerdict
 
 

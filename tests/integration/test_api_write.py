@@ -1,20 +1,22 @@
-import pytest
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
-from httpx import AsyncClient, ASGITransport
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from server.backends.base import AttestationResult, BackendRegistry
 from server.main import create_app
 from server.models.db import (
-    get_session,
+    AttestationVerdict,
+    BackendType,
+    Policy,
     Workload,
     WorkloadState,
     WorkloadType,
-    BackendType,
-    Policy,
-    AttestationVerdict,
+    get_session,
 )
-from server.backends.base import AttestationResult, BackendRegistry
 
 
 # Simple mock workload object that Pydantic can serialize
@@ -27,7 +29,7 @@ class MockWorkload:
     stale_ttl_seconds: int
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     current_state: WorkloadState = WorkloadState.REGISTERED
-    registered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    registered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_attested_at: datetime | None = None
     metadata_: dict = field(default_factory=dict)
 
@@ -79,7 +81,7 @@ class MockAsyncSession:
 
     def add(self, obj):
         """Mock add that tracks added objects"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         self.added.append(obj)
         if isinstance(obj, Workload):
@@ -96,7 +98,7 @@ class MockAsyncSession:
                 else WorkloadState.REGISTERED,
                 registered_at=obj.registered_at
                 if hasattr(obj, "registered_at") and obj.registered_at
-                else datetime.now(timezone.utc),
+                else datetime.now(UTC),
                 last_attested_at=obj.last_attested_at if hasattr(obj, "last_attested_at") else None,
                 metadata_=obj.metadata_ if hasattr(obj, "metadata_") and obj.metadata_ else {},
             )
@@ -113,9 +115,9 @@ class MockAsyncSession:
             if not hasattr(obj, "active") or obj.active is None:
                 obj.active = True
             if not hasattr(obj, "created_at") or obj.created_at is None:
-                obj.created_at = datetime.now(timezone.utc)
+                obj.created_at = datetime.now(UTC)
             if not hasattr(obj, "updated_at") or obj.updated_at is None:
-                obj.updated_at = datetime.now(timezone.utc)
+                obj.updated_at = datetime.now(UTC)
             test_policies[obj.name] = obj
 
     async def commit(self):

@@ -1,5 +1,7 @@
 import logging
+
 from fastapi import FastAPI
+
 from server.config import Settings
 
 log = logging.getLogger(__name__)
@@ -11,11 +13,11 @@ def setup_telemetry(app: FastAPI, config: Settings) -> None:
         return
 
     from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     resource = Resource.create({"service.name": config.otel_service_name})
     provider = TracerProvider(resource=resource)
@@ -27,8 +29,8 @@ def setup_telemetry(app: FastAPI, config: Settings) -> None:
 
 
 def add_metrics_endpoint(app: FastAPI) -> None:
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
     from fastapi.responses import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics():
