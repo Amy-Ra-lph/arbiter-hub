@@ -1,0 +1,94 @@
+---
+# e2e-test.yaml — E2E attestation flow tests for arbiter-hub
+- name: Run arbiter-hub E2E tests
+  hosts: ipaclient
+  become: true
+  vars:
+    api_url: "http://localhost:8400"
+    kbs_url: "http://localhost:8085"
+    keylime_agent_uuid: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+    keylime_verifier_url: "https://{{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }}:8881"
+  tasks:
+    - name: "T1: API health endpoint"
+      ansible.builtin.uri:
+        url: "{{ api_url }}/healthz"
+        method: GET
+        status_code: 200
+
+    - name: "T2: KBS health endpoint"
+      ansible.builtin.uri:
+        url: "{{ kbs_url }}/health"
+        method: GET
+        status_code: 200
+
+    - name: "T3: Register workload via API"
+      ansible.builtin.uri:
+        url: "{{ api_url }}/api/v1/workloads"
+        method: POST
+        body_format: json
+        body:
+          name: "test-workload-e2e"
+          owner: "admin"
+          backends:
+            - "keylime"
+          metadata:
+            keylime_agent_uuid: "{{ keylime_agent_uuid }}"
+            keylime_agent_ip: "{{ ansible_default_ipv4.address }}"
+        status_code: [200, 201]
+      register: workload_result
+
+    - name: "T4: Verify workload registered"
+      ansible.builtin.uri:
+        url: "{{ api_url }}/api/v1/workloads/test-workload-e2e"
+        method: GET
+        status_code: 200
+      register: workload_get
+
+    - name: "T5: Request attestation"
+      ansible.builtin.uri:
+        url: "{{ api_url }}/api/v1/workloads/test-workload-e2e/attest"
+        method: POST
+        status_code: [200, 202]
+      register: attest_result
+
+    - name: "T6: Verify attestation verdict"
+      ansible.builtin.assert:
+        that:
+          - attest_result.json.verdict is defined
+        fail_msg: "Attestation did not return a verdict"
+
+    - name: "T7: List all workloads"
+      ansible.builtin.uri:
+        url: "{{ api_url }}/api/v1/workloads"
+        method: GET
+        status_code: 200
+      register: workloads_list
+
+    - name: "T8: Workload appears in list"
+      ansible.builtin.assert:
+        that:
+          - workloads_list.json | length > 0
+
+    - name: "T9: Store secret in KBS"
+      ansible.builtin.uri:
+        url: "{{ kbs_url }}/kbs/v0/resource/default/test/e2e-secret"
+        method: POST
+        body: "test-secret-value-2026"
+        status_code: [200, 201]
+
+    - name: "T10: Retrieve secret from KBS"
+      ansible.builtin.uri:
+        url: "{{ kbs_url }}/kbs/v0/resource/default/test/e2e-secret"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: kbs_secret
+
+    - name: "T10: Verify KBS secret matches"
+      ansible.builtin.assert:
+        that:
+          - "'test-secret-value-2026' in kbs_secret.content"
+
+    - name: Test summary
+      ansible.builtin.debug:
+        msg: "All 10 E2E tests passed"

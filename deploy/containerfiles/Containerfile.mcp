@@ -1,14 +1,9 @@
 # deploy/containerfiles/Containerfile.mcp
-FROM registry.redhat.io/ubi10/python-312 AS builder
+FROM registry.redhat.io/ubi10/python-312-minimal
 WORKDIR /opt/app-root/src
 COPY pyproject.toml .
 COPY arbiter_mcp/ arbiter_mcp/
 RUN pip install --no-cache-dir .
-
-FROM registry.redhat.io/ubi10/ubi-minimal
-RUN microdnf install -y python3.12 && microdnf clean all
-COPY --from=builder /opt/app-root /opt/app-root
-ENV PATH="/opt/app-root/bin:$PATH"
 USER 1001
 EXPOSE 8401
-CMD ["python3.12", "-m", "arbiter_mcp.server"]
+CMD ["python3.12", "-m", "arbiter_mcp"]

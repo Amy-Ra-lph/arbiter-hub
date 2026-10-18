@@ -1,0 +1,72 @@
+---
+# metadata-arbiter-hub.yaml — idm-ci metadata for Arbiter Hub PoC
+#
+# 2-node topology: IPA server + arbiter-hub runner (client)
+# Deploys FreeIPA, Keylime (swtpm), and Arbiter Hub containers (Quay)
+#
+# Usage:
+#   te metadata-arbiter-hub.yaml                   # full pipeline
+#   te metadata-arbiter-hub.yaml --phase prep      # IPA only
+#   te metadata-arbiter-hub.yaml --phase keylime   # Keylime layer only
+#   te metadata-arbiter-hub.yaml --phase arbiter   # containers + IPA roles
+#   te metadata-arbiter-hub.yaml --phase test      # E2E tests only
+
+domains:
+  - name: arbiter.test
+    type: ipa
+    hosts:
+      - name: master.arbiter.test
+        role: master
+        group: ipaserver
+        os: rhel-10
+      - name: runner.arbiter.test
+        role: client
+        group: ipaclient
+        os: rhel-10
+
+phases:
+  - name: init
+    steps:
+      - playbook: init/testrunner-dir.yaml
+
+  - name: provision
+    steps:
+      - playbook: provision/mrack-up.yaml
+      - playbook: provision/wait.yaml
+
+  - name: prep
+    steps:
+      - playbook: prep/redhat-base.yaml
+      - playbook: prep/install-ipa-packages.yaml
+      - playbook: prep/firewall.yaml
+      - playbook: prep/ipa-network.yaml
+      - playbook: prep/ipa-server-install.yaml
+        extra_vars:
+          ipaserver_setup_dns: true
+          ipaserver_forwarders:
+            - 8.8.8.8
+          ipaserver_no_reverse: true
+      - playbook: prep/ipa-client-install.yaml
+
+  - name: keylime
+    steps:
+      - playbook: arbiter/keylime-setup.yaml
+
+  - name: arbiter
+    steps:
+      - playbook: arbiter/container-deploy.yaml
+        extra_vars:
+          arbiter_hub_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
+          arbiter_hub_kbs_image: "quay.io/rhel-security/arbiter-hub-kbs:latest"
+          arbiter_hub_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
+      - playbook: arbiter/ipa-roles.yaml
+      - playbook: arbiter/health-check.yaml
+
+  - name: test
+    steps:
+      - playbook: arbiter/e2e-test.yaml
+
+  - name: teardown
+    steps:
+      - playbook: teardown/fetch-logs.yaml
+      - playbook: teardown/mrack-destroy.yaml

@@ -1,0 +1,180 @@
+---
+# container-deploy.yaml — Deploy arbiter-hub containers via Quadlet
+#
+# Lessons from Beaker deployment (2026-10-17/18):
+#   - RHEL PostgreSQL uses POSTGRESQL_* env vars, volume /var/lib/pgsql/data, uid 26
+#   - Volume needs :Z,U flag (:U sets ownership to container uid)
+#   - API uses pydantic-settings with env_prefix="ARBITER_" — one ARBITER_DATABASE_URL
+#   - KBS routes served by API — no separate KBS container needed
+#   - Alembic migration must run on same podman network to reach DB
+#   - MCP env var is ARBITER_API_URL (not API_URL)
+- name: Deploy arbiter-hub containers
+  hosts: ipaclient
+  become: true
+  vars:
+    arbiter_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
+    arbiter_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
+    arbiter_db_image: "registry.redhat.io/rhel10/postgresql-16:latest"
+    arbiter_db_password: "{{ vault_arbiter_db_password | default('arbiter-poc-2026') }}"
+    arbiter_db_user: "arbiter"
+    arbiter_db_name: "arbiter"
+    arbiter_keylime_verifier_url: ""
+    arbiter_cert_dir: "/etc/arbiter/keylime"
+    quadlet_dir: "/etc/containers/systemd"
+    arbiter_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
+    arbiter_repo_branch: "amyra-agentic-poc"
+  tasks:
+    - name: Install podman
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - python3-podman
+        state: present
+
+    - name: Pull container images
+      containers.podman.podman_image:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - "{{ arbiter_api_image }}"
+        - "{{ arbiter_mcp_image }}"
+        - "{{ arbiter_db_image }}"
+
+    - name: Clone arbiter-hub repo
+      ansible.builtin.git:
+        repo: "{{ arbiter_repo }}"
+        dest: /opt/arbiter-hub
+        version: "{{ arbiter_repo_branch }}"
+        force: true
+
+    - name: Create podman secret for DB password
+      containers.podman.podman_secret:
+        name: arbiter-hub-db-password
+        data: "{{ arbiter_db_password }}"
+        state: present
+      no_log: true
+
+    - name: Create cert directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0750"
+      loop:
+        - /etc/arbiter/certs
+        - "{{ arbiter_cert_dir }}"
+
+    - name: Copy Quadlet files
+      ansible.builtin.copy:
+        src: "/opt/arbiter-hub/deploy/quadlet/{{ item }}"
+        dest: "{{ quadlet_dir }}/{{ item }}"
+        mode: "0644"
+        remote_src: true
+      loop:
+        - arbiter-hub.network
+        - arbiter-hub-db.volume
+        - arbiter-hub-certs.volume
+        - arbiter-hub-keylime.volume
+        - arbiter-hub-db.container
+        - arbiter-hub-api.container
+        - arbiter-hub-mcp.container
+      notify: reload systemd
+
+    - name: Template API container overrides
+      ansible.builtin.copy:
+        dest: "{{ quadlet_dir }}/arbiter-hub-api.container"
+        content: |
+          [Unit]
+          Description=Arbiter Hub API Server
+          After=arbiter-hub-db.container
+          Requires=arbiter-hub-db.container
+
+          [Container]
+          Image={{ arbiter_api_image }}
+          ContainerName=arbiter-hub-api
+          Network=arbiter-hub.network
+          PublishPort=8400:8400
+          Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
+          Volume={{ arbiter_cert_dir }}:/etc/arbiter/keylime:ro,Z
+          Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
+          Environment=ARBITER_KEYLIME_VERIFIER_URL={{ arbiter_keylime_verifier_url }}
+          Environment=ARBITER_KEYLIME_CA_CERT=/etc/arbiter/keylime/ca.crt
+          Environment=ARBITER_KEYLIME_CLIENT_CERT=/etc/arbiter/keylime/client.crt
+          Environment=ARBITER_KEYLIME_CLIENT_KEY=/etc/arbiter/keylime/client.key
+          ReadOnly=true
+
+          [Service]
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target default.target
+        mode: "0644"
+      notify: reload systemd
+
+    - name: Flush handlers before starting services
+      ansible.builtin.meta: flush_handlers
+
+    - name: Start database
+      ansible.builtin.systemd:
+        name: arbiter-hub-db
+        state: started
+        enabled: true
+
+    - name: Wait for database readiness
+      ansible.builtin.command:
+        cmd: >-
+          podman exec arbiter-hub-db
+          pg_isready -U {{ arbiter_db_user }} -d {{ arbiter_db_name }}
+      register: pg_ready
+      retries: 12
+      delay: 5
+      until: pg_ready.rc == 0
+      changed_when: false
+
+    - name: Run Alembic migrations
+      ansible.builtin.command:
+        cmd: >-
+          podman run --rm
+          --network arbiter-hub
+          -e ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
+          {{ arbiter_api_image }}
+          python3.12 -m alembic
+          -x sqlalchemy.url=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
+          upgrade head
+      register: alembic_result
+      changed_when: "'Running upgrade' in alembic_result.stderr"
+
+    - name: Start API
+      ansible.builtin.systemd:
+        name: arbiter-hub-api
+        state: started
+        enabled: true
+
+    - name: Wait for API health
+      ansible.builtin.uri:
+        url: "http://localhost:8400/health"
+        return_content: true
+      register: health
+      retries: 10
+      delay: 3
+      until: health.status == 200
+
+    - name: Start MCP
+      ansible.builtin.systemd:
+        name: arbiter-hub-mcp
+        state: started
+        enabled: true
+
+    - name: Verify all containers running
+      ansible.builtin.command:
+        cmd: podman ps --format '{{ '{{' }}.Names{{ '}}' }}' --filter name=arbiter-hub
+      register: running_containers
+      changed_when: false
+      failed_when: >-
+        'arbiter-hub-db' not in running_containers.stdout or
+        'arbiter-hub-api' not in running_containers.stdout or
+        'arbiter-hub-mcp' not in running_containers.stdout
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

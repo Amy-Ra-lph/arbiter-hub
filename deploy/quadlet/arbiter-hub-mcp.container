@@ -8,8 +8,7 @@ Image=quay.io/rhel-security/arbiter-hub-mcp:latest
 ContainerName=arbiter-hub-mcp
 Network=arbiter-hub.network
 PublishPort=8401:8401
-Environment=API_URL=http://arbiter-hub-api:8400
-SecurityLabelType=arbiter_mcp_t
+Environment=ARBITER_API_URL=http://arbiter-hub-api:8400
 ReadOnly=true
 
 [Service]

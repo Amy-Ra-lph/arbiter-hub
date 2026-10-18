@@ -1,0 +1,45 @@
+---
+# health-check.yaml — wait for all arbiter-hub containers to be healthy
+- name: Wait for arbiter-hub services
+  hosts: ipaclient
+  become: true
+  tasks:
+    - name: Wait for arbiter-hub-api health
+      ansible.builtin.uri:
+        url: "http://localhost:8400/healthz"
+        method: GET
+        status_code: 200
+      register: api_health
+      until: api_health.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Wait for arbiter-hub-kbs health
+      ansible.builtin.uri:
+        url: "http://localhost:8085/health"
+        method: GET
+        status_code: 200
+      register: kbs_health
+      until: kbs_health.status == 200
+      retries: 20
+      delay: 5
+
+    - name: Wait for arbiter-hub-mcp health
+      ansible.builtin.uri:
+        url: "http://localhost:8401/health"
+        method: GET
+        status_code: 200
+      register: mcp_health
+      until: mcp_health.status == 200
+      retries: 20
+      delay: 5
+
+    - name: Report container status
+      ansible.builtin.command:
+        cmd: podman ps --format "{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}"
+      register: container_status
+      changed_when: false
+
+    - name: Display status
+      ansible.builtin.debug:
+        var: container_status.stdout_lines

@@ -3,14 +3,13 @@ Description=Arbiter Hub PostgreSQL
 After=arbiter-hub.network
 
 [Container]
-Image=registry.redhat.io/rhel10/postgresql-16
+Image=registry.redhat.io/rhel10/postgresql-16:latest
 ContainerName=arbiter-hub-db
 Network=arbiter-hub.network
-Volume=arbiter-hub-db.volume:/var/lib/pgsql/data:Z
+Volume=arbiter-hub-db.volume:/var/lib/pgsql/data:Z,U
 Environment=POSTGRESQL_DATABASE=arbiter
+Environment=POSTGRESQL_USER=arbiter
 Secret=arbiter-hub-db-password,type=env,target=POSTGRESQL_PASSWORD
-Secret=arbiter-hub-db-user,type=env,target=POSTGRESQL_USER
-SecurityLabelType=arbiter_db_t
 ReadOnly=false
 
 [Service]

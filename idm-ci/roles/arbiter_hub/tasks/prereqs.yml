@@ -1,0 +1,39 @@
+---
+- name: Install podman
+  ansible.builtin.dnf:
+    name:
+      - podman
+      - python3-podman
+    state: present
+
+- name: Pull container images
+  containers.podman.podman_image:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - "{{ arbiter_hub_api_image }}"
+    - "{{ arbiter_hub_mcp_image }}"
+    - "{{ arbiter_hub_db_image }}"
+
+- name: Clone arbiter-hub repo
+  ansible.builtin.git:
+    repo: "{{ arbiter_hub_repo }}"
+    dest: "{{ arbiter_hub_install_dir }}"
+    version: "{{ arbiter_hub_repo_branch }}"
+    force: true
+
+- name: Create cert directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - /etc/arbiter/certs
+    - "{{ arbiter_hub_cert_dir }}"
+
+- name: Create podman secret for DB password
+  containers.podman.podman_secret:
+    name: arbiter-hub-db-password
+    data: "{{ arbiter_hub_db_password }}"
+    state: present
+  no_log: true

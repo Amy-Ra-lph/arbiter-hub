@@ -1,0 +1,142 @@
+---
+# cert-setup.yaml — Provision mTLS certs for arbiter-hub ↔ Keylime
+# Two modes: IPA-issued (default) or customer-provided cert bundle
+#
+# IPA mode:  certmonger requests cert from IPA CA, verifier trusts IPA CA
+# Bundle mode: customer drops certs at arbiter_cert_bundle_dir, playbook copies them
+- name: Set up arbiter-hub mTLS certificates
+  hosts: ipaclient
+  become: true
+  vars:
+    arbiter_cert_mode: "ipa"  # "ipa" or "bundle"
+    arbiter_cert_dir: "/etc/arbiter/keylime"
+    arbiter_cert_bundle_dir: ""  # set for bundle mode: dir with ca.crt, client.crt, client.key
+    arbiter_ipa_service: "HTTP/{{ ansible_fqdn }}"
+    keylime_server: "{{ groups['ipaserver'][0] }}"
+  tasks:
+    - name: Create cert directory
+      ansible.builtin.file:
+        path: "{{ arbiter_cert_dir }}"
+        state: directory
+        mode: "0750"
+
+    # --- IPA mode ---
+    - name: IPA mode — request service certificate
+      when: arbiter_cert_mode == "ipa"
+      block:
+        - name: Install certmonger
+          ansible.builtin.dnf:
+            name: certmonger
+            state: present
+
+        - name: Start certmonger
+          ansible.builtin.systemd:
+            name: certmonger
+            state: started
+            enabled: true
+
+        - name: Request certificate from IPA CA
+          ansible.builtin.command:
+            cmd: >-
+              ipa-getcert request
+              -K {{ arbiter_ipa_service }}
+              -f {{ arbiter_cert_dir }}/client.crt
+              -k {{ arbiter_cert_dir }}/client.key
+              -D {{ ansible_fqdn }}
+              -N CN={{ ansible_fqdn }}
+              -w
+            creates: "{{ arbiter_cert_dir }}/client.crt"
+
+        - name: Copy IPA CA cert
+          ansible.builtin.copy:
+            src: /etc/ipa/ca.crt
+            dest: "{{ arbiter_cert_dir }}/ca.crt"
+            remote_src: true
+            mode: "0644"
+
+        - name: Configure Keylime verifier to trust IPA CA
+          delegate_to: "{{ keylime_server }}"
+          block:
+            - name: Copy IPA CA to verifier cv_ca directory
+              ansible.builtin.copy:
+                src: /etc/ipa/ca.crt
+                dest: /var/lib/keylime/cv_ca/ipa-ca.crt
+                owner: keylime
+                group: keylime
+                mode: "0640"
+                remote_src: true
+
+            - name: Create CA bundle (cv_ca + IPA CA)
+              ansible.builtin.shell: |
+                cat /var/lib/keylime/cv_ca/cacert.crt /var/lib/keylime/cv_ca/ipa-ca.crt \
+                  > /var/lib/keylime/cv_ca/trusted-bundle.pem
+                chown keylime:keylime /var/lib/keylime/cv_ca/trusted-bundle.pem
+                chmod 640 /var/lib/keylime/cv_ca/trusted-bundle.pem
+              args:
+                creates: /var/lib/keylime/cv_ca/trusted-bundle.pem
+
+            - name: Override verifier TLS config for IPA CA trust
+              ansible.builtin.copy:
+                dest: /etc/keylime/verifier.conf.d/ipa-trust.conf
+                content: |
+                  [verifier]
+                  tls_dir = /var/lib/keylime/cv_ca
+                  server_cert = server-cert.crt
+                  server_key = server-private.pem
+                  trusted_client_ca = ["trusted-bundle.pem"]
+                  client_cert = client-cert.crt
+                  client_key = client-private.pem
+                  trusted_server_ca = ["cacert.crt"]
+                mode: "0644"
+              notify: restart keylime verifier
+
+    # --- Bundle mode ---
+    - name: Bundle mode — copy customer-provided certs
+      when: arbiter_cert_mode == "bundle"
+      block:
+        - name: Validate bundle directory
+          ansible.builtin.assert:
+            that:
+              - arbiter_cert_bundle_dir | length > 0
+            fail_msg: "arbiter_cert_bundle_dir must be set in bundle mode"
+
+        - name: Copy CA certificate
+          ansible.builtin.copy:
+            src: "{{ arbiter_cert_bundle_dir }}/ca.crt"
+            dest: "{{ arbiter_cert_dir }}/ca.crt"
+            mode: "0644"
+
+        - name: Copy client certificate
+          ansible.builtin.copy:
+            src: "{{ arbiter_cert_bundle_dir }}/client.crt"
+            dest: "{{ arbiter_cert_dir }}/client.crt"
+            mode: "0644"
+
+        - name: Copy client key
+          ansible.builtin.copy:
+            src: "{{ arbiter_cert_bundle_dir }}/client.key"
+            dest: "{{ arbiter_cert_dir }}/client.key"
+            mode: "0600"
+
+    - name: Set cert file permissions
+      ansible.builtin.file:
+        path: "{{ arbiter_cert_dir }}/{{ item.name }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { name: "ca.crt", mode: "0644" }
+        - { name: "client.crt", mode: "0644" }
+        - { name: "client.key", mode: "0600" }
+
+  handlers:
+    - name: restart keylime verifier
+      listen: restart keylime verifier
+      delegate_to: "{{ keylime_server }}"
+      block:
+        - name: Clean multiprocessing temp files
+          ansible.builtin.shell: rm -rf /tmp/pymp-*
+          changed_when: true
+
+        - name: Restart keylime_verifier
+          ansible.builtin.systemd:
+            name: keylime_verifier
+            state: restarted

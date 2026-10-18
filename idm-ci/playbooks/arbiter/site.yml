@@ -1,0 +1,17 @@
+---
+# site.yml — Full arbiter-hub deployment using the arbiter_hub role
+#
+# Usage:
+#   ansible-playbook -i inventory site.yml \
+#     -e arbiter_hub_db_password=arbiter-poc-2026 \
+#     -e arbiter_hub_keylime_verifier_url=https://keylime.example.com:8881 \
+#     -e arbiter_hub_keylime_server=keylime.example.com
+#
+# Or with vault:
+#   ansible-playbook -i inventory site.yml --ask-vault-pass
+
+- name: Deploy arbiter-hub
+  hosts: ipaclient
+  become: true
+  roles:
+    - role: arbiter_hub

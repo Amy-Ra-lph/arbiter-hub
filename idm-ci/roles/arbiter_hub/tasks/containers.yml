@@ -1,0 +1,38 @@
+---
+- name: Copy Quadlet network and volume files
+  ansible.builtin.copy:
+    src: "{{ arbiter_hub_install_dir }}/deploy/quadlet/{{ item }}"
+    dest: "{{ arbiter_hub_quadlet_dir }}/{{ item }}"
+    mode: "0644"
+    remote_src: true
+  loop:
+    - arbiter-hub.network
+    - arbiter-hub-db.volume
+    - arbiter-hub-certs.volume
+    - arbiter-hub-keylime.volume
+
+- name: Copy DB Quadlet
+  ansible.builtin.copy:
+    src: "{{ arbiter_hub_install_dir }}/deploy/quadlet/arbiter-hub-db.container"
+    dest: "{{ arbiter_hub_quadlet_dir }}/arbiter-hub-db.container"
+    mode: "0644"
+    remote_src: true
+  notify: reload systemd
+
+- name: Template API Quadlet
+  ansible.builtin.template:
+    src: arbiter-hub-api.container.j2
+    dest: "{{ arbiter_hub_quadlet_dir }}/arbiter-hub-api.container"
+    mode: "0644"
+  notify: reload systemd
+
+- name: Copy MCP Quadlet
+  ansible.builtin.copy:
+    src: "{{ arbiter_hub_install_dir }}/deploy/quadlet/arbiter-hub-mcp.container"
+    dest: "{{ arbiter_hub_quadlet_dir }}/arbiter-hub-mcp.container"
+    mode: "0644"
+    remote_src: true
+  notify: reload systemd
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers

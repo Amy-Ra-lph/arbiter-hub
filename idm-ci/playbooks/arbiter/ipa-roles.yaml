@@ -1,0 +1,25 @@
+---
+# ipa-roles.yaml — create IPA groups, roles, and HBAC services for arbiter-hub
+# Runs on master (IPA server) after server install
+- name: Configure IPA roles for arbiter-hub
+  hosts: ipaserver
+  become: true
+  tasks:
+    - name: Copy IPA role setup script
+      ansible.builtin.copy:
+        src: /opt/arbiter-hub/scripts/setup-ipa-roles.sh
+        dest: /tmp/setup-ipa-roles.sh
+        mode: "0755"
+        remote_src: true
+
+    - name: Obtain admin Kerberos ticket
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipaserver_admin_password | default('Secret123!') }}"
+      changed_when: false
+
+    - name: Run IPA role setup
+      ansible.builtin.command:
+        cmd: bash /tmp/setup-ipa-roles.sh {{ ipa_realm | default('ARBITER.TEST') }}
+      register: role_result
+      changed_when: "'complete' in role_result.stdout"

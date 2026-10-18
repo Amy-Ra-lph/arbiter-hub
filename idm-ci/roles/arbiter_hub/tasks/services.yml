@@ -1,0 +1,37 @@
+---
+- name: Start database
+  ansible.builtin.systemd:
+    name: arbiter-hub-db
+    state: started
+    enabled: true
+
+- name: Start API
+  ansible.builtin.systemd:
+    name: arbiter-hub-api
+    state: started
+    enabled: true
+
+- name: Wait for API health
+  ansible.builtin.uri:
+    url: "http://localhost:8400/health"
+    return_content: true
+  register: health
+  retries: 10
+  delay: 3
+  until: health.status == 200
+
+- name: Start MCP
+  ansible.builtin.systemd:
+    name: arbiter-hub-mcp
+    state: started
+    enabled: true
+
+- name: Verify all containers running
+  ansible.builtin.command:
+    cmd: podman ps --format {% raw %}'{{.Names}}'{% endraw %} --filter name=arbiter-hub
+  register: running_containers
+  changed_when: false
+  failed_when: >-
+    'arbiter-hub-db' not in running_containers.stdout or
+    'arbiter-hub-api' not in running_containers.stdout or
+    'arbiter-hub-mcp' not in running_containers.stdout

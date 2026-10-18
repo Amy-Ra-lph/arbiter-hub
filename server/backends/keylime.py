@@ -33,8 +33,11 @@ class KeylimeBackend:
     def _build_client(self) -> httpx.AsyncClient:
         kwargs: dict = {"timeout": self._timeout, "verify": False}
         if self._ca_cert and self._client_cert and self._client_key:
-            kwargs["verify"] = self._ca_cert
-            kwargs["cert"] = (self._client_cert, self._client_key)
+            import ssl
+
+            ctx = ssl.create_default_context(cafile=self._ca_cert)
+            ctx.load_cert_chain(self._client_cert, self._client_key)
+            kwargs["verify"] = ctx
         return httpx.AsyncClient(**kwargs)
 
     async def verify(self, workload: Workload) -> AttestationResult:
@@ -53,10 +56,14 @@ class KeylimeBackend:
                 data = resp.json()
                 results = data.get("results", {})
                 op_state = results.get("operational_state", -1)
-                # Keylime op_state: 7 = GET_QUOTE (attesting), others vary
-                # A healthy agent has op_state that indicates verified
+                # Keylime op_state: 3 = Get Quote (healthy), 7 = Invalidated
+                # Also accept string states from newer Keylime
+                if isinstance(op_state, str):
+                    op_state_str = op_state.lower()
+                else:
+                    op_state_str = ""
                 ima_hash = hashlib.sha256(str(results).encode()).hexdigest()
-                if op_state in (7, 8, 9):  # verified states
+                if op_state in (3, 4) or op_state_str in ("get quote", "provide v"):
                     verdict = AttestationVerdict.PASS
                 else:
                     verdict = AttestationVerdict.FAIL

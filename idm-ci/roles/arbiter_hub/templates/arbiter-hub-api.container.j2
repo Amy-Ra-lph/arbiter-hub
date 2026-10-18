@@ -1,0 +1,26 @@
+[Unit]
+Description=Arbiter Hub API Server
+After=arbiter-hub-db.container
+Requires=arbiter-hub-db.container
+
+[Container]
+Image={{ arbiter_hub_api_image }}
+ContainerName=arbiter-hub-api
+Network=arbiter-hub.network
+PublishPort=8400:8400
+Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
+Volume={{ arbiter_hub_cert_dir }}:/etc/arbiter/keylime:ro,Z
+Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_hub_db_user }}:{{ arbiter_hub_db_password }}@arbiter-hub-db:5432/{{ arbiter_hub_db_name }}
+{% if arbiter_hub_keylime_enabled | bool %}
+Environment=ARBITER_KEYLIME_VERIFIER_URL={{ arbiter_hub_keylime_verifier_url }}
+Environment=ARBITER_KEYLIME_CA_CERT=/etc/arbiter/keylime/ca.crt
+Environment=ARBITER_KEYLIME_CLIENT_CERT=/etc/arbiter/keylime/client.crt
+Environment=ARBITER_KEYLIME_CLIENT_KEY=/etc/arbiter/keylime/client.key
+{% endif %}
+ReadOnly=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

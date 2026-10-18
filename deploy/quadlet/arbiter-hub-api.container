@@ -9,11 +9,13 @@ ContainerName=arbiter-hub-api
 Network=arbiter-hub.network
 PublishPort=8400:8400
 Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
-Secret=arbiter-hub-db-password,type=env,target=DATABASE_PASSWORD
-Environment=DATABASE_HOST=arbiter-hub-db
-Environment=DATABASE_NAME=arbiter
-Environment=KBS_URL=http://arbiter-hub-kbs:8085
-SecurityLabelType=arbiter_api_t
+Volume=arbiter-hub-keylime.volume:/etc/arbiter/keylime:ro,Z
+Secret=arbiter-hub-db-password,type=env,target=ARBITER_DB_PASSWORD
+Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://arbiter:${ARBITER_DB_PASSWORD}@arbiter-hub-db:5432/arbiter
+Environment=ARBITER_KEYLIME_VERIFIER_URL=
+Environment=ARBITER_KEYLIME_CA_CERT=/etc/arbiter/keylime/ca.crt
+Environment=ARBITER_KEYLIME_CLIENT_CERT=/etc/arbiter/keylime/client.crt
+Environment=ARBITER_KEYLIME_CLIENT_KEY=/etc/arbiter/keylime/client.key
 ReadOnly=true
 
 [Service]
