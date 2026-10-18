@@ -11,6 +11,7 @@ import KBSSecrets from "src/pages/KBSSecrets/KBSSecrets";
 import AuditLog from "src/pages/AuditLog/AuditLog";
 import CveOverview from "src/pages/Vulnerabilities/CveOverview";
 import AffectedWorkloads from "src/pages/Vulnerabilities/AffectedWorkloads";
+import Federation from "src/pages/Federation/Federation";
 import { PageSection, Content, ContentVariants } from "@patternfly/react-core";
 
 const Placeholder: React.FC<{ name: string }> = ({ name }) => (
@@ -36,7 +37,7 @@ const App: React.FC = () => {
           <Route path="/policies/:policyId" element={<Placeholder name="Policy Detail" />} />
           <Route path="/kbs" element={<KBSSecrets />} />
           <Route path="/audit" element={<AuditLog />} />
-          <Route path="/federation" element={<Placeholder name="Federation" />} />
+          <Route path="/federation" element={<Federation />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -1,0 +1,12 @@
+FROM registry.redhat.io/ubi10/nodejs-22 AS builder
+WORKDIR /opt/app-root/src
+COPY ui/package*.json ./
+RUN npm ci
+COPY ui/ ./
+RUN npm run build
+
+FROM registry.redhat.io/ubi10/nginx-124
+COPY --from=builder /opt/app-root/src/dist /opt/app-root/src/
+COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
+EXPOSE 8443
+CMD ["nginx", "-g", "daemon off;"]

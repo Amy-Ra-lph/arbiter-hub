@@ -1,0 +1,16 @@
+[Unit]
+Description=Arbiter Hub UI (nginx + React SPA)
+After=arbiter-hub-api.container
+
+[Container]
+Image=quay.io/rhel-security/arbiter-hub-ui:latest
+PublishPort=8443:8443
+Network=arbiter-hub.network
+ReadOnly=true
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=30
+
+[Install]
+WantedBy=default.target
