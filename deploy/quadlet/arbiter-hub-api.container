@@ -1,0 +1,23 @@
+[Unit]
+Description=Arbiter Hub API Server
+After=arbiter-hub-db.container
+Requires=arbiter-hub-db.container
+
+[Container]
+Image=quay.io/rhel-security/arbiter-hub-api:latest
+ContainerName=arbiter-hub-api
+Network=arbiter-hub.network
+PublishPort=8400:8400
+Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
+Secret=arbiter-hub-db-password,type=env,target=DATABASE_PASSWORD
+Environment=DATABASE_HOST=arbiter-hub-db
+Environment=DATABASE_NAME=arbiter
+Environment=KBS_URL=http://arbiter-hub-kbs:8085
+SecurityLabelType=arbiter_api_t
+ReadOnly=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

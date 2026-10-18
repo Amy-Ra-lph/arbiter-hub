@@ -4004,9 +4004,9 @@ Additionally create volume files:
 
 ```yaml
 # deploy/ansible/roles/arbiter_hub/defaults/main.yml
-arbiter_hub_api_image: "quay.io/afarley/arbiter-hub-api:latest"
-arbiter_hub_kbs_image: "quay.io/afarley/arbiter-hub-kbs:latest"
-arbiter_hub_mcp_image: "quay.io/afarley/arbiter-hub-mcp:latest"
+arbiter_hub_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
+arbiter_hub_kbs_image: "quay.io/rhel-security/arbiter-hub-kbs:latest"
+arbiter_hub_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
 arbiter_hub_db_image: "registry.redhat.io/rhel10/postgresql-16"
 arbiter_hub_db_password: "changeme"
 arbiter_hub_db_user: "arbiter"

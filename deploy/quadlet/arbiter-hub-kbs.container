@@ -1,0 +1,20 @@
+[Unit]
+Description=Arbiter Hub Key Broker Service
+After=arbiter-hub-db.container
+Requires=arbiter-hub-db.container
+
+[Container]
+Image=quay.io/rhel-security/arbiter-hub-kbs:latest
+ContainerName=arbiter-hub-kbs
+Network=arbiter-hub.network
+PublishPort=8085:8085
+Volume=arbiter-hub-kbs-data.volume:/var/lib/kbs:Z
+Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
+SecurityLabelType=arbiter_kbs_t
+ReadOnly=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

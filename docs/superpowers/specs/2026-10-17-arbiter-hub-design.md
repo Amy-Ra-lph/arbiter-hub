@@ -637,7 +637,7 @@ After=arbiter-hub-db.container
 Requires=arbiter-hub-db.container
 
 [Container]
-Image=quay.io/afarley/arbiter-hub-api:latest
+Image=quay.io/rhel-security/arbiter-hub-api:latest
 ContainerName=arbiter-hub-api
 Network=arbiter-hub.network
 PublishPort=8400:8400
@@ -664,7 +664,7 @@ After=arbiter-hub-db.container
 Requires=arbiter-hub-db.container
 
 [Container]
-Image=quay.io/afarley/arbiter-hub-kbs:latest
+Image=quay.io/rhel-security/arbiter-hub-kbs:latest
 ContainerName=arbiter-hub-kbs
 Network=arbiter-hub.network
 PublishPort=8085:8085
@@ -688,7 +688,7 @@ After=arbiter-hub-api.container
 Requires=arbiter-hub-api.container
 
 [Container]
-Image=quay.io/afarley/arbiter-hub-mcp:latest
+Image=quay.io/rhel-security/arbiter-hub-mcp:latest
 ContainerName=arbiter-hub-mcp
 Network=arbiter-hub.network
 PublishPort=8401:8401
