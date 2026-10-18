@@ -31,6 +31,7 @@ import DataSpinner from "src/components/DataSpinner";
 import { useGetWorkloadsQuery } from "src/services/rpcWorkloads";
 import { useGetBackendsQuery } from "src/services/rpcBackends";
 import { useGetAuditQuery } from "src/services/rpcAudit";
+import { useGetHealthQuery } from "src/services/rpcHealth";
 import {
   WorkloadState,
   AttestationVerdict,
@@ -99,6 +100,9 @@ const Dashboard: React.FC = () => {
     data: auditData,
     isLoading: auLoading,
   } = useGetAuditQuery({ count: 20 }, { pollingInterval: 30000 });
+  const {
+    data: healthData,
+  } = useGetHealthQuery(undefined, { pollingInterval: 15000 });
 
   if (wlLoading || beLoading || auLoading) {
     return (
@@ -122,6 +126,34 @@ const Dashboard: React.FC = () => {
       />
 
       <Grid hasGutter>
+        {/* Cluster Status */}
+        <GridItem span={12}>
+          <Card>
+            <CardTitle>Cluster Status</CardTitle>
+            <CardBody>
+              {healthData ? (
+                <div style={{ display: "flex", gap: "24px", alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Icon status={healthData.status === "ok" ? "success" : "danger"}>
+                      {healthData.status === "ok" ? <CheckCircleIcon /> : <ExclamationCircleIcon />}
+                    </Icon>
+                    <strong>API Node: {healthData.node_id}</strong>
+                  </div>
+                  <div>Version: {healthData.version}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Icon status={healthData.backends_healthy ? "success" : "danger"}>
+                      {healthData.backends_healthy ? <CheckCircleIcon /> : <ExclamationCircleIcon />}
+                    </Icon>
+                    {healthData.backend_count} backend{healthData.backend_count !== 1 ? "s" : ""} connected
+                  </div>
+                </div>
+              ) : (
+                <div>Checking cluster health...</div>
+              )}
+            </CardBody>
+          </Card>
+        </GridItem>
+
         {/* State Summary */}
         <GridItem span={6}>
           <Card>

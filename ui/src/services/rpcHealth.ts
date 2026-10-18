@@ -1,7 +1,12 @@
 import { api } from "./api";
 
-interface HealthResponse {
+export interface HealthResponse {
   status: string;
+  service: string;
+  version: string;
+  node_id: string;
+  backends_healthy: boolean;
+  backend_count: number;
 }
 
 const healthApi = api.injectEndpoints({
