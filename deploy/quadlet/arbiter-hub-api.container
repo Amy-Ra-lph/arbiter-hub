@@ -4,7 +4,7 @@ After=arbiter-hub-db.container
 Requires=arbiter-hub-db.container
 
 [Container]
-Image=quay.io/afarley/arbiter-hub-api:latest
+Image=quay.io/rhel-security/arbiter-hub-api:latest
 ContainerName=arbiter-hub-api
 Network=arbiter-hub.network
 PublishPort=8400:8400
