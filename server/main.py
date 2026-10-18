@@ -10,10 +10,21 @@ from server.telemetry.otel import add_metrics_endpoint, setup_telemetry
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup: DB engine, backends, scheduler
-    app.state.backend_registry = BackendRegistry()
+    registry = BackendRegistry()
+    if settings.keylime_verifier_url:
+        from server.backends.keylime import KeylimeBackend
+
+        registry.register(
+            "keylime",
+            KeylimeBackend(
+                verifier_url=settings.keylime_verifier_url,
+                ca_cert=settings.keylime_ca_cert,
+                client_cert=settings.keylime_client_cert,
+                client_key=settings.keylime_client_key,
+            ),
+        )
+    app.state.backend_registry = registry
     yield
-    # shutdown: close connections
 
 
 def create_app() -> FastAPI:

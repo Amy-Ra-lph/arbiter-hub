@@ -6,4 +6,4 @@ COPY arbiter_mcp/ arbiter_mcp/
 RUN pip install --no-cache-dir .
 USER 1001
 EXPOSE 8401
-CMD ["python3.12", "-m", "arbiter_mcp.server"]
+CMD ["python3.12", "-m", "arbiter_mcp"]
