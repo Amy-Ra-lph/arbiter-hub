@@ -359,6 +359,12 @@ ui/
 │     └─ Containerfile.ui
 ```
 
+## Branding
+
+- **Product name:** "Red Hat Arbiter" in all text references
+- **Logo:** Red Hat hat logo in masthead (same placement as freeipa-webui IpaLogo)
+- **Source:** Use SVG from `~/.claude/skills/powerpoint/redhat-assets/` or Red Hat icons repo
+
 ## Container Deployment
 
 New Quadlet: `arbiter-hub-ui` on port 8443, nginx serving static build, proxying `/api` to arbiter-hub-api:8400.
@@ -379,7 +385,7 @@ The following small API changes are needed to support the UI:
 - API proxy via Vite dev server (dev) / nginx (prod) — UI never calls API directly by port
 - Polling interval configurable (default 30s for dashboard, 60s for lists)
 - PF6 dark mode support via ThemeContext (same pattern as freeipa-webui)
-- All tables must support: search, filter, sort, pagination, bulk select
+- All tables must support: search (by key text fields), filter dropdowns (by categorical fields like state/type/verdict), sortable columns (click column header to toggle asc/desc), pagination, bulk select
 - All forms must validate client-side before submit
 - Loading states: skeleton screens for initial load, spinner for actions
 - Error states: inline for forms, toast for actions, full-page for fatal
