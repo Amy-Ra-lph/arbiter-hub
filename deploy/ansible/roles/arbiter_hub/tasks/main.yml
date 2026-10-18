@@ -1,3 +1,9 @@
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - arbiter_hub_db_password | length > 0
+    fail_msg: "arbiter_hub_db_password must be set — generate a strong password and pass it via inventory or extra-vars"
+
 - name: Create podman secrets
   containers.podman.podman_secret:
     name: "{{ item.name }}"

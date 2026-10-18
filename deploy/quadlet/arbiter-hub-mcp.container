@@ -7,7 +7,7 @@ Requires=arbiter-hub-api.container
 Image=quay.io/rhel-security/arbiter-hub-mcp:latest
 ContainerName=arbiter-hub-mcp
 Network=arbiter-hub.network
-PublishPort=8401:8401
+PublishPort=127.0.0.1:8401:8401
 Environment=ARBITER_API_URL=http://arbiter-hub-api:8400
 ReadOnly=true
 
