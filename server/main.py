@@ -6,7 +6,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from server.api import attestation, audit, health, kbs, signing, workloads
+from server.api import attestation, audit, auth_config, health, kbs, signing, workloads
 from server.backends.base import BackendRegistry
 from server.config import settings
 from server.telemetry.otel import add_metrics_endpoint, setup_telemetry
@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
 
     setup_telemetry(app, settings)
     add_metrics_endpoint(app)
+    app.include_router(auth_config.router, tags=["auth"])
     app.include_router(health.router, tags=["health"])
     app.include_router(workloads.router, tags=["workloads"])
     app.include_router(audit.router, tags=["audit"])
