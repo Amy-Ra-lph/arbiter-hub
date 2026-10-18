@@ -1,0 +1,20 @@
+[Unit]
+Description=Arbiter Hub PostgreSQL
+After=arbiter-hub.network
+
+[Container]
+Image=registry.redhat.io/rhel10/postgresql-16
+ContainerName=arbiter-hub-db
+Network=arbiter-hub.network
+Volume=arbiter-hub-db.volume:/var/lib/pgsql/data:Z
+Environment=POSTGRESQL_DATABASE=arbiter
+Secret=arbiter-hub-db-password,type=env,target=POSTGRESQL_PASSWORD
+Secret=arbiter-hub-db-user,type=env,target=POSTGRESQL_USER
+SecurityLabelType=arbiter_db_t
+ReadOnly=false
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -1,0 +1,41 @@
+- name: Create podman secrets
+  containers.podman.podman_secret:
+    name: "{{ item.name }}"
+    data: "{{ item.value }}"
+    state: present
+  loop:
+    - { name: "arbiter-hub-db-password", value: "{{ arbiter_hub_db_password }}" }
+    - { name: "arbiter-hub-db-user", value: "{{ arbiter_hub_db_user }}" }
+  no_log: true
+
+- name: Copy Quadlet files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ arbiter_hub_quadlet_dir }}/{{ item | basename }}"
+    mode: "0644"
+  with_fileglob:
+    - "../../../quadlet/*"
+  notify: reload_systemd
+
+- name: Create certificate volume directory
+  ansible.builtin.file:
+    path: /etc/arbiter/certs
+    state: directory
+    mode: "0750"
+
+- name: Run IPA role setup
+  ansible.builtin.script:
+    cmd: setup-ipa-roles.sh {{ arbiter_hub_ipa_realm }}
+  args:
+    creates: /etc/arbiter/.ipa-roles-configured
+
+- name: Reload systemd and start services
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: reload_systemd
+
+- name: Start arbiter-hub-api
+  ansible.builtin.systemd:
+    name: arbiter-hub-api
+    state: started
+    enabled: true

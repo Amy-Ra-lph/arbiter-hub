@@ -1,0 +1,19 @@
+[Unit]
+Description=Arbiter Hub MCP Tools (read-only)
+After=arbiter-hub-api.container
+Requires=arbiter-hub-api.container
+
+[Container]
+Image=quay.io/afarley/arbiter-hub-mcp:latest
+ContainerName=arbiter-hub-mcp
+Network=arbiter-hub.network
+PublishPort=8401:8401
+Environment=API_URL=http://arbiter-hub-api:8400
+SecurityLabelType=arbiter_mcp_t
+ReadOnly=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target
