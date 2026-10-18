@@ -15,7 +15,7 @@
     arbiter_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
     arbiter_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
     arbiter_db_image: "registry.redhat.io/rhel10/postgresql-16:latest"
-    arbiter_db_password: "{{ vault_arbiter_db_password | default('arbiter-poc-2026') }}"
+    arbiter_db_password: "{{ vault_arbiter_db_password }}"  # REQUIRED — set via ansible-vault or extra-vars
     arbiter_db_user: "arbiter"
     arbiter_db_name: "arbiter"
     arbiter_keylime_verifier_url: ""

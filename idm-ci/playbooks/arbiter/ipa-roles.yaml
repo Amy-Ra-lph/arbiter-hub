@@ -15,7 +15,7 @@
     - name: Obtain admin Kerberos ticket
       ansible.builtin.command:
         cmd: kinit admin
-        stdin: "{{ ipaserver_admin_password | default('Secret123!') }}"
+        stdin: "{{ ipaserver_admin_password }}"  # REQUIRED — set via ansible-vault or extra-vars
       changed_when: false
 
     - name: Run IPA role setup
