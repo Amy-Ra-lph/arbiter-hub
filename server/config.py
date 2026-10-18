@@ -19,9 +19,17 @@ class Settings(BaseSettings):
     rhtas_fulcio_url: str = ""
     rhtas_tuf_root: str = ""
 
+    auth_mode: str = "dev"
+
     oidc_issuer: str = ""
     oidc_client_id: str = "arbiter-hub"
     oidc_audience: str = "arbiter-hub"
+    oidc_principal_claim: str = "sub"
+    oidc_role_claim: str = "realm_access.roles"
+    oidc_scope_claim: str = "scope"
+    oidc_role_prefix: str = ""
+    oidc_jwks_cache_ttl: int = 3600
+    oidc_actor_type_claim: str = ""
 
     kbs_encryption_key_file: str = "/etc/arbiter/kbs.key"
     policy_file: str = "/etc/arbiter/policies.yaml"
