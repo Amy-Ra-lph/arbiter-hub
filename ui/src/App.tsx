@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "src/AppLayout";
 import Dashboard from "src/pages/Dashboard/Dashboard";
 import Workloads from "src/pages/Workloads/Workloads";
+import WorkloadDetail from "src/pages/WorkloadDetail/WorkloadDetail";
 import { PageSection, Content, ContentVariants } from "@patternfly/react-core";
 
 const Placeholder: React.FC<{ name: string }> = ({ name }) => (
@@ -19,7 +20,7 @@ const App: React.FC = () => {
         <Route element={<AppLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="/workloads" element={<Workloads />} />
-          <Route path="/workloads/:workloadId" element={<Placeholder name="Workload Detail" />} />
+          <Route path="/workloads/:workloadId" element={<WorkloadDetail />} />
           <Route path="/backends" element={<Placeholder name="Backends" />} />
           <Route path="/history" element={<Placeholder name="History" />} />
           <Route path="/vulnerabilities/cve" element={<Placeholder name="CVE Overview" />} />
