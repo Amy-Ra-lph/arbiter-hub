@@ -24,6 +24,7 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.25.0",
     "prometheus-client>=0.20.0",
     "slowapi>=0.1.9",
+    "PyJWT[crypto]>=2.8.0",
 ]
 
 [project.optional-dependencies]
