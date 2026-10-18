@@ -1,11 +1,9 @@
 import pytest
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from httpx import AsyncClient, ASGITransport
 from server.main import create_app
 from server.models.db import get_session
-from server.models.schemas import WorkloadList, PaginatedResponse, PolicyRead, AuditLogRead
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 # Mock async session that returns empty results

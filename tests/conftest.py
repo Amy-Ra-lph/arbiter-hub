@@ -1,12 +1,16 @@
+import os
 import pytest
 import asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from server.main import create_app
 from server.models.db import Base
 
 
-TEST_DB_URL = "postgresql+asyncpg://arbiter:arbiter@localhost:5432/arbiter_test"
+TEST_DB_URL = os.environ.get(
+    "ARBITER_DATABASE_URL",
+    "postgresql+asyncpg://arbiter:arbiter@localhost:5432/arbiter_test",
+)
 
 
 @pytest.fixture(scope="session")

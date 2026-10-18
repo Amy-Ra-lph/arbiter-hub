@@ -1,6 +1,5 @@
-import pytest
-from server.auth.models import CallerIdentity, Role
-from server.auth.rbac import ROLE_PERMISSIONS, check_permission, check_scope
+from server.auth.models import CallerIdentity
+from server.auth.rbac import check_permission, check_scope
 
 
 def test_admin_can_do_everything():

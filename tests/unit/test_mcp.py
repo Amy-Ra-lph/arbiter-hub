@@ -15,8 +15,12 @@ async def test_mcp_server_has_seven_tools():
     tools = await server.list_tools()
     tool_names = {t.name for t in tools}
     expected = {
-        "check_workload_status", "list_workloads_by_state",
-        "check_compliance", "verify_artifact", "gate_check",
-        "query_audit_log", "backend_health",
+        "check_workload_status",
+        "list_workloads_by_state",
+        "check_compliance",
+        "verify_artifact",
+        "gate_check",
+        "query_audit_log",
+        "backend_health",
     }
     assert expected.issubset(tool_names)

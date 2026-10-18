@@ -2,7 +2,10 @@ import logging
 from datetime import datetime, timezone
 import httpx
 from server.backends.base import (
-    AttestationBackend, AttestationResult, EnrollResult, RevokeResult, BackendHealth,
+    AttestationResult,
+    EnrollResult,
+    RevokeResult,
+    BackendHealth,
 )
 from server.models.db import AttestationVerdict, Workload
 
@@ -33,6 +36,7 @@ class TrusteeBackend:
                 resp.raise_for_status()
                 data = resp.json()
                 import hashlib
+
                 eh = hashlib.sha256(evidence.encode()).hexdigest()
                 if data.get("attestation_pass", False):
                     return AttestationResult(
@@ -72,7 +76,9 @@ class TrusteeBackend:
             return EnrollResult(success=False, backend="trustee", detail={"error": str(e)})
 
     async def revoke(self, workload: Workload) -> RevokeResult:
-        return RevokeResult(success=True, backend="trustee", detail={"note": "trustee has no revocation API"})
+        return RevokeResult(
+            success=True, backend="trustee", detail={"note": "trustee has no revocation API"}
+        )
 
     async def health(self) -> BackendHealth:
         try:
@@ -80,11 +86,15 @@ class TrusteeBackend:
                 resp = await client.get(f"{self._url}/kbs/v0/health")
                 resp.raise_for_status()
                 return BackendHealth(
-                    healthy=True, backend="trustee",
-                    last_check=datetime.now(timezone.utc), detail="reachable",
+                    healthy=True,
+                    backend="trustee",
+                    last_check=datetime.now(timezone.utc),
+                    detail="reachable",
                 )
         except Exception as e:
             return BackendHealth(
-                healthy=False, backend="trustee",
-                last_check=datetime.now(timezone.utc), detail=str(e),
+                healthy=False,
+                backend="trustee",
+                last_check=datetime.now(timezone.utc),
+                detail=str(e),
             )

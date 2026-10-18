@@ -11,7 +11,7 @@ async def health():
 @router.get("/backends")
 async def backends(request: Request):
     # BackendRegistry is available in app.state (if lifespan ran)
-    registry = getattr(request.app.state, 'backend_registry', None)
+    registry = getattr(request.app.state, "backend_registry", None)
     if not registry:
         # If lifespan hasn't run (e.g., in tests), return empty
         return {}

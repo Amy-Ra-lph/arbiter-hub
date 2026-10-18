@@ -23,8 +23,13 @@ def require_permission(action: str):
         if not check_permission(caller, action):
             raise HTTPException(
                 status_code=403,
-                detail={"type": "about:blank", "title": "Forbidden", "status": 403,
-                        "detail": f"permission denied for action: {action}"},
+                detail={
+                    "type": "about:blank",
+                    "title": "Forbidden",
+                    "status": 403,
+                    "detail": f"permission denied for action: {action}",
+                },
             )
         return caller
+
     return Depends(_check)

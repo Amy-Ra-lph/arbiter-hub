@@ -4,7 +4,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 from server.models.db import (
-    Workload, AttestationRecord, WorkloadState, AttestationVerdict, get_session,
+    Workload,
+    AttestationRecord,
+    WorkloadState,
+    AttestationVerdict,
+    get_session,
 )
 from server.backends.base import BackendRegistry
 from server.state.machine import transition, InvalidTransitionError
@@ -41,7 +45,7 @@ async def trigger_attestation(
         )
 
     # Get backend registry and run verification
-    registry: BackendRegistry = getattr(request.app.state, 'backend_registry', None)
+    registry: BackendRegistry = getattr(request.app.state, "backend_registry", None)
     if not registry:
         raise HTTPException(status_code=500, detail="backend registry not initialized")
 
@@ -49,8 +53,7 @@ async def trigger_attestation(
         backend = registry.get(workload.backend_type.value)
     except KeyError:
         raise HTTPException(
-            status_code=503,
-            detail=f"backend {workload.backend_type.value} not configured"
+            status_code=503, detail=f"backend {workload.backend_type.value} not configured"
         )
 
     att_result = await backend.verify(workload)
@@ -86,6 +89,8 @@ async def trigger_attestation(
 
     # Add message for UNAVAILABLE verdict
     if att_result.verdict == AttestationVerdict.UNAVAILABLE:
-        response_detail["message"] = "Backend temporarily unavailable; workload remains in current state"
+        response_detail["message"] = (
+            "Backend temporarily unavailable; workload remains in current state"
+        )
 
     return response_detail

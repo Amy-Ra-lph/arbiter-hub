@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from server.models.db import WorkloadState
-from server.policy.engine import PolicyEngine, PolicyDecision
+from server.policy.engine import PolicyEngine
 
 
 @dataclass
@@ -18,10 +18,15 @@ async def check_kbs_gate(
     max_attestation_age: int = 3600,
 ) -> GateResult:
     if workload_state != WorkloadState.HEALTHY:
-        return GateResult(allowed=False, reason=f"workload state is {workload_state.value}, must be healthy")
+        return GateResult(
+            allowed=False, reason=f"workload state is {workload_state.value}, must be healthy"
+        )
 
     if attestation_age_seconds > max_attestation_age:
-        return GateResult(allowed=False, reason=f"attestation age {attestation_age_seconds}s exceeds max {max_attestation_age}s")
+        return GateResult(
+            allowed=False,
+            reason=f"attestation age {attestation_age_seconds}s exceeds max {max_attestation_age}s",
+        )
 
     if policy_engine:
         decision = await policy_engine.evaluate(

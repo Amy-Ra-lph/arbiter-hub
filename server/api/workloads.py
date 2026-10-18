@@ -4,16 +4,26 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from server.models.db import (
-    Workload, AttestationRecord, Policy, WorkloadState, WorkloadType, AuditLog,
+    Workload,
+    AttestationRecord,
+    Policy,
+    WorkloadState,
+    WorkloadType,
+    AuditLog,
     get_session,
 )
 from datetime import datetime, timezone
 from server.models.schemas import (
-    WorkloadRead, WorkloadList, AttestationRecordRead,
-    PolicyRead, PaginatedResponse, WorkloadCreate, PolicyCreate,
+    WorkloadRead,
+    WorkloadList,
+    AttestationRecordRead,
+    PolicyRead,
+    PaginatedResponse,
+    WorkloadCreate,
+    PolicyCreate,
     ComplianceResult,
 )
-from server.auth.dependencies import get_caller, require_permission
+from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
 from server.auth.rbac import check_scope
 from server.state.machine import transition, InvalidTransitionError
@@ -54,7 +64,7 @@ async def list_workloads(
         # Extract principal realm/domain for scoped filtering
         scope_principals = []
         if "@" in caller.principal:
-            realm = caller.principal.split('@')[-1]
+            realm = caller.principal.split("@")[-1]
             scope_principals = [f"{s}@{realm}" for s in caller.scopes]
         else:
             scope_principals = caller.scopes
@@ -81,7 +91,11 @@ async def get_workload(
         raise HTTPException(status_code=404, detail="workload not found")
 
     # Scope check: agents can only see workloads in their scope
-    scope_key = workload.ipa_principal.split("@")[0] if "@" in workload.ipa_principal else workload.ipa_principal
+    scope_key = (
+        workload.ipa_principal.split("@")[0]
+        if "@" in workload.ipa_principal
+        else workload.ipa_principal
+    )
     if not check_scope(caller, scope_key):
         raise HTTPException(status_code=404, detail="workload not found")
 
@@ -104,7 +118,11 @@ async def get_attestations(
         raise HTTPException(status_code=404, detail="workload not found")
 
     # Scope check
-    scope_key = workload.ipa_principal.split("@")[0] if "@" in workload.ipa_principal else workload.ipa_principal
+    scope_key = (
+        workload.ipa_principal.split("@")[0]
+        if "@" in workload.ipa_principal
+        else workload.ipa_principal
+    )
     if not check_scope(caller, scope_key):
         raise HTTPException(status_code=404, detail="workload not found")
 
@@ -116,9 +134,13 @@ async def get_attestations(
         .offset(start_index - 1)
         .limit(count)
     )
-    att_count = (await session.execute(
-        select(func.count(AttestationRecord.id)).where(AttestationRecord.workload_id == workload_id)
-    )).scalar_one()
+    att_count = (
+        await session.execute(
+            select(func.count(AttestationRecord.id)).where(
+                AttestationRecord.workload_id == workload_id
+            )
+        )
+    ).scalar_one()
     att_result = await session.execute(att_stmt)
     items = [AttestationRecordRead.model_validate(a) for a in att_result.scalars()]
     return PaginatedResponse[AttestationRecordRead](
@@ -138,25 +160,33 @@ async def check_compliance(
     if not workload:
         raise HTTPException(status_code=404, detail="workload not found")
 
-    scope_key = workload.ipa_principal.split("@")[0] if "@" in workload.ipa_principal else workload.ipa_principal
+    scope_key = (
+        workload.ipa_principal.split("@")[0]
+        if "@" in workload.ipa_principal
+        else workload.ipa_principal
+    )
     if not check_scope(caller, scope_key):
         raise HTTPException(status_code=404, detail="workload not found")
 
     checks = []
-    checks.append({
-        "check": "state_healthy",
-        "passed": workload.current_state == WorkloadState.HEALTHY,
-        "detail": f"state={workload.current_state.value}",
-    })
+    checks.append(
+        {
+            "check": "state_healthy",
+            "passed": workload.current_state == WorkloadState.HEALTHY,
+            "detail": f"state={workload.current_state.value}",
+        }
+    )
     attestation_current = False
     if workload.last_attested_at:
         age = (datetime.now(timezone.utc) - workload.last_attested_at).total_seconds()
         attestation_current = age <= workload.stale_ttl_seconds
-    checks.append({
-        "check": "attestation_current",
-        "passed": attestation_current,
-        "detail": f"last_attested={workload.last_attested_at}",
-    })
+    checks.append(
+        {
+            "check": "attestation_current",
+            "passed": attestation_current,
+            "detail": f"last_attested={workload.last_attested_at}",
+        }
+    )
 
     compliant = all(c["passed"] for c in checks)
     return ComplianceResult(
@@ -174,13 +204,17 @@ async def list_policies(
     session: AsyncSession = Depends(get_session),
     caller: CallerIdentity = require_permission("read_workload"),
 ):
-    stmt = select(Policy).where(Policy.active == True).offset(start_index - 1).limit(count)
-    total = (await session.execute(
-        select(func.count(Policy.id)).where(Policy.active == True)
-    )).scalar_one()
+    stmt = select(Policy).where(Policy.active == True).offset(start_index - 1).limit(count)  # noqa: E712
+    total = (
+        await session.execute(
+            select(func.count(Policy.id)).where(Policy.active == True)  # noqa: E712
+        )
+    ).scalar_one()
     result = await session.execute(stmt)
     items = [PolicyRead.model_validate(p) for p in result.scalars()]
-    return PaginatedResponse[PolicyRead](items=items, total=total, start_index=start_index, count=count)
+    return PaginatedResponse[PolicyRead](
+        items=items, total=total, start_index=start_index, count=count
+    )
 
 
 @router.post("/workloads", response_model=WorkloadRead, status_code=201)
@@ -205,9 +239,12 @@ async def register_workload(
     )
     session.add(workload)
     audit = AuditLog(
-        actor=caller.principal, actor_type=caller.actor_type,
-        action="register_workload", target_type="workload",
-        target_id=workload.id, detail={"principal": body.ipa_principal},
+        actor=caller.principal,
+        actor_type=caller.actor_type,
+        action="register_workload",
+        target_type="workload",
+        target_id=workload.id,
+        detail={"principal": body.ipa_principal},
     )
     session.add(audit)
     await session.commit()
@@ -229,8 +266,11 @@ async def revoke_workload(
         raise HTTPException(status_code=404, detail="workload not found")
     try:
         record = await transition(
-            session, workload, WorkloadState.REVOKED,
-            triggered_by=caller.principal, justification=body.justification,
+            session,
+            workload,
+            WorkloadState.REVOKED,
+            triggered_by=caller.principal,
+            justification=body.justification,
         )
         await session.commit()
         return {"status": "revoked", "transition_id": str(record.id)}
@@ -252,8 +292,11 @@ async def remediate_workload(
         raise HTTPException(status_code=404, detail="workload not found")
     try:
         record = await transition(
-            session, workload, WorkloadState.UNDER_REMEDIATION,
-            triggered_by=caller.principal, justification=body.justification,
+            session,
+            workload,
+            WorkloadState.UNDER_REMEDIATION,
+            triggered_by=caller.principal,
+            justification=body.justification,
         )
         await session.commit()
         return {"status": "under_remediation", "transition_id": str(record.id)}

@@ -2,11 +2,19 @@ import pytest
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from httpx import AsyncClient, ASGITransport
 from server.main import create_app
-from server.models.db import get_session, Workload, WorkloadState, WorkloadType, BackendType, Policy, AttestationVerdict
-from server.backends.base import AttestationResult, BackendRegistry, AttestationBackend
+from server.models.db import (
+    get_session,
+    Workload,
+    WorkloadState,
+    WorkloadType,
+    BackendType,
+    Policy,
+    AttestationVerdict,
+)
+from server.backends.base import AttestationResult, BackendRegistry
 
 
 # Simple mock workload object that Pydantic can serialize
@@ -72,20 +80,25 @@ class MockAsyncSession:
     def add(self, obj):
         """Mock add that tracks added objects"""
         from datetime import datetime, timezone
+
         self.added.append(obj)
         if isinstance(obj, Workload):
             # Convert SQLAlchemy Workload to simple mock for testing
             mock_obj = MockWorkload(
-                id=obj.id if hasattr(obj, 'id') and obj.id else uuid.uuid4(),
+                id=obj.id if hasattr(obj, "id") and obj.id else uuid.uuid4(),
                 ipa_principal=obj.ipa_principal,
                 display_name=obj.display_name,
                 workload_type=obj.workload_type,
                 backend_type=obj.backend_type,
                 stale_ttl_seconds=obj.stale_ttl_seconds,
-                current_state=obj.current_state if hasattr(obj, 'current_state') and obj.current_state else WorkloadState.REGISTERED,
-                registered_at=obj.registered_at if hasattr(obj, 'registered_at') and obj.registered_at else datetime.now(timezone.utc),
-                last_attested_at=obj.last_attested_at if hasattr(obj, 'last_attested_at') else None,
-                metadata_=obj.metadata_ if hasattr(obj, 'metadata_') and obj.metadata_ else {},
+                current_state=obj.current_state
+                if hasattr(obj, "current_state") and obj.current_state
+                else WorkloadState.REGISTERED,
+                registered_at=obj.registered_at
+                if hasattr(obj, "registered_at") and obj.registered_at
+                else datetime.now(timezone.utc),
+                last_attested_at=obj.last_attested_at if hasattr(obj, "last_attested_at") else None,
+                metadata_=obj.metadata_ if hasattr(obj, "metadata_") and obj.metadata_ else {},
             )
             # Update the original object with generated values for the endpoint to use
             obj.id = mock_obj.id
@@ -95,13 +108,13 @@ class MockAsyncSession:
                 obj.metadata_ = {}
             test_workloads[obj.ipa_principal] = mock_obj
         elif isinstance(obj, Policy):
-            if not hasattr(obj, 'id') or obj.id is None:
+            if not hasattr(obj, "id") or obj.id is None:
                 obj.id = uuid.uuid4()
-            if not hasattr(obj, 'active') or obj.active is None:
+            if not hasattr(obj, "active") or obj.active is None:
                 obj.active = True
-            if not hasattr(obj, 'created_at') or obj.created_at is None:
+            if not hasattr(obj, "created_at") or obj.created_at is None:
                 obj.created_at = datetime.now(timezone.utc)
-            if not hasattr(obj, 'updated_at') or obj.updated_at is None:
+            if not hasattr(obj, "updated_at") or obj.updated_at is None:
                 obj.updated_at = datetime.now(timezone.utc)
             test_policies[obj.name] = obj
 
@@ -111,7 +124,11 @@ class MockAsyncSession:
 
     async def refresh(self, obj):
         """Mock refresh - copy values from stored mock back to obj"""
-        if isinstance(obj, Workload) and hasattr(obj, 'ipa_principal') and obj.ipa_principal in test_workloads:
+        if (
+            isinstance(obj, Workload)
+            and hasattr(obj, "ipa_principal")
+            and obj.ipa_principal in test_workloads
+        ):
             mock = test_workloads[obj.ipa_principal]
             obj.id = mock.id
             obj.current_state = mock.current_state
@@ -119,11 +136,11 @@ class MockAsyncSession:
             obj.last_attested_at = mock.last_attested_at
             obj.metadata_ = mock.metadata_
             # Add a metadata property that Pydantic can use
-            if not hasattr(obj.__class__, '_test_metadata_property_added'):
+            if not hasattr(obj.__class__, "_test_metadata_property_added"):
                 # Add property dynamically to avoid SQLAlchemy Base.metadata conflict
                 obj.__class__.metadata = property(lambda self: self.metadata_)
                 obj.__class__._test_metadata_property_added = True
-        elif isinstance(obj, Policy) and hasattr(obj, 'name') and obj.name in test_policies:
+        elif isinstance(obj, Policy) and hasattr(obj, "name") and obj.name in test_policies:
             stored = test_policies[obj.name]
             obj.id = stored.id
             obj.active = stored.active
@@ -142,6 +159,7 @@ class MockAsyncSession:
 
 
 _test_initialized = False
+
 
 async def mock_get_session():
     """Mock database session for testing"""
@@ -184,7 +202,7 @@ async def app_client():
     # Override database session with mock
     app.dependency_overrides[get_session] = mock_get_session
     # Initialize backend registry (normally done by lifespan)
-    if not hasattr(app.state, 'backend_registry'):
+    if not hasattr(app.state, "backend_registry"):
         app.state.backend_registry = BackendRegistry()
     # Register mock backend
     app.state.backend_registry.register("keylime", MockBackend())
@@ -202,12 +220,16 @@ async def test_register_workload(app_client):
         "X-Caller-Roles": "attestation-admin",
         "X-Caller-Scopes": "*",
     }
-    resp = await app_client.post("/workloads", headers=headers, json={
-        "ipa_principal": "agent-test@EXAMPLE.COM",
-        "display_name": "Test Agent",
-        "workload_type": "agentic",
-        "backend_type": "keylime",
-    })
+    resp = await app_client.post(
+        "/workloads",
+        headers=headers,
+        json={
+            "ipa_principal": "agent-test@EXAMPLE.COM",
+            "display_name": "Test Agent",
+            "workload_type": "agentic",
+            "backend_type": "keylime",
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data["current_state"] == "registered"
@@ -222,18 +244,26 @@ async def test_register_duplicate_principal_fails(app_client):
         "X-Caller-Roles": "attestation-admin",
         "X-Caller-Scopes": "*",
     }
-    await app_client.post("/workloads", headers=headers, json={
-        "ipa_principal": "dup@EXAMPLE.COM",
-        "display_name": "Dup 1",
-        "workload_type": "agentic",
-        "backend_type": "keylime",
-    })
-    resp = await app_client.post("/workloads", headers=headers, json={
-        "ipa_principal": "dup@EXAMPLE.COM",
-        "display_name": "Dup 2",
-        "workload_type": "agentic",
-        "backend_type": "keylime",
-    })
+    await app_client.post(
+        "/workloads",
+        headers=headers,
+        json={
+            "ipa_principal": "dup@EXAMPLE.COM",
+            "display_name": "Dup 1",
+            "workload_type": "agentic",
+            "backend_type": "keylime",
+        },
+    )
+    resp = await app_client.post(
+        "/workloads",
+        headers=headers,
+        json={
+            "ipa_principal": "dup@EXAMPLE.COM",
+            "display_name": "Dup 2",
+            "workload_type": "agentic",
+            "backend_type": "keylime",
+        },
+    )
     assert resp.status_code == 409
 
 
@@ -245,12 +275,16 @@ async def test_revoke_requires_justification(app_client):
         "X-Caller-Roles": "attestation-admin",
         "X-Caller-Scopes": "*",
     }
-    create_resp = await app_client.post("/workloads", headers=headers, json={
-        "ipa_principal": "revoke-test@EXAMPLE.COM",
-        "display_name": "Revoke Test",
-        "workload_type": "service",
-        "backend_type": "keylime",
-    })
+    create_resp = await app_client.post(
+        "/workloads",
+        headers=headers,
+        json={
+            "ipa_principal": "revoke-test@EXAMPLE.COM",
+            "display_name": "Revoke Test",
+            "workload_type": "service",
+            "backend_type": "keylime",
+        },
+    )
     wid = create_resp.json()["id"]
     resp = await app_client.post(f"/workloads/{wid}/revoke", headers=headers, json={})
     assert resp.status_code == 422  # missing justification
@@ -264,10 +298,14 @@ async def test_create_policy(app_client):
         "X-Caller-Roles": "attestation-admin",
         "X-Caller-Scopes": "*",
     }
-    resp = await app_client.post("/policies", headers=headers, json={
-        "name": "test-policy",
-        "policy_content": {"rules": [{"action": "test", "require": {}}]},
-    })
+    resp = await app_client.post(
+        "/policies",
+        headers=headers,
+        json={
+            "name": "test-policy",
+            "policy_content": {"rules": [{"action": "test", "require": {}}]},
+        },
+    )
     assert resp.status_code == 201
     assert resp.json()["name"] == "test-policy"
 
@@ -300,7 +338,7 @@ async def app_client_unavailable():
     _test_initialized = False
     app = create_app()
     app.dependency_overrides[get_session] = mock_get_session
-    if not hasattr(app.state, 'backend_registry'):
+    if not hasattr(app.state, "backend_registry"):
         app.state.backend_registry = BackendRegistry()
     app.state.backend_registry.register("keylime", UnavailableBackend())
 
@@ -318,12 +356,16 @@ async def test_attest_workload_pass(app_client):
         "X-Caller-Roles": "attestation-admin",
         "X-Caller-Scopes": "*",
     }
-    create_resp = await app_client.post("/workloads", headers=headers, json={
-        "ipa_principal": "attest-pass@EXAMPLE.COM",
-        "display_name": "Attest Pass Test",
-        "workload_type": "agentic",
-        "backend_type": "keylime",
-    })
+    create_resp = await app_client.post(
+        "/workloads",
+        headers=headers,
+        json={
+            "ipa_principal": "attest-pass@EXAMPLE.COM",
+            "display_name": "Attest Pass Test",
+            "workload_type": "agentic",
+            "backend_type": "keylime",
+        },
+    )
     assert create_resp.status_code == 201
     wid = create_resp.json()["id"]
 
@@ -343,12 +385,16 @@ async def test_attest_unavailable_stays_in_state(app_client_unavailable):
         "X-Caller-Roles": "attestation-admin",
         "X-Caller-Scopes": "*",
     }
-    create_resp = await app_client_unavailable.post("/workloads", headers=headers, json={
-        "ipa_principal": "attest-unavail@EXAMPLE.COM",
-        "display_name": "Attest Unavailable Test",
-        "workload_type": "agentic",
-        "backend_type": "keylime",
-    })
+    create_resp = await app_client_unavailable.post(
+        "/workloads",
+        headers=headers,
+        json={
+            "ipa_principal": "attest-unavail@EXAMPLE.COM",
+            "display_name": "Attest Unavailable Test",
+            "workload_type": "agentic",
+            "backend_type": "keylime",
+        },
+    )
     assert create_resp.status_code == 201
     wid = create_resp.json()["id"]
 

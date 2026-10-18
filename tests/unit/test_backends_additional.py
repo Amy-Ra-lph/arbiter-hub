@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import MagicMock
 from server.backends.trustee import TrusteeBackend
 from server.backends.cosign import CosignBackend
 from server.backends.rekor import RekorBackend

@@ -3,7 +3,10 @@ import logging
 from datetime import datetime, timezone
 import httpx
 from server.backends.base import (
-    AttestationBackend, AttestationResult, EnrollResult, RevokeResult, BackendHealth,
+    AttestationResult,
+    EnrollResult,
+    RevokeResult,
+    BackendHealth,
 )
 from server.models.db import AttestationVerdict, Workload
 
@@ -88,7 +91,9 @@ class KeylimeBackend:
                     "tpm_policy": policy.get("tpm_policy", "{}"),
                     "runtime_policy": policy.get("runtime_policy", ""),
                 }
-                resp = await client.post(f"{self._verifier_url}/v2.1/agents/{agent_id}", json=payload)
+                resp = await client.post(
+                    f"{self._verifier_url}/v2.1/agents/{agent_id}", json=payload
+                )
                 resp.raise_for_status()
                 return EnrollResult(success=True, backend="keylime", detail=resp.json())
         except httpx.HTTPError as e:

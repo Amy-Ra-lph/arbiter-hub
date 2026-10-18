@@ -2,7 +2,6 @@ import pytest
 from server.kbs.store import encrypt_secret, decrypt_secret
 from server.kbs.gate import check_kbs_gate
 from server.models.db import WorkloadState
-from unittest.mock import AsyncMock
 
 
 def test_encrypt_decrypt_roundtrip():

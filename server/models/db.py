@@ -4,8 +4,16 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from sqlalchemy import (
-    String, Integer, Boolean, Text, DateTime, ForeignKey, Index, Enum as SAEnum,
-    LargeBinary, UniqueConstraint,
+    String,
+    Integer,
+    Boolean,
+    Text,
+    DateTime,
+    ForeignKey,
+    Index,
+    Enum as SAEnum,
+    LargeBinary,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -62,7 +70,9 @@ class Workload(Base):
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
-    last_attested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_attested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
     attestation_records: Mapped[list["AttestationRecord"]] = relationship(back_populates="workload")
@@ -86,9 +96,7 @@ class AttestationRecord(Base):
 
     workload: Mapped["Workload"] = relationship(back_populates="attestation_records")
 
-    __table_args__ = (
-        Index("idx_attest_workload", "workload_id", "created_at"),
-    )
+    __table_args__ = (Index("idx_attest_workload", "workload_id", "created_at"),)
 
 
 class StateTransition(Base):
@@ -107,9 +115,7 @@ class StateTransition(Base):
 
     workload: Mapped["Workload"] = relationship(back_populates="state_transitions")
 
-    __table_args__ = (
-        Index("idx_transitions_workload", "workload_id", "created_at"),
-    )
+    __table_args__ = (Index("idx_transitions_workload", "workload_id", "created_at"),)
 
 
 class Policy(Base):
@@ -168,9 +174,7 @@ class KBSSecret(Base):
     )
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (
-        UniqueConstraint("repo", "secret_type", "tag"),
-    )
+    __table_args__ = (UniqueConstraint("repo", "secret_type", "tag"),)
 
 
 # Create async engine

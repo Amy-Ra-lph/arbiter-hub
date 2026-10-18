@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
@@ -39,10 +39,7 @@ async def sign_artifact(
         raise HTTPException(status_code=503, detail="cosign binary not found")
 
     if proc.returncode != 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"cosign sign failed: {stderr.decode()[:500]}"
-        )
+        raise HTTPException(status_code=500, detail=f"cosign sign failed: {stderr.decode()[:500]}")
 
     return {
         "status": "signed",

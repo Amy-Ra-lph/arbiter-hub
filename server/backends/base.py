@@ -10,7 +10,9 @@ class AttestationResult:
     backend: str
     evidence_hash: str
     detail: dict = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=lambda: datetime.now(__import__("datetime").timezone.utc))
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(__import__("datetime").timezone.utc)
+    )
 
 
 @dataclass

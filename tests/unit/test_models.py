@@ -1,7 +1,8 @@
-import pytest
 from server.models.db import (
-    Workload, AttestationRecord, StateTransition, Policy, AuditLog, KBSSecret,
-    WorkloadType, WorkloadState, AttestationVerdict, BackendType,
+    WorkloadType,
+    WorkloadState,
+    AttestationVerdict,
+    BackendType,
 )
 from server.models.schemas import WorkloadCreate, WorkloadRead, PaginatedResponse
 
@@ -40,7 +41,5 @@ def test_workload_create_schema():
 
 
 def test_paginated_response():
-    pr = PaginatedResponse[WorkloadRead](
-        items=[], total=0, start_index=1, count=25
-    )
+    pr = PaginatedResponse[WorkloadRead](items=[], total=0, start_index=1, count=25)
     assert pr.total == 0

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
-from server.models.db import KBSSecret, Workload, WorkloadState, AuditLog, get_session
+from server.models.db import KBSSecret, Workload, AuditLog, get_session
 from server.models.schemas import KBSSecretCreate
 from server.kbs.store import encrypt_secret, decrypt_secret
 from server.kbs.gate import check_kbs_gate
@@ -49,8 +49,10 @@ async def store_secret(
     )
     session.add(secret)
     audit = AuditLog(
-        actor=caller.principal, actor_type=caller.actor_type,
-        action="kbs_store_secret", target_type="kbs_secret",
+        actor=caller.principal,
+        actor_type=caller.actor_type,
+        action="kbs_store_secret",
+        target_type="kbs_secret",
         detail={"repo": repo, "type": secret_type, "tag": tag},
     )
     session.add(audit)
@@ -104,8 +106,10 @@ async def retrieve_secret(
     plaintext = decrypt_secret(secret.encrypted_value, key)
 
     audit = AuditLog(
-        actor=caller.principal, actor_type=caller.actor_type,
-        action="kbs_release_secret", target_type="kbs_secret",
+        actor=caller.principal,
+        actor_type=caller.actor_type,
+        action="kbs_release_secret",
+        target_type="kbs_secret",
         target_id=secret.id,
         detail={"repo": repo, "type": secret_type, "tag": tag},
     )

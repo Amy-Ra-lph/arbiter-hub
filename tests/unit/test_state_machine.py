@@ -1,6 +1,4 @@
 import pytest
-import uuid
-from datetime import datetime, timezone, timedelta
 from server.models.db import WorkloadState
 from server.state.machine import VALID_TRANSITIONS, validate_transition, InvalidTransitionError
 

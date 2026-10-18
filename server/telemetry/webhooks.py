@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import httpx
 import yaml
 from pathlib import Path
@@ -56,8 +56,10 @@ class WebhookDelivery:
             except Exception as e:
                 log.warning(
                     "Webhook %s delivery attempt %d failed: %s",
-                    config.name, attempt + 1, e,
+                    config.name,
+                    attempt + 1,
+                    e,
                 )
                 if attempt < config.retry - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         log.error("Webhook %s delivery failed after %d attempts", config.name, config.retry)

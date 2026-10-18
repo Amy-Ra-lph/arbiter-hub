@@ -1,4 +1,3 @@
-import pytest
 from server.plugins.loader import load_entry_point_plugins, PluginRegistry
 from server.telemetry.webhooks import WebhookDelivery, WebhookConfig
 

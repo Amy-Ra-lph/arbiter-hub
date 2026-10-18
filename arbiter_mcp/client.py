@@ -24,7 +24,8 @@ class ArbiterClient:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self._base_url}/workloads",
-                params=params, headers=self._headers,
+                params=params,
+                headers=self._headers,
             )
             resp.raise_for_status()
             return resp.json()
@@ -57,7 +58,8 @@ class ArbiterClient:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self._base_url}/audit",
-                params=params, headers=self._headers,
+                params=params,
+                headers=self._headers,
             )
             resp.raise_for_status()
             return resp.json()

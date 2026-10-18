@@ -4,7 +4,10 @@ import logging
 
 from datetime import datetime, timezone
 from server.backends.base import (
-    AttestationBackend, AttestationResult, EnrollResult, RevokeResult, BackendHealth,
+    AttestationResult,
+    EnrollResult,
+    RevokeResult,
+    BackendHealth,
 )
 from server.models.db import AttestationVerdict, Workload
 
@@ -78,15 +81,24 @@ class CosignBackend:
             )
 
     async def enroll(self, workload: Workload, policy: dict) -> EnrollResult:
-        return EnrollResult(success=True, backend="cosign", detail={"note": "cosign has no enrollment — verify on demand"})
+        return EnrollResult(
+            success=True,
+            backend="cosign",
+            detail={"note": "cosign has no enrollment — verify on demand"},
+        )
 
     async def revoke(self, workload: Workload) -> RevokeResult:
-        return RevokeResult(success=True, backend="cosign", detail={"note": "cosign has no revocation — signatures are permanent"})
+        return RevokeResult(
+            success=True,
+            backend="cosign",
+            detail={"note": "cosign has no revocation — signatures are permanent"},
+        )
 
     async def health(self) -> BackendHealth:
         try:
             proc = await asyncio.create_subprocess_exec(
-                self._binary, "version",
+                self._binary,
+                "version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -95,10 +107,14 @@ class CosignBackend:
                 healthy=proc.returncode == 0,
                 backend="cosign",
                 last_check=datetime.now(timezone.utc),
-                detail=stdout.decode().strip().split("\n")[0] if proc.returncode == 0 else "cosign unhealthy",
+                detail=stdout.decode().strip().split("\n")[0]
+                if proc.returncode == 0
+                else "cosign unhealthy",
             )
         except Exception as e:
             return BackendHealth(
-                healthy=False, backend="cosign",
-                last_check=datetime.now(timezone.utc), detail=str(e),
+                healthy=False,
+                backend="cosign",
+                last_check=datetime.now(timezone.utc),
+                detail=str(e),
             )

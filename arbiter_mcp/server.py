@@ -35,8 +35,7 @@ def create_mcp_server(api_url: str = "http://localhost:8400") -> FastMCP:
         return {
             "workload_id": workload_id,
             "gate_passed": (
-                workload.get("current_state") == "healthy"
-                and compliance.get("compliant", False)
+                workload.get("current_state") == "healthy" and compliance.get("compliant", False)
             ),
             "state": workload.get("current_state"),
             "compliance": compliance,

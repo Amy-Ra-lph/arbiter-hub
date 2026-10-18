@@ -1,9 +1,10 @@
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from server.backends.base import (
-    AttestationResult, EnrollResult, RevokeResult, BackendHealth,
-    AttestationBackend, BackendRegistry,
+    AttestationResult,
+    AttestationBackend,
+    BackendRegistry,
 )
 from server.backends.keylime import KeylimeBackend
 from server.models.db import AttestationVerdict, Workload, WorkloadType, BackendType, WorkloadState
@@ -11,6 +12,7 @@ from server.models.db import AttestationVerdict, Workload, WorkloadType, Backend
 
 def _make_workload(**overrides):
     import uuid
+
     defaults = dict(
         id=uuid.uuid4(),
         ipa_principal="agent-test@EXAMPLE.COM",

@@ -1,4 +1,3 @@
-import pytest
 from server.telemetry.ocsf import OCSFEventFormatter
 from server.telemetry.metrics import ATTESTATION_COUNTER, STATE_TRANSITION_COUNTER
 

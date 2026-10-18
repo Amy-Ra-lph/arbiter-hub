@@ -32,4 +32,6 @@ async def list_audit(
     stmt = stmt.offset(start_index - 1).limit(count)
     result = await session.execute(stmt)
     items = [AuditLogRead.model_validate(a) for a in result.scalars()]
-    return PaginatedResponse[AuditLogRead](items=items, total=total, start_index=start_index, count=count)
+    return PaginatedResponse[AuditLogRead](
+        items=items, total=total, start_index=start_index, count=count
+    )

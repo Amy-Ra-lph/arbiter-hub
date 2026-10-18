@@ -1,5 +1,5 @@
 import pytest
-from server.policy.engine import SimpleRulesEngine, PolicyDecision
+from server.policy.engine import SimpleRulesEngine
 
 
 @pytest.fixture
@@ -7,25 +7,29 @@ def engine():
     policies = [
         {
             "name": "kbs-secret-release",
-            "rules": [{
-                "action": "kbs_release",
-                "require": {
-                    "workload_state": "healthy",
-                    "attestation_age_max": 3600,
-                },
-            }],
+            "rules": [
+                {
+                    "action": "kbs_release",
+                    "require": {
+                        "workload_state": "healthy",
+                        "attestation_age_max": 3600,
+                    },
+                }
+            ],
             "obligations": ["log_to_rekor"],
         },
         {
             "name": "agent-reattest-request",
-            "rules": [{
-                "action": "request_reattest",
-                "require": {
-                    "caller_role": "attestation-agent",
-                    "caller_scope_includes_target": True,
-                    "target_state": ["stale", "failed"],
-                },
-            }],
+            "rules": [
+                {
+                    "action": "request_reattest",
+                    "require": {
+                        "caller_role": "attestation-agent",
+                        "caller_scope_includes_target": True,
+                        "target_state": ["stale", "failed"],
+                    },
+                }
+            ],
             "obligations": [],
         },
     ]

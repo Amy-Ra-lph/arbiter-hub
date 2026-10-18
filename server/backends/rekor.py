@@ -4,7 +4,10 @@ import logging
 from datetime import datetime, timezone
 import httpx
 from server.backends.base import (
-    AttestationBackend, AttestationResult, EnrollResult, RevokeResult, BackendHealth,
+    AttestationResult,
+    EnrollResult,
+    RevokeResult,
+    BackendHealth,
 )
 from server.models.db import AttestationVerdict, Workload
 
@@ -57,10 +60,14 @@ class RekorBackend:
             return None
 
     async def enroll(self, workload: Workload, policy: dict) -> EnrollResult:
-        return EnrollResult(success=True, backend="rekor", detail={"note": "rekor is audit-only, no enrollment"})
+        return EnrollResult(
+            success=True, backend="rekor", detail={"note": "rekor is audit-only, no enrollment"}
+        )
 
     async def revoke(self, workload: Workload) -> RevokeResult:
-        return RevokeResult(success=True, backend="rekor", detail={"note": "rekor is append-only, no revocation"})
+        return RevokeResult(
+            success=True, backend="rekor", detail={"note": "rekor is append-only, no revocation"}
+        )
 
     async def health(self) -> BackendHealth:
         try:
@@ -69,12 +76,15 @@ class RekorBackend:
                 resp.raise_for_status()
                 data = resp.json()
                 return BackendHealth(
-                    healthy=True, backend="rekor",
+                    healthy=True,
+                    backend="rekor",
                     last_check=datetime.now(timezone.utc),
                     detail=f"tree size: {data.get('treeSize', 'unknown')}",
                 )
         except Exception as e:
             return BackendHealth(
-                healthy=False, backend="rekor",
-                last_check=datetime.now(timezone.utc), detail=str(e),
+                healthy=False,
+                backend="rekor",
+                last_check=datetime.now(timezone.utc),
+                detail=str(e),
             )

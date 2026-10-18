@@ -1,4 +1,5 @@
 """Test configuration and basic setup."""
+
 import pytest
 from server.config import Settings
 from server.main import create_app
