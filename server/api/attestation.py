@@ -2,6 +2,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,10 +19,13 @@ from server.models.db import (
 )
 from server.state.machine import InvalidTransitionError, transition
 
+limiter = Limiter(key_func=get_remote_address)
+
 router = APIRouter()
 
 
 @router.post("/workloads/{workload_id}/attest")
+@limiter.limit("10/minute")
 async def trigger_attestation(
     workload_id: UUID,
     request: Request,
@@ -35,7 +40,11 @@ async def trigger_attestation(
         raise HTTPException(status_code=404, detail="workload not found")
 
     # Transition to Attesting if currently in a state that allows it
-    if workload.current_state in (WorkloadState.REGISTERED, WorkloadState.STALE):
+    if workload.current_state in (
+        WorkloadState.REGISTERED,
+        WorkloadState.STALE,
+        WorkloadState.UNDER_REMEDIATION,
+    ):
         try:
             await transition(session, workload, WorkloadState.ATTESTING, caller.principal)
         except InvalidTransitionError as e:

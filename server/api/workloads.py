@@ -13,6 +13,7 @@ from server.models.db import (
     AttestationRecord,
     AuditLog,
     Policy,
+    StateTransition,
     Workload,
     WorkloadState,
     WorkloadType,
@@ -24,6 +25,7 @@ from server.models.schemas import (
     PaginatedResponse,
     PolicyCreate,
     PolicyRead,
+    StateTransitionRead,
     WorkloadCreate,
     WorkloadList,
     WorkloadRead,
@@ -199,6 +201,92 @@ async def check_compliance(
     )
 
 
+@router.delete("/workloads/{workload_id}")
+async def delete_workload(
+    workload_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("register_workload"),
+):
+    stmt = select(Workload).where(Workload.id == workload_id)
+    result = await session.execute(stmt)
+    workload = result.scalar_one_or_none()
+    if not workload:
+        raise HTTPException(status_code=404, detail="workload not found")
+
+    scope_key = (
+        workload.ipa_principal.split("@")[0]
+        if "@" in workload.ipa_principal
+        else workload.ipa_principal
+    )
+    if not check_scope(caller, scope_key):
+        raise HTTPException(status_code=404, detail="workload not found")
+
+    # Delete related records first
+    att_stmt = select(AttestationRecord).where(AttestationRecord.workload_id == workload_id)
+    att_result = await session.execute(att_stmt)
+    for att in att_result.scalars():
+        await session.delete(att)
+
+    trans_stmt = select(StateTransition).where(StateTransition.workload_id == workload_id)
+    trans_result = await session.execute(trans_stmt)
+    for trans in trans_result.scalars():
+        await session.delete(trans)
+
+    audit = AuditLog(
+        actor=caller.principal,
+        actor_type=caller.actor_type,
+        action="delete_workload",
+        target_type="workload",
+        target_id=workload.id,
+        detail={"principal": workload.ipa_principal},
+    )
+    session.add(audit)
+    await session.delete(workload)
+    await session.commit()
+    return {"status": "deleted"}
+
+
+@router.get("/workloads/{workload_id}/transitions")
+async def get_transitions(
+    workload_id: UUID,
+    start_index: int = Query(1, ge=1, alias="startIndex"),
+    count: int = Query(25, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("read_workload"),
+):
+    stmt = select(Workload).where(Workload.id == workload_id)
+    result = await session.execute(stmt)
+    workload = result.scalar_one_or_none()
+    if not workload:
+        raise HTTPException(status_code=404, detail="workload not found")
+
+    scope_key = (
+        workload.ipa_principal.split("@")[0]
+        if "@" in workload.ipa_principal
+        else workload.ipa_principal
+    )
+    if not check_scope(caller, scope_key):
+        raise HTTPException(status_code=404, detail="workload not found")
+
+    trans_stmt = (
+        select(StateTransition)
+        .where(StateTransition.workload_id == workload_id)
+        .order_by(StateTransition.created_at.desc())
+        .offset(start_index - 1)
+        .limit(count)
+    )
+    trans_count = (
+        await session.execute(
+            select(func.count(StateTransition.id)).where(StateTransition.workload_id == workload_id)
+        )
+    ).scalar_one()
+    trans_result = await session.execute(trans_stmt)
+    items = [StateTransitionRead.model_validate(t) for t in trans_result.scalars()]
+    return PaginatedResponse[StateTransitionRead](
+        items=items, total=trans_count, start_index=start_index, count=count
+    )
+
+
 @router.get("/policies")
 async def list_policies(
     start_index: int = Query(1, ge=1, alias="startIndex"),
@@ -206,12 +294,8 @@ async def list_policies(
     session: AsyncSession = Depends(get_session),
     caller: CallerIdentity = require_permission("read_workload"),
 ):
-    stmt = select(Policy).where(Policy.active == True).offset(start_index - 1).limit(count)  # noqa: E712
-    total = (
-        await session.execute(
-            select(func.count(Policy.id)).where(Policy.active == True)  # noqa: E712
-        )
-    ).scalar_one()
+    stmt = select(Policy).offset(start_index - 1).limit(count)
+    total = (await session.execute(select(func.count(Policy.id)))).scalar_one()
     result = await session.execute(stmt)
     items = [PolicyRead.model_validate(p) for p in result.scalars()]
     return PaginatedResponse[PolicyRead](

@@ -1,0 +1,24 @@
+[Unit]
+Description=Arbiter Hub API Server (Node 2)
+After=arbiter-hub-db.container
+Requires=arbiter-hub-db.container
+
+[Container]
+Image=quay.io/rhel-security/arbiter-hub-api:latest
+ContainerName=arbiter-hub-api-2
+Network=arbiter-hub.network
+Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
+Volume=arbiter-hub-keylime.volume:/etc/arbiter/keylime:ro,Z
+Secret=arbiter-hub-db-password,type=env,target=ARBITER_DB_PASSWORD
+Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://arbiter:${ARBITER_DB_PASSWORD}@arbiter-hub-db:5432/arbiter
+Environment=ARBITER_KEYLIME_VERIFIER_URL=
+Environment=ARBITER_KEYLIME_CA_CERT=/etc/arbiter/keylime/ca.crt
+Environment=ARBITER_KEYLIME_CLIENT_CERT=/etc/arbiter/keylime/client.crt
+Environment=ARBITER_KEYLIME_CLIENT_KEY=/etc/arbiter/keylime/client.key
+ReadOnly=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

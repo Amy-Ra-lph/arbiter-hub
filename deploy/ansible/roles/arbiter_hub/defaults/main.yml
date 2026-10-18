@@ -2,7 +2,7 @@ arbiter_hub_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
 arbiter_hub_kbs_image: "quay.io/rhel-security/arbiter-hub-kbs:latest"
 arbiter_hub_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
 arbiter_hub_db_image: "registry.redhat.io/rhel10/postgresql-16"
-arbiter_hub_db_password: "changeme"
+arbiter_hub_db_password: ""  # REQUIRED — must be set in inventory or vars
 arbiter_hub_db_user: "arbiter"
 arbiter_hub_db_name: "arbiter"
 arbiter_hub_quadlet_dir: "/etc/containers/systemd"

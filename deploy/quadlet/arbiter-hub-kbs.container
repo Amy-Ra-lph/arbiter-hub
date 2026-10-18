@@ -7,7 +7,7 @@ Requires=arbiter-hub-db.container
 Image=quay.io/rhel-security/arbiter-hub-kbs:latest
 ContainerName=arbiter-hub-kbs
 Network=arbiter-hub.network
-PublishPort=8085:8085
+# KBS accessed only by API via internal network — no external port
 Volume=arbiter-hub-kbs-data.volume:/var/lib/kbs:Z
 Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
 SecurityLabelType=arbiter_kbs_t

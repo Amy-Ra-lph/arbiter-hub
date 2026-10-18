@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.auth.dependencies import get_caller, require_permission
@@ -12,21 +12,55 @@ from server.config import settings
 from server.kbs.gate import check_kbs_gate
 from server.kbs.store import decrypt_secret, encrypt_secret
 from server.models.db import AuditLog, KBSSecret, Workload, get_session
-from server.models.schemas import KBSSecretCreate
+from server.models.schemas import KBSSecretCreate, KBSSecretRead, PaginatedResponse
 
 router = APIRouter(prefix="/kbs/v0")
 
 
+_KBS_PATH_RE = __import__("re").compile(r"^[a-zA-Z0-9._-]+$")
+
+
+def _validate_kbs_path(value: str, name: str) -> str:
+    if not _KBS_PATH_RE.match(value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name} must match [a-zA-Z0-9._-]+",
+        )
+    return value
+
+
 def _load_encryption_key() -> bytes:
     p = Path(settings.kbs_encryption_key_file)
-    if p.exists():
-        return p.read_bytes().strip()
-    return b"0" * 32  # dev fallback
+    if not p.exists():
+        raise RuntimeError(
+            f"KBS encryption key file not found: {p}. "
+            "Set ARBITER_KBS_ENCRYPTION_KEY_FILE or create the key file."
+        )
+    key = p.read_bytes().strip()
+    if len(key) < 16:
+        raise RuntimeError("KBS encryption key must be at least 16 bytes")
+    return key
 
 
 @router.get("/health")
 async def kbs_health():
     return {"status": "ok", "service": "arbiter-hub-kbs"}
+
+
+@router.get("/resources")
+async def list_secrets(
+    start_index: int = Query(1, ge=1, alias="startIndex"),
+    count: int = Query(25, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("manage_kbs"),
+):
+    stmt = select(KBSSecret).offset(start_index - 1).limit(count)
+    total = (await session.execute(select(func.count(KBSSecret.id)))).scalar_one()
+    result = await session.execute(stmt)
+    items = [KBSSecretRead.model_validate(s) for s in result.scalars()]
+    return PaginatedResponse[KBSSecretRead](
+        items=items, total=total, start_index=start_index, count=count
+    )
 
 
 @router.post("/resource/{repo}/{secret_type}/{tag}", status_code=201)
@@ -38,6 +72,9 @@ async def store_secret(
     session: AsyncSession = Depends(get_session),
     caller: CallerIdentity = require_permission("manage_kbs"),
 ):
+    _validate_kbs_path(repo, "repo")
+    _validate_kbs_path(secret_type, "secret_type")
+    _validate_kbs_path(tag, "tag")
     key = _load_encryption_key()
     encrypted = encrypt_secret(body.value, key)
     secret = KBSSecret(
@@ -70,6 +107,9 @@ async def retrieve_secret(
     session: AsyncSession = Depends(get_session),
     caller: CallerIdentity = Depends(get_caller),
 ):
+    _validate_kbs_path(repo, "repo")
+    _validate_kbs_path(secret_type, "secret_type")
+    _validate_kbs_path(tag, "tag")
     stmt = select(KBSSecret).where(
         KBSSecret.repo == repo,
         KBSSecret.secret_type == secret_type,

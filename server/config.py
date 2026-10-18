@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     stale_check_interval_seconds: int = 60
     default_stale_ttl_seconds: int = 3600
 
+    cors_allowed_origins: list[str] = []
+
     otel_exporter_endpoint: str = ""
     otel_service_name: str = "arbiter-hub"
 

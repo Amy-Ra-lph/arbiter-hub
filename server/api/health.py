@@ -1,11 +1,29 @@
+import socket
+
 from fastapi import APIRouter, Request
 
 router = APIRouter()
 
+NODE_ID = socket.gethostname()
+
 
 @router.get("/health")
-async def health():
-    return {"status": "ok", "service": "arbiter-hub", "version": "0.1.0"}
+async def health(request: Request):
+    registry = getattr(request.app.state, "backend_registry", None)
+    backend_count = 0
+    backends_healthy = True
+    if registry:
+        results = await registry.health_all()
+        backend_count = len(results)
+        backends_healthy = all(h.healthy for h in results.values())
+    return {
+        "status": "ok",
+        "service": "arbiter-hub",
+        "version": "0.1.0",
+        "node_id": NODE_ID,
+        "backends_healthy": backends_healthy,
+        "backend_count": backend_count,
+    }
 
 
 @router.get("/backends")
