@@ -1,0 +1,41 @@
+---
+# defaults for arbiter_hub role
+
+# Container images
+arbiter_hub_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
+arbiter_hub_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
+arbiter_hub_db_image: "registry.redhat.io/rhel10/postgresql-16:latest"
+
+# Database
+arbiter_hub_db_user: "arbiter"
+arbiter_hub_db_name: "arbiter"
+arbiter_hub_db_password: ""  # REQUIRED — set via vault or extra-vars
+
+# Keylime backend
+arbiter_hub_keylime_verifier_url: ""  # e.g. https://keylime.example.com:8881
+arbiter_hub_keylime_enabled: "{{ arbiter_hub_keylime_verifier_url | length > 0 }}"
+
+# Certificate mode: "ipa" or "bundle"
+arbiter_hub_cert_mode: "ipa"
+arbiter_hub_cert_dir: "/etc/arbiter/keylime"
+arbiter_hub_cert_bundle_dir: ""  # set for bundle mode
+
+# IPA service principal (ipa mode)
+arbiter_hub_ipa_service: "HTTP/{{ ansible_fqdn }}"
+
+# Keylime verifier host (for configuring trusted CA)
+arbiter_hub_keylime_server: ""  # FQDN of Keylime verifier host
+
+# Repo
+arbiter_hub_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
+arbiter_hub_repo_branch: "main"
+arbiter_hub_install_dir: "/opt/arbiter-hub"
+
+# Quadlet
+arbiter_hub_quadlet_dir: "/etc/containers/systemd"
+
+# Run DB migrations on deploy
+arbiter_hub_run_migrations: true
+
+# Configure IPA roles (groups, HBAC)
+arbiter_hub_configure_ipa_roles: true

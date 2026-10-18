@@ -1,0 +1,24 @@
+---
+- name: Wait for database readiness
+  ansible.builtin.command:
+    cmd: >-
+      podman exec arbiter-hub-db
+      pg_isready -U {{ arbiter_hub_db_user }} -d {{ arbiter_hub_db_name }}
+  register: pg_ready
+  retries: 12
+  delay: 5
+  until: pg_ready.rc == 0
+  changed_when: false
+
+- name: Run Alembic migrations
+  ansible.builtin.command:
+    cmd: >-
+      podman run --rm
+      --network arbiter-hub
+      -e ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_hub_db_user }}:{{ arbiter_hub_db_password }}@arbiter-hub-db:5432/{{ arbiter_hub_db_name }}
+      {{ arbiter_hub_api_image }}
+      python3.12 -m alembic
+      -x sqlalchemy.url=postgresql+asyncpg://{{ arbiter_hub_db_user }}:{{ arbiter_hub_db_password }}@arbiter-hub-db:5432/{{ arbiter_hub_db_name }}
+      upgrade head
+  register: alembic_result
+  changed_when: "'Running upgrade' in alembic_result.stderr"

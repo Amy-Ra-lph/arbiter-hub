@@ -1,0 +1,32 @@
+---
+# tasks file for arbiter_hub
+
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - arbiter_hub_db_password | length > 0
+    fail_msg: "arbiter_hub_db_password is required"
+
+- name: Install prerequisites
+  ansible.builtin.include_tasks: prereqs.yml
+
+- name: Set up certificates
+  ansible.builtin.include_tasks: certs.yml
+  when: arbiter_hub_keylime_enabled | bool
+
+- name: Deploy containers
+  ansible.builtin.include_tasks: containers.yml
+
+- name: Run database migrations
+  ansible.builtin.include_tasks: migrations.yml
+  when: arbiter_hub_run_migrations | bool
+
+- name: Start services
+  ansible.builtin.include_tasks: services.yml
+
+- name: Configure Keylime verifier trust
+  ansible.builtin.include_tasks: keylime_trust.yml
+  when:
+    - arbiter_hub_keylime_enabled | bool
+    - arbiter_hub_cert_mode == "ipa"
+    - arbiter_hub_keylime_server | length > 0

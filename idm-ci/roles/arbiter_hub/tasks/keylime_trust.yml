@@ -1,0 +1,62 @@
+---
+# Configure Keylime verifier to trust IPA CA for arbiter-hub mTLS.
+# Keylime with tls_dir=generate requires ALL TLS options to be explicit
+# when overriding any single option.
+- name: Configure Keylime verifier IPA CA trust
+  delegate_to: "{{ arbiter_hub_keylime_server }}"
+  become: true
+  block:
+    - name: Copy IPA CA to verifier cv_ca directory
+      ansible.builtin.copy:
+        src: /etc/ipa/ca.crt
+        dest: /var/lib/keylime/cv_ca/ipa-ca.crt
+        owner: keylime
+        group: keylime
+        mode: "0640"
+        remote_src: true
+
+    - name: Create CA bundle (cv_ca + IPA CA)
+      ansible.builtin.shell: |
+        cat /var/lib/keylime/cv_ca/cacert.crt /var/lib/keylime/cv_ca/ipa-ca.crt \
+          > /var/lib/keylime/cv_ca/trusted-bundle.pem
+        chown keylime:keylime /var/lib/keylime/cv_ca/trusted-bundle.pem
+        chmod 640 /var/lib/keylime/cv_ca/trusted-bundle.pem
+      args:
+        creates: /var/lib/keylime/cv_ca/trusted-bundle.pem
+
+    - name: Override verifier TLS config for IPA CA trust
+      ansible.builtin.copy:
+        dest: /etc/keylime/verifier.conf.d/ipa-trust.conf
+        content: |
+          [verifier]
+          tls_dir = /var/lib/keylime/cv_ca
+          server_cert = server-cert.crt
+          server_key = server-private.pem
+          trusted_client_ca = ["trusted-bundle.pem"]
+          client_cert = client-cert.crt
+          client_key = client-private.pem
+          trusted_server_ca = ["cacert.crt"]
+        mode: "0644"
+      register: verifier_config
+
+    - name: Restart Keylime verifier
+      when: verifier_config.changed
+      block:
+        - name: Stop verifier
+          ansible.builtin.systemd:
+            name: keylime_verifier
+            state: stopped
+
+        - name: Clean multiprocessing temp files
+          ansible.builtin.shell: rm -rf /tmp/pymp-*
+          changed_when: true
+
+        - name: Start verifier
+          ansible.builtin.systemd:
+            name: keylime_verifier
+            state: started
+
+        - name: Wait for verifier
+          ansible.builtin.wait_for:
+            port: 8881
+            timeout: 30

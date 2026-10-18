@@ -1,0 +1,54 @@
+---
+# IPA mode: certmonger requests cert from IPA CA
+- name: IPA mode — provision certificates
+  when: arbiter_hub_cert_mode == "ipa"
+  block:
+    - name: Install certmonger
+      ansible.builtin.dnf:
+        name: certmonger
+        state: present
+
+    - name: Start certmonger
+      ansible.builtin.systemd:
+        name: certmonger
+        state: started
+        enabled: true
+
+    - name: Request certificate from IPA CA
+      ansible.builtin.command:
+        cmd: >-
+          ipa-getcert request
+          -K {{ arbiter_hub_ipa_service }}
+          -f {{ arbiter_hub_cert_dir }}/client.crt
+          -k {{ arbiter_hub_cert_dir }}/client.key
+          -D {{ ansible_fqdn }}
+          -N CN={{ ansible_fqdn }}
+          -w
+        creates: "{{ arbiter_hub_cert_dir }}/client.crt"
+
+    - name: Copy IPA CA cert
+      ansible.builtin.copy:
+        src: /etc/ipa/ca.crt
+        dest: "{{ arbiter_hub_cert_dir }}/ca.crt"
+        remote_src: true
+        mode: "0644"
+
+# Bundle mode: copy customer-provided certs
+- name: Bundle mode — copy certificates
+  when: arbiter_hub_cert_mode == "bundle"
+  block:
+    - name: Validate bundle directory
+      ansible.builtin.assert:
+        that:
+          - arbiter_hub_cert_bundle_dir | length > 0
+        fail_msg: "arbiter_hub_cert_bundle_dir required in bundle mode"
+
+    - name: Copy certificate files
+      ansible.builtin.copy:
+        src: "{{ arbiter_hub_cert_bundle_dir }}/{{ item.name }}"
+        dest: "{{ arbiter_hub_cert_dir }}/{{ item.name }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { name: "ca.crt", mode: "0644" }
+        - { name: "client.crt", mode: "0644" }
+        - { name: "client.key", mode: "0600" }
