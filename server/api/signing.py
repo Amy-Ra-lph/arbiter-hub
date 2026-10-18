@@ -1,13 +1,17 @@
 import asyncio
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 _OCI_REF_RE = re.compile(
     r"^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?(@sha256:[a-f0-9]{64})?(:[a-zA-Z0-9._-]+)?$"
@@ -56,7 +60,9 @@ class VerifyRequest(BaseModel):
 
 
 @router.post("/sign")
+@limiter.limit("5/minute")
 async def sign_artifact(
+    request: Request,
     body: SignRequest,
     caller: CallerIdentity = require_permission("sign_artifact"),
 ):
@@ -88,7 +94,9 @@ async def sign_artifact(
 
 
 @router.post("/verify")
+@limiter.limit("20/minute")
 async def verify_artifact(
+    request: Request,
     body: VerifyRequest,
     caller: CallerIdentity = require_permission("verify_artifact"),
 ):

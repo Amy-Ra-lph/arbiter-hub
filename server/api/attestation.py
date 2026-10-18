@@ -5,9 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
 from server.backends.base import BackendRegistry
+
+limiter = Limiter(key_func=get_remote_address)
 from server.models.db import (
     AttestationRecord,
     AttestationVerdict,
@@ -21,6 +26,7 @@ router = APIRouter()
 
 
 @router.post("/workloads/{workload_id}/attest")
+@limiter.limit("10/minute")
 async def trigger_attestation(
     workload_id: UUID,
     request: Request,
