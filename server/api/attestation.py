@@ -2,17 +2,14 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
 from server.backends.base import BackendRegistry
-
-limiter = Limiter(key_func=get_remote_address)
 from server.models.db import (
     AttestationRecord,
     AttestationVerdict,
@@ -21,6 +18,8 @@ from server.models.db import (
     get_session,
 )
 from server.state.machine import InvalidTransitionError, transition
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 

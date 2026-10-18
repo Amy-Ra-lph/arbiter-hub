@@ -222,16 +222,12 @@ async def delete_workload(
         raise HTTPException(status_code=404, detail="workload not found")
 
     # Delete related records first
-    att_stmt = select(AttestationRecord).where(
-        AttestationRecord.workload_id == workload_id
-    )
+    att_stmt = select(AttestationRecord).where(AttestationRecord.workload_id == workload_id)
     att_result = await session.execute(att_stmt)
     for att in att_result.scalars():
         await session.delete(att)
 
-    trans_stmt = select(StateTransition).where(
-        StateTransition.workload_id == workload_id
-    )
+    trans_stmt = select(StateTransition).where(StateTransition.workload_id == workload_id)
     trans_result = await session.execute(trans_stmt)
     for trans in trans_result.scalars():
         await session.delete(trans)
@@ -281,9 +277,7 @@ async def get_transitions(
     )
     trans_count = (
         await session.execute(
-            select(func.count(StateTransition.id)).where(
-                StateTransition.workload_id == workload_id
-            )
+            select(func.count(StateTransition.id)).where(StateTransition.workload_id == workload_id)
         )
     ).scalar_one()
     trans_result = await session.execute(trans_stmt)
@@ -301,9 +295,7 @@ async def list_policies(
     caller: CallerIdentity = require_permission("read_workload"),
 ):
     stmt = select(Policy).offset(start_index - 1).limit(count)
-    total = (
-        await session.execute(select(func.count(Policy.id)))
-    ).scalar_one()
+    total = (await session.execute(select(func.count(Policy.id)))).scalar_one()
     result = await session.execute(stmt)
     items = [PolicyRead.model_validate(p) for p in result.scalars()]
     return PaginatedResponse[PolicyRead](

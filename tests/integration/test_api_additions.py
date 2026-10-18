@@ -10,9 +10,7 @@ from server.main import create_app
 from server.models.db import (
     AttestationVerdict,
     BackendType,
-    KBSSecret,
     Policy,
-    StateTransition,
     Workload,
     WorkloadState,
     WorkloadType,
@@ -62,7 +60,7 @@ class MockAsyncSession:
 
         # Extract bound parameters if available
         params = {}
-        if hasattr(stmt, '_where_criteria'):
+        if hasattr(stmt, "_where_criteria"):
             try:
                 compiled = stmt.compile()
                 params = compiled.params
@@ -73,14 +71,17 @@ class MockAsyncSession:
         if "workloads.ipa_principal" in stmt_str:
             for principal, w in _workloads.items():
                 # Check both in SQL text and bound params
-                if principal in stmt_str or any(
-                    v == principal for v in params.values()
-                ):
+                if principal in stmt_str or any(v == principal for v in params.values()):
                     result.scalar_one_or_none = lambda w=w: w
                     return result
 
         # Workload lookup by ID (for get, delete, transitions, attest)
-        if "workloads" in stmt_str and "workloads.id" in stmt_str and "state_transitions" not in stmt_str and "attestation" not in stmt_str:
+        if (
+            "workloads" in stmt_str
+            and "workloads.id" in stmt_str
+            and "state_transitions" not in stmt_str
+            and "attestation" not in stmt_str
+        ):
             # Try to find the workload by checking bound params
             for w in _workloads.values():
                 for v in params.values():
@@ -144,9 +145,7 @@ class MockAsyncSession:
                 current_state: WorkloadState = WorkloadState.REGISTERED
                 backend_type: BackendType = BackendType.KEYLIME
                 stale_ttl_seconds: int = 3600
-                registered_at: datetime = field(
-                    default_factory=lambda: datetime.now(UTC)
-                )
+                registered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
                 last_attested_at: datetime | None = None
                 metadata_: dict = field(default_factory=dict)
 
@@ -250,9 +249,7 @@ async def test_delete_workload(app_client):
     assert resp.status_code == 201
     wid = resp.json()["id"]
 
-    del_resp = await app_client.delete(
-        f"/workloads/{wid}", headers=ADMIN_HEADERS
-    )
+    del_resp = await app_client.delete(f"/workloads/{wid}", headers=ADMIN_HEADERS)
     assert del_resp.status_code == 200
     assert del_resp.json()["status"] == "deleted"
 
@@ -261,9 +258,7 @@ async def test_delete_workload(app_client):
 async def test_delete_nonexistent_workload(app_client):
     """DELETE /workloads/{id} returns 404 for missing workload."""
     fake_id = str(uuid.uuid4())
-    resp = await app_client.delete(
-        f"/workloads/{fake_id}", headers=ADMIN_HEADERS
-    )
+    resp = await app_client.delete(f"/workloads/{fake_id}", headers=ADMIN_HEADERS)
     assert resp.status_code == 404
 
 
@@ -282,9 +277,7 @@ async def test_get_transitions(app_client):
     )
     wid = resp.json()["id"]
 
-    trans_resp = await app_client.get(
-        f"/workloads/{wid}/transitions", headers=ADMIN_HEADERS
-    )
+    trans_resp = await app_client.get(f"/workloads/{wid}/transitions", headers=ADMIN_HEADERS)
     assert trans_resp.status_code == 200
     data = trans_resp.json()
     assert "items" in data
@@ -294,9 +287,7 @@ async def test_get_transitions(app_client):
 @pytest.mark.asyncio
 async def test_list_kbs_secrets(app_client):
     """GET /kbs/v0/resources returns paginated secrets without encrypted_value."""
-    resp = await app_client.get(
-        "/kbs/v0/resources", headers=ADMIN_HEADERS
-    )
+    resp = await app_client.get("/kbs/v0/resources", headers=ADMIN_HEADERS)
     assert resp.status_code == 200
     data = resp.json()
     assert "items" in data
@@ -322,9 +313,7 @@ async def test_attest_from_under_remediation(app_client):
         if str(w.id) == wid:
             w.current_state = WorkloadState.UNDER_REMEDIATION
 
-    attest_resp = await app_client.post(
-        f"/workloads/{wid}/attest", headers=ADMIN_HEADERS
-    )
+    attest_resp = await app_client.post(f"/workloads/{wid}/attest", headers=ADMIN_HEADERS)
     assert attest_resp.status_code == 200
     data = attest_resp.json()
     assert data["verdict"] == "pass"

@@ -3,7 +3,6 @@ import re
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
-
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
