@@ -4,6 +4,13 @@ import AppLayout from "src/AppLayout";
 import Dashboard from "src/pages/Dashboard/Dashboard";
 import Workloads from "src/pages/Workloads/Workloads";
 import WorkloadDetail from "src/pages/WorkloadDetail/WorkloadDetail";
+import Backends from "src/pages/Backends/Backends";
+import History from "src/pages/History/History";
+import Policies from "src/pages/Policies/Policies";
+import KBSSecrets from "src/pages/KBSSecrets/KBSSecrets";
+import AuditLog from "src/pages/AuditLog/AuditLog";
+import CveOverview from "src/pages/Vulnerabilities/CveOverview";
+import AffectedWorkloads from "src/pages/Vulnerabilities/AffectedWorkloads";
 import { PageSection, Content, ContentVariants } from "@patternfly/react-core";
 
 const Placeholder: React.FC<{ name: string }> = ({ name }) => (
@@ -21,14 +28,14 @@ const App: React.FC = () => {
           <Route index element={<Dashboard />} />
           <Route path="/workloads" element={<Workloads />} />
           <Route path="/workloads/:workloadId" element={<WorkloadDetail />} />
-          <Route path="/backends" element={<Placeholder name="Backends" />} />
-          <Route path="/history" element={<Placeholder name="History" />} />
-          <Route path="/vulnerabilities/cve" element={<Placeholder name="CVE Overview" />} />
-          <Route path="/vulnerabilities/workloads" element={<Placeholder name="Affected Workloads" />} />
-          <Route path="/policies" element={<Placeholder name="Policies" />} />
+          <Route path="/backends" element={<Backends />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/vulnerabilities/cve" element={<CveOverview />} />
+          <Route path="/vulnerabilities/workloads" element={<AffectedWorkloads />} />
+          <Route path="/policies" element={<Policies />} />
           <Route path="/policies/:policyId" element={<Placeholder name="Policy Detail" />} />
-          <Route path="/kbs" element={<Placeholder name="KBS Secrets" />} />
-          <Route path="/audit" element={<Placeholder name="Audit Log" />} />
+          <Route path="/kbs" element={<KBSSecrets />} />
+          <Route path="/audit" element={<AuditLog />} />
           <Route path="/federation" element={<Placeholder name="Federation" />} />
         </Route>
       </Routes>
