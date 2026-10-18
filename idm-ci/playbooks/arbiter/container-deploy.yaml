@@ -1,0 +1,101 @@
+---
+# container-deploy.yaml — pull images from Quay, deploy Quadlet containers
+# Runs on client (arbiter-hub runner) only
+- name: Deploy arbiter-hub containers
+  hosts: ipaclient
+  become: true
+  vars:
+    arbiter_hub_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
+    arbiter_hub_kbs_image: "quay.io/rhel-security/arbiter-hub-kbs:latest"
+    arbiter_hub_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
+    arbiter_hub_db_image: "registry.redhat.io/rhel10/postgresql-16"
+    arbiter_hub_db_password: "arbiter-poc-2026"
+    arbiter_hub_db_user: "arbiter"
+    quadlet_dir: "/etc/containers/systemd"
+  tasks:
+    - name: Install podman
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - python3-podman
+        state: present
+
+    - name: Pull container images
+      containers.podman.podman_image:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - "{{ arbiter_hub_api_image }}"
+        - "{{ arbiter_hub_kbs_image }}"
+        - "{{ arbiter_hub_mcp_image }}"
+        - "{{ arbiter_hub_db_image }}"
+
+    - name: Clone arbiter-hub repo for Quadlet files
+      ansible.builtin.git:
+        repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
+        dest: /opt/arbiter-hub
+        version: main
+
+    - name: Create podman secrets
+      containers.podman.podman_secret:
+        name: "{{ item.name }}"
+        data: "{{ item.value }}"
+        state: present
+      loop:
+        - { name: "arbiter-hub-db-password", value: "{{ arbiter_hub_db_password }}" }
+        - { name: "arbiter-hub-db-user", value: "{{ arbiter_hub_db_user }}" }
+      no_log: true
+
+    - name: Copy Quadlet files
+      ansible.builtin.copy:
+        src: "/opt/arbiter-hub/deploy/quadlet/{{ item }}"
+        dest: "{{ quadlet_dir }}/{{ item }}"
+        mode: "0644"
+        remote_src: true
+      loop:
+        - arbiter-hub.network
+        - arbiter-hub-db.volume
+        - arbiter-hub-certs.volume
+        - arbiter-hub-kbs-data.volume
+        - arbiter-hub-db.container
+        - arbiter-hub-api.container
+        - arbiter-hub-kbs.container
+        - arbiter-hub-mcp.container
+
+    - name: Create certificate volume directory
+      ansible.builtin.file:
+        path: /etc/arbiter/certs
+        state: directory
+        mode: "0750"
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Start arbiter-hub-db
+      ansible.builtin.systemd:
+        name: arbiter-hub-db
+        state: started
+        enabled: true
+
+    - name: Wait for database to be ready
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Start arbiter-hub-api
+      ansible.builtin.systemd:
+        name: arbiter-hub-api
+        state: started
+        enabled: true
+
+    - name: Start arbiter-hub-kbs
+      ansible.builtin.systemd:
+        name: arbiter-hub-kbs
+        state: started
+        enabled: true
+
+    - name: Start arbiter-hub-mcp
+      ansible.builtin.systemd:
+        name: arbiter-hub-mcp
+        state: started
+        enabled: true

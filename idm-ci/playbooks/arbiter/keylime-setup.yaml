@@ -1,0 +1,146 @@
+---
+# keylime-setup.yaml — deploy swtpm + Keylime on 2-node topology
+# master: swtpm + keylime-verifier + keylime-registrar + keylime-tenant
+# client: swtpm + keylime-agent (registers with master verifier)
+- name: Deploy swtpm on all hosts
+  hosts: all
+  become: true
+  tasks:
+    - name: Install swtpm packages
+      ansible.builtin.dnf:
+        name:
+          - swtpm
+          - swtpm-tools
+          - tpm2-tools
+          - tpm2-tss
+        state: present
+
+    - name: Create swtpm state directory
+      ansible.builtin.file:
+        path: /var/lib/swtpm/mytpm
+        state: directory
+        mode: "0755"
+
+    - name: Initialize swtpm
+      ansible.builtin.command:
+        cmd: swtpm_setup --tpmstate /var/lib/swtpm/mytpm --tpm2 --createek
+        creates: /var/lib/swtpm/mytpm/tpm2-00.permall
+
+    - name: Deploy swtpm systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/swtpm.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Software TPM 2.0
+          Before=keylime-agent.service
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/swtpm chardev --vtpm-proxy --tpmstate dir=/var/lib/swtpm/mytpm --tpm2 --flags startup-clear
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start swtpm
+      ansible.builtin.systemd:
+        name: swtpm
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Verify TPM is accessible
+      ansible.builtin.command:
+        cmd: tpm2_getcap properties-fixed
+      changed_when: false
+
+- name: Deploy Keylime verifier and registrar on master
+  hosts: ipaserver
+  become: true
+  tasks:
+    - name: Install keylime server packages
+      ansible.builtin.dnf:
+        name:
+          - keylime-verifier
+          - keylime-registrar
+          - keylime-tenant
+        state: present
+
+    - name: Configure verifier to bind on all interfaces
+      ansible.builtin.lineinfile:
+        path: /etc/keylime/verifier.conf
+        regexp: "^ip ="
+        line: "ip = 0.0.0.0"
+        create: true
+      ignore_errors: true
+
+    - name: Configure registrar to bind on all interfaces
+      ansible.builtin.lineinfile:
+        path: /etc/keylime/registrar.conf
+        regexp: "^ip ="
+        line: "ip = 0.0.0.0"
+        create: true
+      ignore_errors: true
+
+    - name: Start keylime-registrar
+      ansible.builtin.systemd:
+        name: keylime_registrar
+        state: started
+        enabled: true
+
+    - name: Start keylime-verifier
+      ansible.builtin.systemd:
+        name: keylime_verifier
+        state: started
+        enabled: true
+
+- name: Deploy Keylime agent on client
+  hosts: ipaclient
+  become: true
+  vars:
+    keylime_agent_uuid: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+  tasks:
+    - name: Install keylime agent
+      ansible.builtin.dnf:
+        name:
+          - keylime-agent
+        state: present
+
+    - name: Configure agent registrar IP
+      ansible.builtin.lineinfile:
+        path: /etc/keylime/agent.conf
+        regexp: "^registrar_ip ="
+        line: "registrar_ip = {{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }}"
+        create: true
+      ignore_errors: true
+
+    - name: Configure agent UUID
+      ansible.builtin.lineinfile:
+        path: /etc/keylime/agent.conf
+        regexp: "^uuid ="
+        line: "uuid = {{ keylime_agent_uuid }}"
+        create: true
+      ignore_errors: true
+
+    - name: Start keylime-agent
+      ansible.builtin.systemd:
+        name: keylime_agent
+        state: started
+        enabled: true
+
+- name: Register agent with verifier
+  hosts: ipaserver
+  become: true
+  vars:
+    keylime_agent_uuid: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+  tasks:
+    - name: Register client agent
+      ansible.builtin.command:
+        cmd: >
+          keylime_tenant -c add
+          -t {{ hostvars[groups['ipaclient'][0]]['ansible_default_ipv4']['address'] }}
+          --uuid {{ keylime_agent_uuid }}
+      register: reg_result
+      changed_when: "'SUCCESS' in reg_result.stdout"
+      failed_when: reg_result.rc != 0 and 'already' not in reg_result.stderr
