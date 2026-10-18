@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.auth.dependencies import get_caller, require_permission
@@ -12,7 +12,7 @@ from server.config import settings
 from server.kbs.gate import check_kbs_gate
 from server.kbs.store import decrypt_secret, encrypt_secret
 from server.models.db import AuditLog, KBSSecret, Workload, get_session
-from server.models.schemas import KBSSecretCreate
+from server.models.schemas import KBSSecretCreate, KBSSecretRead, PaginatedResponse
 
 router = APIRouter(prefix="/kbs/v0")
 
@@ -27,6 +27,22 @@ def _load_encryption_key() -> bytes:
 @router.get("/health")
 async def kbs_health():
     return {"status": "ok", "service": "arbiter-hub-kbs"}
+
+
+@router.get("/resources")
+async def list_secrets(
+    start_index: int = Query(1, ge=1, alias="startIndex"),
+    count: int = Query(25, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("manage_kbs"),
+):
+    stmt = select(KBSSecret).offset(start_index - 1).limit(count)
+    total = (await session.execute(select(func.count(KBSSecret.id)))).scalar_one()
+    result = await session.execute(stmt)
+    items = [KBSSecretRead.model_validate(s) for s in result.scalars()]
+    return PaginatedResponse[KBSSecretRead](
+        items=items, total=total, start_index=start_index, count=count
+    )
 
 
 @router.post("/resource/{repo}/{secret_type}/{tag}", status_code=201)

@@ -35,7 +35,11 @@ async def trigger_attestation(
         raise HTTPException(status_code=404, detail="workload not found")
 
     # Transition to Attesting if currently in a state that allows it
-    if workload.current_state in (WorkloadState.REGISTERED, WorkloadState.STALE):
+    if workload.current_state in (
+        WorkloadState.REGISTERED,
+        WorkloadState.STALE,
+        WorkloadState.UNDER_REMEDIATION,
+    ):
         try:
             await transition(session, workload, WorkloadState.ATTESTING, caller.principal)
         except InvalidTransitionError as e:

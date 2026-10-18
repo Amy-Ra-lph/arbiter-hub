@@ -122,6 +122,20 @@ class KBSSecretCreate(BaseModel):
     workload_scope: str | None = None
 
 
+class KBSSecretRead(BaseModel):
+    id: uuid.UUID
+    repo: str
+    secret_type: str
+    tag: str
+    required_state: WorkloadState
+    workload_scope: str | None
+    created_by: str
+    created_at: datetime
+    rotated_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
 class ComplianceResult(BaseModel):
     workload_id: uuid.UUID
     compliant: bool
