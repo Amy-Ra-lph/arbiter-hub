@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import logging
-import tempfile
+
 from datetime import datetime, timezone
 from server.backends.base import (
     AttestationBackend, AttestationResult, EnrollResult, RevokeResult, BackendHealth,

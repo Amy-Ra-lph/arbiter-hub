@@ -4,12 +4,14 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from server.models.db import (
-    Workload, AttestationRecord, Policy, WorkloadState, WorkloadType, StateTransition, AuditLog,
+    Workload, AttestationRecord, Policy, WorkloadState, WorkloadType, AuditLog,
     get_session,
 )
+from datetime import datetime, timezone
 from server.models.schemas import (
     WorkloadRead, WorkloadList, AttestationRecordRead,
     PolicyRead, PaginatedResponse, WorkloadCreate, PolicyCreate,
+    ComplianceResult,
 )
 from server.auth.dependencies import get_caller, require_permission
 from server.auth.models import CallerIdentity
@@ -121,6 +123,47 @@ async def get_attestations(
     items = [AttestationRecordRead.model_validate(a) for a in att_result.scalars()]
     return PaginatedResponse[AttestationRecordRead](
         items=items, total=att_count, start_index=start_index, count=count
+    )
+
+
+@router.get("/workloads/{workload_id}/compliance", response_model=ComplianceResult)
+async def check_compliance(
+    workload_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("read_workload"),
+):
+    stmt = select(Workload).where(Workload.id == workload_id)
+    result = await session.execute(stmt)
+    workload = result.scalar_one_or_none()
+    if not workload:
+        raise HTTPException(status_code=404, detail="workload not found")
+
+    scope_key = workload.ipa_principal.split("@")[0] if "@" in workload.ipa_principal else workload.ipa_principal
+    if not check_scope(caller, scope_key):
+        raise HTTPException(status_code=404, detail="workload not found")
+
+    checks = []
+    checks.append({
+        "check": "state_healthy",
+        "passed": workload.current_state == WorkloadState.HEALTHY,
+        "detail": f"state={workload.current_state.value}",
+    })
+    attestation_current = False
+    if workload.last_attested_at:
+        age = (datetime.now(timezone.utc) - workload.last_attested_at).total_seconds()
+        attestation_current = age <= workload.stale_ttl_seconds
+    checks.append({
+        "check": "attestation_current",
+        "passed": attestation_current,
+        "detail": f"last_attested={workload.last_attested_at}",
+    })
+
+    compliant = all(c["passed"] for c in checks)
+    return ComplianceResult(
+        workload_id=workload.id,
+        compliant=compliant,
+        checks=checks,
+        evaluated_at=datetime.now(timezone.utc),
     )
 
 

@@ -42,7 +42,7 @@ class WorkloadRead(BaseModel):
     stale_ttl_seconds: int
     registered_at: datetime
     last_attested_at: datetime | None
-    metadata: dict
+    metadata: dict = Field(default_factory=dict, validation_alias="metadata_")
 
     model_config = {"from_attributes": True}
 
