@@ -6,7 +6,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from server.api import alerts, attestation, audit, auth_config, health, kbs, signing, workloads
+from server.api import alerts, attestation, audit, auth_config, health, kbs, signing, webhooks, workloads
 from server.backends.base import BackendRegistry
 from server.config import settings
 from server.middleware.csrf import CSRFOriginMiddleware
@@ -93,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, tags=["audit"])
     app.include_router(attestation.router, tags=["attestation"])
     app.include_router(alerts.router, tags=["alerts"])
+    app.include_router(webhooks.router, tags=["webhooks"])
     app.include_router(signing.router, tags=["signing"])
     app.include_router(kbs.router, tags=["kbs"])
     return app
