@@ -9,6 +9,7 @@ from slowapi.util import get_remote_address
 from server.api import attestation, audit, auth_config, health, kbs, signing, workloads
 from server.backends.base import BackendRegistry
 from server.config import settings
+from server.middleware.csrf import CSRFOriginMiddleware
 from server.telemetry.otel import add_metrics_endpoint, setup_telemetry
 
 
@@ -44,6 +45,11 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    app.add_middleware(
+        CSRFOriginMiddleware,
+        allowed_origins=settings.cors_allowed_origins,
+        auth_mode=settings.auth_mode,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
