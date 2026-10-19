@@ -1,0 +1,40 @@
+---
+- name: Arbiter Hub Attestation Response
+  hosts: all
+  sources:
+    - arbiter_hub:
+        host: 0.0.0.0
+        port: 5001
+        secret: "{{ arbiter_webhook_secret }}"
+  rules:
+    - name: Quarantine on attestation failure
+      condition: event.event_type == "state_transition" and event.to_state == "failed"
+      action:
+        run_playbook:
+          name: playbooks/quarantine.yml
+          extra_vars:
+            workload_id: "{{ event.workload_id }}"
+            from_state: "{{ event.from_state }}"
+            reason: "{{ event.detail.rule | default('attestation failure') }}"
+
+    - name: Re-attest stale workloads
+      condition: event.event_type == "state_transition" and event.to_state == "stale"
+      action:
+        run_playbook:
+          name: playbooks/re_attest.yml
+          extra_vars:
+            workload_id: "{{ event.workload_id }}"
+
+    - name: Forensic collection on critical Falco alert
+      condition: >-
+        event.event_type == "state_transition" and
+        event.to_state == "failed" and
+        event.detail.priority is defined and
+        event.detail.priority in ["Critical", "Emergency"]
+      action:
+        run_playbook:
+          name: playbooks/forensic_collect.yml
+          extra_vars:
+            workload_id: "{{ event.workload_id }}"
+            container_id: "{{ event.detail.container_id | default('') }}"
+            rule: "{{ event.detail.rule | default('unknown') }}"

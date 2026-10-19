@@ -1,0 +1,17 @@
+---
+all:
+  vars:
+    arbiter_api_url: http://localhost:8400
+    arbiter_bearer_token: "{{ lookup('env', 'ARBITER_TOKEN') }}"
+    arbiter_webhook_secret: "{{ lookup('env', 'ARBITER_WEBHOOK_SECRET') }}"
+  children:
+    server:
+      hosts:
+        arbiter-server:
+          ansible_host: localhost
+          ansible_connection: local
+    client:
+      hosts:
+        arbiter-client:
+          ansible_host: localhost
+          ansible_connection: local
