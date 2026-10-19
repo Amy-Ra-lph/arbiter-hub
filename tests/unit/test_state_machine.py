@@ -52,6 +52,10 @@ def test_revoked_cannot_go_anywhere():
                 validate_transition(WorkloadState.REVOKED, target)
 
 
+def test_healthy_can_go_to_failed():
+    validate_transition(WorkloadState.HEALTHY, WorkloadState.FAILED)
+
+
 def test_healthy_cannot_go_to_registered():
     with pytest.raises(InvalidTransitionError):
         validate_transition(WorkloadState.HEALTHY, WorkloadState.REGISTERED)

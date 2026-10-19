@@ -6,7 +6,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from server.api import attestation, audit, auth_config, health, kbs, signing, workloads
+from server.api import alerts, attestation, audit, auth_config, health, kbs, signing, workloads
 from server.backends.base import BackendRegistry
 from server.config import settings
 from server.middleware.csrf import CSRFOriginMiddleware
@@ -27,6 +27,13 @@ async def lifespan(app: FastAPI):
                 client_cert=settings.keylime_client_cert,
                 client_key=settings.keylime_client_key,
             ),
+        )
+    if settings.falco_healthz_url:
+        from server.backends.falco import FalcoBackend
+
+        registry.register(
+            "falco",
+            FalcoBackend(healthz_url=settings.falco_healthz_url),
         )
     if settings.cosign_binary:
         from server.backends.cosign import CosignBackend
@@ -85,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(workloads.router, tags=["workloads"])
     app.include_router(audit.router, tags=["audit"])
     app.include_router(attestation.router, tags=["attestation"])
+    app.include_router(alerts.router, tags=["alerts"])
     app.include_router(signing.router, tags=["signing"])
     app.include_router(kbs.router, tags=["kbs"])
     return app

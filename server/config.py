@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     trustee_url: str = ""
     cosign_binary: str = "cosign"
     cosign_public_key: str = ""
+    falco_healthz_url: str = ""
     rekor_url: str = ""
     rhtas_fulcio_url: str = ""
     rhtas_tuf_root: str = ""
