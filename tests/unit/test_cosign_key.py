@@ -1,8 +1,8 @@
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+
 from server.backends.cosign import CosignBackend
-from server.models.db import AttestationVerdict
 
 
 @pytest.mark.asyncio

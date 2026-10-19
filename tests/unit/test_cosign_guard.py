@@ -1,6 +1,5 @@
 """Verify cosign backend only registers when public_key is set."""
 
-import re
 import inspect
 
 from server.main import lifespan

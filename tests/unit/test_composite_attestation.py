@@ -1,4 +1,3 @@
-import pytest
 
 from server.backends.base import AttestationResult, compute_composite_verdict
 from server.models.db import AttestationVerdict

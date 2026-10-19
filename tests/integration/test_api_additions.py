@@ -143,7 +143,9 @@ class MockAsyncSession:
                 display_name: str = ""
                 workload_type: WorkloadType = WorkloadType.AGENTIC
                 current_state: WorkloadState = WorkloadState.REGISTERED
-                backend_types: list[str] = field(default_factory=lambda: [BackendType.KEYLIME.value])
+                backend_types: list[str] = field(
+                    default_factory=lambda: [BackendType.KEYLIME.value],
+                )
                 stale_ttl_seconds: int = 3600
                 registered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
                 last_attested_at: datetime | None = None

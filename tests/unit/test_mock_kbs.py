@@ -20,7 +20,7 @@ async def test_mock_kbs_health():
 
 @pytest.mark.asyncio
 async def test_mock_kbs_attest_registered_measurement():
-    from mock_kbs.main import app, _registered_measurements
+    from mock_kbs.main import _registered_measurements, app
 
     _registered_measurements.clear()
     transport = ASGITransport(app=app)
@@ -41,7 +41,7 @@ async def test_mock_kbs_attest_registered_measurement():
 
 @pytest.mark.asyncio
 async def test_mock_kbs_attest_unknown_measurement():
-    from mock_kbs.main import app, _registered_measurements
+    from mock_kbs.main import _registered_measurements, app
 
     _registered_measurements.clear()
     transport = ASGITransport(app=app)

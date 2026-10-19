@@ -1,11 +1,4 @@
-import json
 import uuid
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
-from server.models.db import WorkloadState, WorkloadType
 
 
 def test_webhook_hmac_signature():

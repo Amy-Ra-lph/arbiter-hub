@@ -1,6 +1,5 @@
 """Verify skipped backends are tracked in attestation."""
 
-import re
 import inspect
 
 

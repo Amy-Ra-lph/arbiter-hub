@@ -3,9 +3,11 @@ from pathlib import Path
 
 import pytest
 
+from server.api.webhooks import compute_hmac_signature
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "eda"))
 
-from server.api.webhooks import compute_hmac_signature
+aiohttp = pytest.importorskip("aiohttp")
 
 
 def test_eda_source_validates_hmac():

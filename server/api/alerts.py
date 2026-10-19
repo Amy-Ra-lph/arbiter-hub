@@ -1,5 +1,4 @@
 import logging
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select

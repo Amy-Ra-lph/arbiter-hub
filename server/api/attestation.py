@@ -9,9 +9,9 @@ from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from server.api.webhooks import dispatch_webhooks
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
-from server.api.webhooks import dispatch_webhooks
 from server.backends.base import BackendRegistry, compute_composite_verdict
 from server.models.db import (
     AttestationRecord,

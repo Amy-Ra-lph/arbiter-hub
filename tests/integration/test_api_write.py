@@ -10,7 +10,6 @@ from server.backends.base import AttestationResult, BackendRegistry
 from server.main import create_app
 from server.models.db import (
     AttestationVerdict,
-    BackendType,
     Policy,
     Workload,
     WorkloadState,

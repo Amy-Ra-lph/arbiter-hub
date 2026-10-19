@@ -1,7 +1,6 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
-
 from mock_kbs.evidence import generate_snp_report
+from pydantic import BaseModel
 
 app = FastAPI(title="Mock KBS (Trustee-compatible)")
 
