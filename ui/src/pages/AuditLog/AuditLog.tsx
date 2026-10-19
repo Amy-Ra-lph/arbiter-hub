@@ -34,7 +34,7 @@ const AuditLog: React.FC = () => {
   const [actorTypeFilter, setActorTypeFilter] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  const { data, isLoading } = useGetAuditQuery({ count: 500 });
+  const { data, isLoading } = useGetAuditQuery({ count: 100 });
 
   const items = data?.items ?? [];
 

@@ -314,7 +314,7 @@ const Dashboard: React.FC = () => {
                               )}
                             </DataListCell>,
                             <DataListCell key="detail" width={3}>
-                              <span style={{ fontSize: "13px", color: "var(--pf-t--global--color--nonstatus--gray--default)" }}>
+                              <span style={{ fontSize: "13px", color: "#4f5255" }}>
                                 {event.detail &&
                                 typeof event.detail === "object" &&
                                 "justification" in event.detail &&
