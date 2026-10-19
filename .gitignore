@@ -8,3 +8,5 @@ dist/
 .ruff_cache/
 node_modules/
 ui/dist/
+docs/demo-walkthrough-beaker.md
+.superpowers/
