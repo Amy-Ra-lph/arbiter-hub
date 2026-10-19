@@ -28,6 +28,7 @@
         repo: "{{ enforcement_mcp_repo }}"
         dest: "{{ enforcement_mcp_dir }}"
         version: "{{ enforcement_mcp_branch }}"
+        depth: 1
         force: true
 
     - name: Install Python dependencies

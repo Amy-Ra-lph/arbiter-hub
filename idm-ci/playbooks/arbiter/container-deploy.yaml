@@ -45,6 +45,7 @@
         repo: "{{ arbiter_repo }}"
         dest: /opt/arbiter-hub
         version: "{{ arbiter_repo_branch }}"
+        depth: 1
         force: true
 
     - name: Create podman secret for DB password

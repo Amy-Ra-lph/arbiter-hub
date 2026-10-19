@@ -20,6 +20,7 @@
     repo: "{{ arbiter_hub_repo }}"
     dest: "{{ arbiter_hub_install_dir }}"
     version: "{{ arbiter_hub_repo_branch }}"
+    depth: 1
     force: true
 
 - name: Create cert directories

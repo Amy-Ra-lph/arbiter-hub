@@ -79,19 +79,6 @@ phases:
   - name: init
     steps:
       - playbook: init/testrunner-dir.yaml
-      # Clone repos on all hosts — later phases reference /opt/arbiter-hub/ and /opt/agentic-platform/
-      - command: |
-          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
-          git clone https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
-        host: idm.arbiter.demo
-      - command: |
-          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
-          git clone https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
-        host: hub.arbiter.demo
-      - command: |
-          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
-          git clone https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
-        host: agent.arbiter.demo
 
   - name: provision
     steps:
@@ -118,6 +105,25 @@ phases:
             - 8.8.8.8
           ipaserver_no_reverse: true
       - playbook: prep/ipa-client-install.yaml
+      # Clone repos on all hosts — later phases reference /opt/arbiter-hub/ and /opt/agentic-platform/
+      - command: |
+          git clone --depth 1 --single-branch --branch main \
+            https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
+          git clone --depth 1 --single-branch --branch main \
+            https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
+        host: idm.arbiter.demo
+      - command: |
+          git clone --depth 1 --single-branch --branch main \
+            https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
+          git clone --depth 1 --single-branch --branch main \
+            https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
+        host: hub.arbiter.demo
+      - command: |
+          git clone --depth 1 --single-branch --branch main \
+            https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
+          git clone --depth 1 --single-branch --branch main \
+            https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
+        host: agent.arbiter.demo
       # Container + dev tooling on hub and agent nodes
       - command: |
           dnf -y install podman buildah skopeo python3-pip git \
