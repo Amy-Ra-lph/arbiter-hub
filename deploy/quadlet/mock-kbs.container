@@ -1,0 +1,15 @@
+[Unit]
+Description=Mock KBS (Trustee-compatible attestation simulator)
+After=network-online.target
+
+[Container]
+Image=localhost/mock-kbs:latest
+PublishPort=8085:8085
+Network=arbiter.network
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=30
+
+[Install]
+WantedBy=default.target
