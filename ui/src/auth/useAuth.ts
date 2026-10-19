@@ -37,6 +37,7 @@ export function useAuth(): AuthState {
   const [user, setUser] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState("dev");
   const managerRef = useRef<UserManager | null>(null);
+  const configRef = useRef<AuthConfig | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +48,7 @@ export function useAuth(): AuthState {
         const config: AuthConfig = await resp.json();
 
         if (cancelled) return;
+        configRef.current = config;
         setAuthMode(config.auth_mode);
 
         if (config.auth_mode !== "oidc") {
@@ -68,7 +70,9 @@ export function useAuth(): AuthState {
         managerRef.current = mgr;
 
         mgr.events.addAccessTokenExpired(() => {
-          mgr.signinSilent().catch(() => mgr.signinRedirect());
+          mgr.signinSilent().catch(() => {
+            loginViaForm(config);
+          });
         });
 
         mgr.events.addUserLoaded((u: User) => {
@@ -78,10 +82,16 @@ export function useAuth(): AuthState {
 
         const params = new URLSearchParams(window.location.search);
         if (params.has("code")) {
-          const u = await mgr.signinCallback();
-          if (u) {
-            _accessToken = u.access_token;
-            setUser(u.profile?.preferred_username ?? u.profile?.sub ?? null);
+          try {
+            const u = await mgr.signinCallback();
+            if (u) {
+              _accessToken = u.access_token;
+              setUser(
+                u.profile?.preferred_username ?? u.profile?.sub ?? null
+              );
+              window.history.replaceState({}, "", window.location.pathname);
+            }
+          } catch {
             window.history.replaceState({}, "", window.location.pathname);
           }
         } else {
@@ -105,7 +115,15 @@ export function useAuth(): AuthState {
   }, []);
 
   const login = useCallback(() => {
-    managerRef.current?.signinRedirect();
+    const mgr = managerRef.current;
+    const config = configRef.current;
+    if (mgr) {
+      mgr.signinRedirect().catch(() => {
+        if (config) loginViaForm(config);
+      });
+    } else if (config) {
+      loginViaForm(config);
+    }
   }, []);
 
   const logout = useCallback(() => {
@@ -123,4 +141,18 @@ export function useAuth(): AuthState {
     login,
     logout,
   };
+}
+
+function loginViaForm(config: AuthConfig): void {
+  const authorizeParams = new URLSearchParams({
+    response_type: "code",
+    client_id: config.client_id,
+    redirect_uri: window.location.origin + "/",
+    scope: config.scopes,
+  });
+  const loginUrl =
+    config.issuer +
+    "/ui/auth/login?return_to=" +
+    encodeURIComponent("/idp/authorize?" + authorizeParams.toString());
+  window.location.href = loginUrl;
 }

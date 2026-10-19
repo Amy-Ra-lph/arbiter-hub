@@ -12,8 +12,10 @@ import { isLoggedOut, clearLoggedOut } from "src/auth/useAuth";
 export const ProtectedRoute: React.FC = () => {
   const { isAuthenticated, authMode, login } = useAuthContext();
 
+  const loginTriggered = React.useRef(false);
   useEffect(() => {
-    if (authMode === "oidc" && !isAuthenticated && !isLoggedOut()) {
+    if (authMode === "oidc" && !isAuthenticated && !isLoggedOut() && !loginTriggered.current) {
+      loginTriggered.current = true;
       login();
     }
   }, [authMode, isAuthenticated, login]);
