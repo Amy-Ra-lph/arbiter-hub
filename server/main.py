@@ -20,6 +20,7 @@ from server.api import (
 from server.backends.base import BackendRegistry
 from server.config import settings
 from server.middleware.csrf import CSRFOriginMiddleware
+from server.state.scheduler import StalenessScheduler
 from server.telemetry.otel import add_metrics_endpoint, setup_telemetry
 
 
@@ -59,7 +60,14 @@ async def lifespan(app: FastAPI):
             ),
         )
     app.state.backend_registry = registry
+
+    scheduler = StalenessScheduler(interval_seconds=30, registry=registry)
+    scheduler.start()
+    app.state.staleness_scheduler = scheduler
+
     yield
+
+    await scheduler.stop()
 
 
 limiter = Limiter(key_func=get_remote_address)

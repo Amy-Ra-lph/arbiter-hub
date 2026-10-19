@@ -47,6 +47,7 @@ async def trigger_attestation(
     # Transition to Attesting if currently in a state that allows it
     if workload.current_state in (
         WorkloadState.REGISTERED,
+        WorkloadState.HEALTHY,
         WorkloadState.STALE,
         WorkloadState.UNDER_REMEDIATION,
     ):

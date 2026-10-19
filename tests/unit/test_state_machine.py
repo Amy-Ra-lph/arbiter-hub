@@ -16,6 +16,10 @@ def test_attesting_can_go_to_failed():
     validate_transition(WorkloadState.ATTESTING, WorkloadState.FAILED)
 
 
+def test_healthy_can_go_to_attesting():
+    validate_transition(WorkloadState.HEALTHY, WorkloadState.ATTESTING)
+
+
 def test_healthy_can_go_to_stale():
     validate_transition(WorkloadState.HEALTHY, WorkloadState.STALE)
 
