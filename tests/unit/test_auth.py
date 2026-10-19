@@ -1,3 +1,5 @@
+import pytest
+
 from server.auth.models import CallerIdentity
 from server.auth.rbac import check_permission, check_scope
 
@@ -69,3 +71,44 @@ def test_scope_check_specific():
     )
     assert check_scope(identity, "agent-foo") is True
     assert check_scope(identity, "agent-bar") is False
+
+
+def test_auth_mode_defaults_to_dev():
+    from server.auth.dependencies import _resolve_auth_mode
+
+    assert _resolve_auth_mode(auth_mode="dev", dev_mode_legacy=False) == "dev"
+
+
+def test_dev_mode_legacy_sets_auth_mode_dev():
+    from server.auth.dependencies import _resolve_auth_mode
+
+    assert _resolve_auth_mode(auth_mode="", dev_mode_legacy=True) == "dev"
+
+
+def test_auth_mode_overrides_dev_mode():
+    from server.auth.dependencies import _resolve_auth_mode
+
+    assert _resolve_auth_mode(auth_mode="oidc", dev_mode_legacy=True) == "oidc"
+
+
+def test_auth_mode_proxy():
+    from server.auth.dependencies import _resolve_auth_mode
+
+    assert _resolve_auth_mode(auth_mode="proxy", dev_mode_legacy=False) == "proxy"
+
+
+@pytest.mark.asyncio
+async def test_auth_config_endpoint():
+    from httpx import ASGITransport, AsyncClient
+
+    from server.main import create_app
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/auth/config")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "auth_mode" in data
+        assert "client_id" in data
+        assert "issuer" in data
