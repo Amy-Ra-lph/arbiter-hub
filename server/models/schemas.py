@@ -2,7 +2,12 @@ import uuid
 from datetime import datetime
 from typing import TypeVar
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
+from typing_extensions import Annotated
+
+ConstrainedName = Annotated[str, StringConstraints(min_length=1, max_length=255)]
+ConstrainedPrincipal = Annotated[str, StringConstraints(min_length=1, max_length=512)]
+ConstrainedText = Annotated[str, StringConstraints(max_length=4096)]
 
 from server.models.db import AttestationVerdict, BackendType, WorkloadState, WorkloadType
 
@@ -25,11 +30,11 @@ class ProblemDetail(BaseModel):
 
 
 class WorkloadCreate(BaseModel):
-    ipa_principal: str
-    display_name: str
+    ipa_principal: ConstrainedPrincipal
+    display_name: ConstrainedName
     workload_type: WorkloadType
-    backend_types: list[BackendType] = Field(min_length=1)
-    stale_ttl_seconds: int = 3600
+    backend_types: list[BackendType] = Field(min_length=1, max_length=10)
+    stale_ttl_seconds: int = Field(default=3600, ge=60, le=604800)
     metadata: dict = Field(default_factory=dict)
 
     @model_validator(mode="before")
@@ -87,10 +92,10 @@ class StateTransitionRead(BaseModel):
 
 
 class PolicyCreate(BaseModel):
-    name: str
-    policy_type: str = "simple"
+    name: ConstrainedName
+    policy_type: ConstrainedName = "simple"
     policy_content: dict
-    scope: str | None = None
+    scope: ConstrainedName | None = None
 
 
 class PolicyRead(BaseModel):
@@ -121,12 +126,12 @@ class AuditLogRead(BaseModel):
 
 
 class KBSSecretCreate(BaseModel):
-    repo: str
-    secret_type: str
-    tag: str
-    value: str  # plaintext — server encrypts before storage
+    repo: ConstrainedName
+    secret_type: ConstrainedName
+    tag: ConstrainedName
+    value: Annotated[str, StringConstraints(min_length=1, max_length=65536)]
     required_state: WorkloadState = WorkloadState.HEALTHY
-    workload_scope: str | None = None
+    workload_scope: ConstrainedName | None = None
 
 
 class KBSSecretRead(BaseModel):
