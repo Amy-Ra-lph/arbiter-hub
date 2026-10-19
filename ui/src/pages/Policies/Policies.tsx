@@ -17,7 +17,6 @@ import {
   Form,
   FormGroup,
   TextInput,
-  TextArea,
   Switch,
 } from "@patternfly/react-core";
 import {
@@ -33,6 +32,7 @@ import TitleLayout from "src/components/layouts/TitleLayout";
 import SearchInputLayout from "src/components/layouts/SearchInputLayout";
 import PaginationLayout from "src/components/layouts/PaginationLayout";
 import DataSpinner from "src/components/DataSpinner";
+import PolicyBuilder from "./PolicyBuilder";
 import { useGetPoliciesQuery, useCreatePolicyMutation } from "src/services/rpcPolicies";
 
 const Policies: React.FC = () => {
@@ -45,9 +45,9 @@ const Policies: React.FC = () => {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState("");
+  const [newType, setNewType] = useState("simple");
   const [newScope, setNewScope] = useState("");
-  const [newContent, setNewContent] = useState("{}");
+  const [newContent, setNewContent] = useState('{"rules":[],"obligations":[]}');
   const [newActive, setNewActive] = useState(true);
   const [jsonError, setJsonError] = useState("");
 
@@ -84,15 +84,6 @@ const Policies: React.FC = () => {
     });
   };
 
-  const validateJson = (val: string) => {
-    try {
-      JSON.parse(val);
-      setJsonError("");
-    } catch {
-      setJsonError("Invalid JSON");
-    }
-  };
-
   const handleAdd = async () => {
     let content: Record<string, unknown>;
     try {
@@ -114,9 +105,9 @@ const Policies: React.FC = () => {
 
   const resetForm = () => {
     setNewName("");
-    setNewType("");
+    setNewType("simple");
     setNewScope("");
-    setNewContent("{}");
+    setNewContent('{"rules":[],"obligations":[]}');
     setNewActive(true);
     setJsonError("");
   };
@@ -258,12 +249,23 @@ const Policies: React.FC = () => {
               />
             </FormGroup>
             <FormGroup label="Policy Type" isRequired fieldId="policy-type">
-              <TextInput
+              <FormSelect
                 id="policy-type"
                 value={newType}
-                onChange={(_evt, val) => setNewType(val)}
-                placeholder="e.g. allowlist, opa, rego"
-              />
+                onChange={(_evt, val) => {
+                  setNewType(val);
+                  if (val === "simple") {
+                    setNewContent('{"rules":[],"obligations":[]}');
+                  } else {
+                    setNewContent("{}");
+                  }
+                  setJsonError("");
+                }}
+              >
+                <FormSelectOption value="simple" label="simple — Rule-based (action + requirements)" />
+                <FormSelectOption value="allowlist" label="allowlist — Approved value lists" />
+                <FormSelectOption value="opa" label="opa — Open Policy Agent (Rego)" />
+              </FormSelect>
             </FormGroup>
             <FormGroup label="Scope" fieldId="policy-scope">
               <TextInput
@@ -273,25 +275,12 @@ const Policies: React.FC = () => {
                 placeholder="Leave empty for global"
               />
             </FormGroup>
-            <FormGroup
-              label="Policy Content (JSON)"
-              isRequired
-              fieldId="policy-content"
-            >
-              <TextArea
-                id="policy-content"
-                value={newContent}
-                onChange={(_evt, val) => setNewContent(val)}
-                onBlur={() => validateJson(newContent)}
-                rows={8}
-                style={{ fontFamily: "monospace" }}
-              />
-              {jsonError && (
-                <div style={{ color: "var(--pf-t--global--color--status--danger--default)", marginTop: "4px" }}>
-                  {jsonError}
-                </div>
-              )}
-            </FormGroup>
+            <PolicyBuilder
+              policyType={newType}
+              value={newContent}
+              onChange={setNewContent}
+              onJsonError={setJsonError}
+            />
             <FormGroup fieldId="policy-active">
               <Switch
                 id="policy-active"
@@ -306,7 +295,7 @@ const Policies: React.FC = () => {
           <Button
             variant="primary"
             onClick={handleAdd}
-            isDisabled={!newName.trim() || !newType.trim() || !!jsonError || creating}
+            isDisabled={!newName.trim() || !!jsonError || creating}
           >
             Create Policy
           </Button>
