@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
             "falco",
             FalcoBackend(healthz_url=settings.falco_healthz_url),
         )
-    if settings.cosign_binary:
+    if settings.cosign_public_key:
         from server.backends.cosign import CosignBackend
 
         registry.register(

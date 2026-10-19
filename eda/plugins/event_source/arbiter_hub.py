@@ -29,7 +29,7 @@ async def main(queue: Any, args: dict[str, Any]) -> None:
 
     async def handle_webhook(request: web.Request) -> web.Response:
         body = await request.read()
-        sig = request.headers.get("X-Hub-Signature-256", "")
+        sig = request.headers.get("X-Arbiter-Signature", "")
 
         if secret and not validate_hmac(body, sig, secret):
             log.warning("HMAC validation failed")

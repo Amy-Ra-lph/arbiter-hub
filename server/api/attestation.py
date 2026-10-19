@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
+from server.api.webhooks import dispatch_webhooks
 from server.backends.base import BackendRegistry, compute_composite_verdict
 from server.models.db import (
     AttestationRecord,
@@ -64,13 +65,15 @@ async def trigger_attestation(
     if not registry:
         raise HTTPException(status_code=500, detail="backend registry not initialized")
 
-    # Resolve backends for all declared types, skip missing with warning
+    # Resolve backends for all declared types, track skipped
     backends = []
+    skipped_backends = []
     for bt in workload.backend_types:
         try:
             backends.append((bt, registry.get(bt)))
         except KeyError:
-            log.warning("backend %s not configured, skipping", bt)
+            log.warning("backend %s not configured, skipped", bt)
+            skipped_backends.append(bt)
     if not backends:
         raise HTTPException(
             status_code=503,
@@ -116,6 +119,7 @@ async def trigger_attestation(
     composite = compute_composite_verdict(att_results)
 
     # Transition based on composite verdict
+    pre_transition_state = workload.current_state
     if composite == AttestationVerdict.PASS:
         await transition(session, workload, WorkloadState.HEALTHY, "attestation_result")
         workload.last_attested_at = datetime.now(UTC)
@@ -124,6 +128,13 @@ async def trigger_attestation(
 
     await session.commit()
 
+    if workload.current_state != pre_transition_state:
+        await dispatch_webhooks(
+            session, "state_transition", workload.id,
+            pre_transition_state.value, workload.current_state.value,
+            {"verdict": composite.value},
+        )
+
     response_detail = {
         "workload_id": str(workload_id),
         "verdict": composite.value,
@@ -131,6 +142,8 @@ async def trigger_attestation(
         "attestation_id": str(record_ids[0]),
         "per_backend": [
             {"backend": ar.backend, "verdict": ar.verdict.value} for ar in att_results
+        ] + [
+            {"backend": sb, "verdict": "skipped"} for sb in skipped_backends
         ],
     }
 

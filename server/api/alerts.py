@@ -2,9 +2,12 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from server.api.webhooks import dispatch_webhooks
+from server.auth.dependencies import require_permission
+from server.auth.models import CallerIdentity
 from server.models.db import (
     AttestationRecord,
     AttestationVerdict,
@@ -76,6 +79,12 @@ async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
     session.add(record)
     await session.commit()
 
+    await dispatch_webhooks(
+        session, "state_transition", workload.id,
+        "healthy", "failed",
+        {"rule": alert.get("rule", ""), "priority": priority},
+    )
+
     return {
         "transitioned": True,
         "workload_id": str(workload.id),
@@ -89,5 +98,6 @@ async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
 async def receive_falco_alert(
     alert: dict,
     session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("trigger_attestation"),
 ):
     return await _handle_falco_alert(alert, session)
