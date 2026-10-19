@@ -403,6 +403,7 @@ async def create_policy(
         policy_type=body.policy_type,
         policy_content=body.policy_content,
         scope=body.scope,
+        active=body.active,
         created_by=caller.principal,
     )
     session.add(policy)

@@ -96,6 +96,7 @@ class PolicyCreate(BaseModel):
     policy_type: ConstrainedName = "simple"
     policy_content: dict
     scope: ConstrainedName | None = None
+    active: bool = True
 
 
 class PolicyRead(BaseModel):
