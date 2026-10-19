@@ -69,6 +69,16 @@ phases:
   - name: init
     steps:
       - playbook: init/testrunner-dir.yaml
+      # Clone arbiter-hub repo on all hosts — later phases reference /opt/arbiter-hub/
+      - command: |
+          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub
+        host: idm.arbiter.demo
+      - command: |
+          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub
+        host: hub.arbiter.demo
+      - command: |
+          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub
+        host: agent.arbiter.demo
 
   - name: provision
     steps:
