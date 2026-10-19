@@ -16,6 +16,5 @@ def test_cosign_guard_uses_public_key_not_binary():
             break
     assert guard_line is not None, "No cosign guard found in lifespan"
     assert "cosign_public_key" in guard_line, (
-        f"Cosign guard should check cosign_public_key, not cosign_binary. "
-        f"Found: {guard_line}"
+        f"Cosign guard should check cosign_public_key, not cosign_binary. Found: {guard_line}"
     )

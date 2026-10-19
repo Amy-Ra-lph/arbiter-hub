@@ -31,9 +31,7 @@ async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
     if not container_id:
         return {"transitioned": False, "detail": "no container.id in alert"}
 
-    stmt = select(Workload).where(
-        Workload.metadata_["container_id"].astext == container_id
-    )
+    stmt = select(Workload).where(Workload.metadata_["container_id"].astext == container_id)
     result = await session.execute(stmt)
     workloads = result.scalars().all()
 
@@ -79,8 +77,11 @@ async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
     await session.commit()
 
     await dispatch_webhooks(
-        session, "state_transition", workload.id,
-        "healthy", "failed",
+        session,
+        "state_transition",
+        workload.id,
+        "healthy",
+        "failed",
         {"rule": alert.get("rule", ""), "priority": priority},
     )
 

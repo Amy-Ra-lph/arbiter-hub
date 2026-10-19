@@ -130,8 +130,11 @@ async def trigger_attestation(
 
     if workload.current_state != pre_transition_state:
         await dispatch_webhooks(
-            session, "state_transition", workload.id,
-            pre_transition_state.value, workload.current_state.value,
+            session,
+            "state_transition",
+            workload.id,
+            pre_transition_state.value,
+            workload.current_state.value,
             {"verdict": composite.value},
         )
 
@@ -140,11 +143,8 @@ async def trigger_attestation(
         "verdict": composite.value,
         "state": workload.current_state.value,
         "attestation_id": str(record_ids[0]),
-        "per_backend": [
-            {"backend": ar.backend, "verdict": ar.verdict.value} for ar in att_results
-        ] + [
-            {"backend": sb, "verdict": "skipped"} for sb in skipped_backends
-        ],
+        "per_backend": [{"backend": ar.backend, "verdict": ar.verdict.value} for ar in att_results]
+        + [{"backend": sb, "verdict": "skipped"} for sb in skipped_backends],
     }
 
     if composite == AttestationVerdict.UNAVAILABLE:

@@ -25,9 +25,7 @@ async def test_mock_kbs_attest_registered_measurement():
     _registered_measurements.clear()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
-        reg_resp = await c.post(
-            "/kbs/v0/register", json={"measurement": "ab" * 24}
-        )
+        reg_resp = await c.post("/kbs/v0/register", json={"measurement": "ab" * 24})
         assert reg_resp.status_code == 200
 
         resp = await c.post(

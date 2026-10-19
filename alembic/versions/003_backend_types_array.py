@@ -21,9 +21,7 @@ def upgrade() -> None:
         "workloads",
         sa.Column("backend_types", sa.ARRAY(sa.String(50)), nullable=True),
     )
-    op.execute(
-        "UPDATE workloads SET backend_types = ARRAY[backend_type::text]"
-    )
+    op.execute("UPDATE workloads SET backend_types = ARRAY[backend_type::text]")
     op.alter_column("workloads", "backend_types", nullable=False)
     op.drop_column("workloads", "backend_type")
 
@@ -33,8 +31,6 @@ def downgrade() -> None:
         "workloads",
         sa.Column("backend_type", sa.VARCHAR(50), nullable=True),
     )
-    op.execute(
-        "UPDATE workloads SET backend_type = backend_types[1]"
-    )
+    op.execute("UPDATE workloads SET backend_type = backend_types[1]")
     op.alter_column("workloads", "backend_type", nullable=False)
     op.drop_column("workloads", "backend_types")
