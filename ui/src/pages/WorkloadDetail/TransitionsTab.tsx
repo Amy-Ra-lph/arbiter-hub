@@ -34,7 +34,7 @@ const TransitionsTab: React.FC<TransitionsTabProps> = ({ workloadId }) => {
   const { data, isLoading } = useGetWorkloadTransitionsQuery({
     id: workloadId,
     startIndex: 0,
-    count: 500,
+    count: 100,
   });
 
   const items = data?.items ?? [];

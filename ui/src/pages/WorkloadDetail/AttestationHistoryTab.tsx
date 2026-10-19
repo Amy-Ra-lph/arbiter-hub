@@ -39,7 +39,7 @@ const AttestationHistoryTab: React.FC<AttestationHistoryTabProps> = ({
   const { data, isLoading } = useGetWorkloadAttestationsQuery({
     id: workloadId,
     startIndex: 0,
-    count: 500,
+    count: 100,
   });
 
   const items = data?.items ?? [];

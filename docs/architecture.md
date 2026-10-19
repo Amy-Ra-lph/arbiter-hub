@@ -145,7 +145,7 @@ Backends are pluggable via Python entry points (`arbiter_hub.backends`).
 |------|-----------|------|
 | Dev (`ARBITER_DEV_MODE=true`) | X-Caller-* headers | Local development |
 | Production | OIDC token validation | Deployment (Phase 2.5) |
-| Backend-to-backend | mTLS client certs | Phase 3 |
+| Backend-to-backend | mTLS client certs | Planned |
 
 RBAC roles: `attestation-admin`, `attestation-reader`, `policy-editor`
 
@@ -158,7 +158,7 @@ Secret release is gated on workload state. A workload must be in the secret's `r
 - Pod network is `Internal=true` — only nginx and MCP (localhost) are externally accessible
 - nginx provides load balancing with passive health checks (`max_fails=3 fail_timeout=10s`)
 - `proxy_next_upstream` retries failed requests on healthy nodes
-- All inter-container communication is plaintext over the internal bridge (TLS planned for Phase 3)
+- All inter-container communication is plaintext over the internal bridge (mTLS planned)
 
 ### Telemetry
 
@@ -181,12 +181,28 @@ systemctl --user start arbiter-hub-ui     # depends on api
 
 Container images built from UBI 10 base images. API runs as UID 1001, UI uses nginx default non-root user. All containers mount volumes read-only where possible.
 
-## Phase 3 Planned Components
+## Phase 3 Components (Implemented)
+
+### Multi-Backend Attestation
+
+Each workload declares a `backend_types` array (e.g. `["keylime", "falco"]`). The composite `/attest` endpoint runs all registered backends in parallel and applies FAIL-trumps-UNAVAILABLE verdict logic. Backward-compatible with single `backend_type` via schema alias.
 
 ### Falco eBPF Runtime Monitoring
 
-eBPF-based syscall monitoring on attested workloads. Falco alerts trigger state machine transitions (HEALTHY → FAILED) with behavioral evidence recorded in the attestation log.
+Falco 0.45+ with modern eBPF probe monitors attested workloads in real time. Custom rules in `/etc/falco/rules.d/arbiter-rules.yaml` detect reverse shells, sensitive file access, and unexpected processes. Alerts POST to `/api/alerts/falco` (localhost-authenticated) and trigger state transitions (HEALTHY → FAILED) with behavioral evidence in the audit log.
 
 ### Event-Driven Ansible (EDA) Remediation
 
-Attestation state transitions fire webhooks to EDA, which evaluates rulebooks and runs remediation playbooks (quarantine, re-attest, forensic collection, decommission).
+State transitions dispatch HMAC-signed webhooks to registered endpoints. The EDA source plugin (`eda/plugins/event_source/arbiter_hub.py`) receives webhooks on port 5001, validates HMAC-SHA256 signatures, and pushes events to ansible-rulebook. Three rulebook-driven playbooks: `quarantine.yml` (network isolation + remediate API call), `re_attest.yml` (re-attestation trigger), and `forensic_collect.yml` (evidence preservation on critical alerts).
+
+### Mock KBS (Key Broker Service)
+
+In-memory secret store gated on workload attestation state. Secrets released only when workload is in `HEALTHY` state with current attestation. Supports `store` / `retrieve` / `list` operations. Designed for CVM attestation testing without real TEE hardware.
+
+### Outbound Webhook Dispatcher
+
+Configurable webhook registrations per event type (`state_transition`). HMAC-SHA256 signed payloads delivered asynchronously via httpx. Delivery failures logged but never block API responses. Admin endpoints for webhook CRUD.
+
+### Verified E2E Flow
+
+Falco alert → API state transition → webhook dispatch → EDA quarantine playbook → API remediate call. Full loop completes in ~2 seconds. Demonstrated on Beaker 2-node lab (RHEL 10).
