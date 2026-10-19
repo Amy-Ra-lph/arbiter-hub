@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Button,
   Page,
   Masthead,
   MastheadMain,
@@ -15,9 +16,11 @@ import {
 import { Outlet } from "react-router-dom";
 import Navigation from "src/navigation/Nav";
 import ArbiterLogo from "src/components/ArbiterLogo";
+import { useAuthContext } from "src/auth/OIDCProvider";
 
 const AppLayout: React.FC = () => {
   const skipToContentRef = React.useRef<HTMLDivElement>(null);
+  const { user, authMode, logout } = useAuthContext();
 
   const masthead = (
     <Masthead>
@@ -34,6 +37,18 @@ const AppLayout: React.FC = () => {
                 Federation Attestation Hub
               </span>
             </ToolbarItem>
+            {authMode === "oidc" && user && (
+              <>
+                <ToolbarItem>
+                  <span style={{ fontSize: "14px" }}>{user}</span>
+                </ToolbarItem>
+                <ToolbarItem>
+                  <Button variant="plain" onClick={logout}>
+                    Log out
+                  </Button>
+                </ToolbarItem>
+              </>
+            )}
           </ToolbarContent>
         </Toolbar>
       </MastheadContent>

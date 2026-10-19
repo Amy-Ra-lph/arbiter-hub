@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "src/AppLayout";
+import { ProtectedRoute } from "src/auth/ProtectedRoute";
 import Dashboard from "src/pages/Dashboard/Dashboard";
 import Workloads from "src/pages/Workloads/Workloads";
 import WorkloadDetail from "src/pages/WorkloadDetail/WorkloadDetail";
@@ -25,8 +26,9 @@ const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<AppLayout />}>
-          <Route index element={<Dashboard />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AppLayout />}>
+            <Route index element={<Dashboard />} />
           <Route path="/workloads" element={<Workloads />} />
           <Route path="/workloads/:workloadId" element={<WorkloadDetail />} />
           <Route path="/backends" element={<Backends />} />
@@ -38,6 +40,7 @@ const App: React.FC = () => {
           <Route path="/kbs" element={<KBSSecrets />} />
           <Route path="/audit" element={<AuditLog />} />
           <Route path="/federation" element={<Federation />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>
