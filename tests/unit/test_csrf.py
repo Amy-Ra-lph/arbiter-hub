@@ -29,7 +29,7 @@ def _make_app(*, allowed_origins: list[str], auth_mode: str = "oidc"):
 @pytest.mark.asyncio
 async def test_post_without_origin_rejected():
     app = _make_app(allowed_origins=["https://hub.example.com"])
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=app, client=("203.0.113.1", 9999))
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/test", json={})
         assert resp.status_code == 403
@@ -66,7 +66,7 @@ async def test_dev_mode_skips_csrf():
 @pytest.mark.asyncio
 async def test_post_with_bad_origin_rejected():
     app = _make_app(allowed_origins=["https://hub.example.com"])
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=app, client=("203.0.113.1", 9999))
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/test", json={}, headers={"Origin": "https://evil.com"})
         assert resp.status_code == 403
