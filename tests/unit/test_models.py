@@ -27,7 +27,7 @@ def test_attestation_verdict_enum():
 
 
 def test_backend_type_enum():
-    assert set(b.value for b in BackendType) == {"keylime", "trustee", "cosign", "rekor"}
+    assert set(b.value for b in BackendType) == {"keylime", "trustee", "cosign", "rekor", "falco"}
 
 
 def test_workload_create_schema():
@@ -35,9 +35,10 @@ def test_workload_create_schema():
         ipa_principal="agent-foo@EXAMPLE.COM",
         display_name="Agent Foo",
         workload_type=WorkloadType.AGENTIC,
-        backend_type=BackendType.KEYLIME,
+        backend_type="keylime",
     )
     assert wc.ipa_principal == "agent-foo@EXAMPLE.COM"
+    assert wc.backend_types == [BackendType.KEYLIME]
 
 
 def test_paginated_response():

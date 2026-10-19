@@ -25,7 +25,7 @@ class MockWorkload:
     ipa_principal: str
     display_name: str
     workload_type: WorkloadType
-    backend_type: BackendType
+    backend_types: list[str]
     stale_ttl_seconds: int
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     current_state: WorkloadState = WorkloadState.REGISTERED
@@ -91,7 +91,7 @@ class MockAsyncSession:
                 ipa_principal=obj.ipa_principal,
                 display_name=obj.display_name,
                 workload_type=obj.workload_type,
-                backend_type=obj.backend_type,
+                backend_types=obj.backend_types,
                 stale_ttl_seconds=obj.stale_ttl_seconds,
                 current_state=obj.current_state
                 if hasattr(obj, "current_state") and obj.current_state

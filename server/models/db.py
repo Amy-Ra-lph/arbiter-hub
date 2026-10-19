@@ -17,7 +17,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SAEnum,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -52,6 +52,7 @@ class BackendType(enum.StrEnum):
     TRUSTEE = "trustee"
     COSIGN = "cosign"
     REKOR = "rekor"
+    FALCO = "falco"
 
 
 class Base(DeclarativeBase):
@@ -68,7 +69,7 @@ class Workload(Base):
     current_state: Mapped[WorkloadState] = mapped_column(
         SAEnum(WorkloadState), nullable=False, default=WorkloadState.REGISTERED
     )
-    backend_type: Mapped[BackendType] = mapped_column(SAEnum(BackendType), nullable=False)
+    backend_types: Mapped[list[str]] = mapped_column(ARRAY(String(50)), nullable=False)
     stale_ttl_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=3600)
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

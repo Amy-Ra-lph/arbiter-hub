@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from server.models.db import AttestationVerdict, BackendType, WorkloadState, WorkloadType
 
@@ -28,9 +28,16 @@ class WorkloadCreate(BaseModel):
     ipa_principal: str
     display_name: str
     workload_type: WorkloadType
-    backend_type: BackendType
+    backend_types: list[BackendType] = Field(min_length=1)
     stale_ttl_seconds: int = 3600
     metadata: dict = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compat_singular(cls, data):
+        if isinstance(data, dict) and "backend_type" in data and "backend_types" not in data:
+            data["backend_types"] = [data.pop("backend_type")]
+        return data
 
 
 class WorkloadRead(BaseModel):
@@ -39,7 +46,7 @@ class WorkloadRead(BaseModel):
     display_name: str
     workload_type: WorkloadType
     current_state: WorkloadState
-    backend_type: BackendType
+    backend_types: list[str]
     stale_ttl_seconds: int
     registered_at: datetime
     last_attested_at: datetime | None

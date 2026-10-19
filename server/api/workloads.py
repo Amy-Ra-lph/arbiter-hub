@@ -319,7 +319,7 @@ async def register_workload(
         ipa_principal=body.ipa_principal,
         display_name=body.display_name,
         workload_type=body.workload_type,
-        backend_type=body.backend_type,
+        backend_types=[bt.value for bt in body.backend_types],
         stale_ttl_seconds=body.stale_ttl_seconds,
         metadata_=body.metadata,
     )

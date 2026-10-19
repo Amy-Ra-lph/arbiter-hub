@@ -61,10 +61,11 @@ async def trigger_attestation(
         raise HTTPException(status_code=500, detail="backend registry not initialized")
 
     try:
-        backend = registry.get(workload.backend_type.value)
+        primary_backend = workload.backend_types[0]
+        backend = registry.get(primary_backend)
     except KeyError:
         raise HTTPException(
-            status_code=503, detail=f"backend {workload.backend_type.value} not configured"
+            status_code=503, detail=f"backend {workload.backend_types[0]} not configured"
         )
 
     att_result = await backend.verify(workload)
@@ -72,7 +73,7 @@ async def trigger_attestation(
     # Record attestation result
     record = AttestationRecord(
         workload_id=workload.id,
-        backend=workload.backend_type,
+        backend=workload.backend_types[0],
         verdict=att_result.verdict,
         evidence_hash=att_result.evidence_hash,
         detail=att_result.detail,
