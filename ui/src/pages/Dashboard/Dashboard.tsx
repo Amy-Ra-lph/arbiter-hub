@@ -317,10 +317,11 @@ const Dashboard: React.FC = () => {
                               <span style={{ fontSize: "13px", color: "var(--pf-t--global--color--nonstatus--gray--default)" }}>
                                 {event.detail &&
                                 typeof event.detail === "object" &&
-                                "justification" in event.detail
-                                  ? (event.detail.justification as string).length > 80
-                                    ? (event.detail.justification as string).slice(0, 80) + "..."
-                                    : (event.detail.justification as string)
+                                "justification" in event.detail &&
+                                event.detail.justification
+                                  ? String(event.detail.justification).length > 80
+                                    ? String(event.detail.justification).slice(0, 80) + "..."
+                                    : String(event.detail.justification)
                                   : event.detail &&
                                     typeof event.detail === "object" &&
                                     "verdict" in event.detail

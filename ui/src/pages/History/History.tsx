@@ -17,14 +17,16 @@ import {
   Tbody,
   Td,
 } from "@patternfly/react-table";
+import { Label } from "@patternfly/react-core";
 import { Link } from "react-router-dom";
 import TitleLayout from "src/components/layouts/TitleLayout";
 import SearchInputLayout from "src/components/layouts/SearchInputLayout";
 import PaginationLayout from "src/components/layouts/PaginationLayout";
+import StateBadge from "src/components/StateBadge";
 import VerdictBadge from "src/components/VerdictBadge";
 import DataSpinner from "src/components/DataSpinner";
 import { useGetAuditQuery } from "src/services/rpcAudit";
-import { AttestationVerdict } from "src/utils/datatypes/globalDataTypes";
+import { AttestationVerdict, WorkloadState } from "src/utils/datatypes/globalDataTypes";
 
 const History: React.FC = () => {
   const [page, setPage] = useState(1);
@@ -37,7 +39,7 @@ const History: React.FC = () => {
   const items = data?.items ?? [];
 
   const filtered = useMemo(() => {
-    let result = items.filter((e) => e.action === "attestation");
+    let result = items;
     if (verdictFilter) {
       result = result.filter(
         (e) =>
@@ -52,7 +54,8 @@ const History: React.FC = () => {
       result = result.filter(
         (e) =>
           e.actor.toLowerCase().includes(lower) ||
-          (e.target_id && e.target_id.toLowerCase().includes(lower))
+          (e.target_id && e.target_id.toLowerCase().includes(lower)) ||
+          e.action.toLowerCase().includes(lower)
       );
     }
     return result;
@@ -158,8 +161,29 @@ const History: React.FC = () => {
               <Td dataLabel="Time">
                 {new Date(event.created_at).toLocaleString()}
               </Td>
-              <Td dataLabel="Actor">{event.actor}</Td>
-              <Td dataLabel="Action">{event.action}</Td>
+              <Td dataLabel="Actor">
+                {event.actor === "falco_alert" ? (
+                  <Label color="orange" isCompact>falco</Label>
+                ) : event.actor === "attestation_result" ? (
+                  <Label color="blue" isCompact>attest</Label>
+                ) : (
+                  event.actor
+                )}
+              </Td>
+              <Td dataLabel="Action">
+                {event.detail &&
+                typeof event.detail === "object" &&
+                "from" in event.detail &&
+                "to" in event.detail ? (
+                  <span>
+                    <StateBadge state={event.detail.from as WorkloadState} />{" "}
+                    <span style={{ margin: "0 4px" }}>&rarr;</span>{" "}
+                    <StateBadge state={event.detail.to as WorkloadState} />
+                  </span>
+                ) : (
+                  event.action
+                )}
+              </Td>
               <Td dataLabel="Target">
                 {event.target_id ? (
                   <Link to={`/workloads/${event.target_id}`}>
