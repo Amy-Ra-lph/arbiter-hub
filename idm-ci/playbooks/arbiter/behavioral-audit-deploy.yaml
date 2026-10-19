@@ -1,0 +1,52 @@
+---
+# behavioral-audit-deploy.yaml — Deploy behavioral audit classifiers on agent node
+# From agentic-security-platform: injection, persistence, and shell classifiers
+# that analyze agent commands for malicious patterns
+- name: Deploy behavioral audit classifiers
+  hosts: agent.arbiter.demo
+  become: true
+  vars:
+    platform_dir: /opt/agentic-platform
+    audit_dir: /opt/demo/audit
+  tasks:
+    - name: Create audit directory
+      ansible.builtin.file:
+        path: "{{ audit_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy audit classifiers from agentic-security-platform
+      ansible.builtin.copy:
+        src: "{{ platform_dir }}/audit/{{ item }}"
+        dest: "{{ audit_dir }}/{{ item }}"
+        mode: "0644"
+        remote_src: true
+      loop:
+        - __init__.py
+        - injection_detector.py
+        - persistence_detector.py
+        - shell_classifier.py
+
+    - name: Install classifier dependencies
+      ansible.builtin.pip:
+        name:
+          - pyyaml
+        state: present
+
+    - name: Verify classifiers load without errors
+      ansible.builtin.command:
+        cmd: >-
+          python3 -c "
+          import sys; sys.path.insert(0, '{{ audit_dir }}');
+          from injection_detector import *;
+          from persistence_detector import *;
+          from shell_classifier import *;
+          print('All classifiers loaded')
+          "
+      register: classifier_check
+      changed_when: false
+      failed_when: "'All classifiers loaded' not in classifier_check.stdout"
+
+    - name: Display classifier status
+      ansible.builtin.debug:
+        msg: "{{ classifier_check.stdout }}"

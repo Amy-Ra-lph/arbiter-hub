@@ -1,0 +1,72 @@
+---
+# exfil-receiver-deploy.yaml — Deploy canary data exfiltration receiver on idm node
+# Catches rogue agent exfil attempts — self-signed TLS, logs to /var/log/exfil/
+- name: Deploy exfil receiver
+  hosts: idm.arbiter.demo
+  become: true
+  vars:
+    platform_dir: /opt/agentic-platform
+    exfil_dir: /opt/demo/exfil-receiver
+    exfil_port: 9443
+  tasks:
+    - name: Install Python dependencies
+      ansible.builtin.dnf:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Create exfil receiver directory
+      ansible.builtin.file:
+        path: "{{ exfil_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy exfil receiver from agentic-security-platform
+      ansible.builtin.copy:
+        src: "{{ platform_dir }}/beaker/exfil-receiver/"
+        dest: "{{ exfil_dir }}/"
+        remote_src: true
+        mode: "0755"
+
+    - name: Generate self-signed cert for exfil receiver
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:2048 -nodes
+          -keyout {{ exfil_dir }}/server-key.pem
+          -out {{ exfil_dir }}/server.pem
+          -days 30
+          -subj "/CN=exfil-receiver.arbiter.demo/O=DEMO"
+        creates: "{{ exfil_dir }}/server.pem"
+
+    - name: Create exfil log directory
+      ansible.builtin.file:
+        path: /var/log/exfil
+        state: directory
+        mode: "0750"
+
+    - name: Deploy exfil receiver systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/exfil-receiver.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Canary Data Exfiltration Receiver
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ exfil_dir }}
+          ExecStart=/usr/bin/python3 {{ exfil_dir }}/server.py
+          Environment=EXFIL_PORT={{ exfil_port }}
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start exfil receiver
+      ansible.builtin.systemd:
+        name: exfil-receiver
+        state: started
+        enabled: true
+        daemon_reload: true

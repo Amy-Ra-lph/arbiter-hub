@@ -1,0 +1,39 @@
+---
+# trust-profiles-deploy.yaml — Deploy trust tier sandbox profiles on agent node
+# Profiles from agentic-security-platform define enforcement boundaries:
+#   sovereign — full isolation, no network, IMA-verified binaries
+#   verified  — attested identity, scoped API access, audit trail
+#   untrusted — network-gated, read-only fs, no credential access
+- name: Deploy trust tier sandbox profiles
+  hosts: agent.arbiter.demo
+  become: true
+  vars:
+    platform_dir: /opt/agentic-platform
+    profiles_dest: /opt/demo/profiles
+  tasks:
+    - name: Create profiles directory
+      ansible.builtin.file:
+        path: "{{ profiles_dest }}"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy sandbox profiles from agentic-security-platform
+      ansible.builtin.copy:
+        src: "{{ platform_dir }}/deploy/profiles/{{ item }}"
+        dest: "{{ profiles_dest }}/{{ item }}"
+        mode: "0644"
+        remote_src: true
+      loop:
+        - sovereign.profile
+        - verified.profile
+        - untrusted.profile
+
+    - name: Verify profiles deployed
+      ansible.builtin.stat:
+        path: "{{ profiles_dest }}/{{ item }}"
+      loop:
+        - sovereign.profile
+        - verified.profile
+        - untrusted.profile
+      register: profile_check
+      failed_when: not profile_check.results | map(attribute='stat.exists') | list | min

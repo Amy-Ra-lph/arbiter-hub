@@ -29,6 +29,15 @@
 #     - SPIRE agent (JWT-SVID → ahdapa federation)
 #     - Falco (eBPF runtime monitoring)
 #     - Demo agent workloads (attested containers)
+#     - Trust tier sandbox profiles (sovereign/verified/untrusted)
+#     - Governed + rogue demo agents (honeypot canaries)
+#     - Falco→SIEM bridge (OCSF normalization)
+#     - Behavioral audit (injection/persistence/shell classifiers)
+#
+#   Also deployed from agentic-security-platform repo:
+#     - Exfil receiver (canary data exfiltration detection, on idm node)
+#     - EDA agent anomaly rulebook (behavioral triggers)
+#     - OCSF rsyslog forwarder
 #
 # Lifetime: 7 days. Do NOT set IDMCI_SUT_LIFETIME env var when triggering
 # Jenkins — reservation duration handled by Jenkins job config.
@@ -46,6 +55,7 @@
 #   te metadata-arbiter-demo-3node.yaml --phase arbiter    # Hub + enforcement-mcp
 #   te metadata-arbiter-demo-3node.yaml --phase agents     # OpenShell + linux-mcp-server + Falco
 #   te metadata-arbiter-demo-3node.yaml --phase eda        # EDA rulebooks + webhooks
+#   te metadata-arbiter-demo-3node.yaml --phase trust      # Trust tiers + SIEM bridge + demo agents
 #   te metadata-arbiter-demo-3node.yaml --phase test       # E2E smoke tests
 
 domains:
@@ -69,15 +79,18 @@ phases:
   - name: init
     steps:
       - playbook: init/testrunner-dir.yaml
-      # Clone arbiter-hub repo on all hosts — later phases reference /opt/arbiter-hub/
+      # Clone repos on all hosts — later phases reference /opt/arbiter-hub/ and /opt/agentic-platform/
       - command: |
-          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub
+          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
+          git clone https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
         host: idm.arbiter.demo
       - command: |
-          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub
+          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
+          git clone https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
         host: hub.arbiter.demo
       - command: |
-          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub
+          git clone https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
+          git clone https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
         host: agent.arbiter.demo
 
   - name: provision
@@ -169,6 +182,19 @@ phases:
       - playbook: arbiter/webhook-setup.yaml
       # OBO delegation rules for demo agents
       - playbook: arbiter/delegation-rules.yaml
+
+  - name: trust
+    steps:
+      # Trust tier sandbox profiles + demo agents (from agentic-security-platform)
+      - playbook: arbiter/trust-profiles-deploy.yaml
+      # Exfil receiver (canary data exfil detection) on idm node
+      - playbook: arbiter/exfil-receiver-deploy.yaml
+      # Governed + rogue demo agents with honeypot canaries
+      - playbook: arbiter/demo-agents-deploy.yaml
+      # Falco→SIEM bridge (OCSF normalization) + rsyslog forwarder
+      - playbook: arbiter/siem-bridge-deploy.yaml
+      # Behavioral audit classifiers (injection/persistence/shell)
+      - playbook: arbiter/behavioral-audit-deploy.yaml
 
   - name: test
     steps:

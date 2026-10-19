@@ -1,0 +1,75 @@
+---
+# siem-bridge-deploy.yaml — Deploy Falco→SIEM bridge with OCSF normalization
+# Converts Falco JSON alerts to OCSF format, forwards via rsyslog
+# From agentic-security-platform: falco_siem_bridge.py + rsyslog config
+- name: Deploy Falco-SIEM bridge and OCSF forwarder
+  hosts: agent.arbiter.demo
+  become: true
+  vars:
+    platform_dir: /opt/agentic-platform
+    bridge_dir: /opt/demo/bridge
+    hub_api_url: "http://hub.arbiter.demo:8400"
+  tasks:
+    - name: Create bridge directory
+      ansible.builtin.file:
+        path: "{{ bridge_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy Falco-SIEM bridge from agentic-security-platform
+      ansible.builtin.copy:
+        src: "{{ platform_dir }}/beaker/ansible/{{ item }}"
+        dest: "{{ bridge_dir }}/{{ item }}"
+        mode: "0755"
+        remote_src: true
+      loop:
+        - falco_siem_bridge.py
+        - falco-eda-bridge.py
+
+    - name: Create OCSF log directory
+      ansible.builtin.file:
+        path: /var/log/ocsf
+        state: directory
+        mode: "0750"
+
+    - name: Deploy Falco-SIEM bridge systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/falco-siem-bridge.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Falco to SIEM Bridge (OCSF normalization)
+          After=falco.service
+          Wants=falco.service
+
+          [Service]
+          Type=simple
+          WorkingDirectory={{ bridge_dir }}
+          ExecStart=/usr/bin/python3 {{ bridge_dir }}/falco_siem_bridge.py
+          Environment=ARBITER_API_URL={{ hub_api_url }}
+          Environment=OCSF_LOG_DIR=/var/log/ocsf
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Deploy rsyslog OCSF forwarder config
+      ansible.builtin.copy:
+        src: "{{ platform_dir }}/beaker/ansible/rsyslog-ocsf-forwarder.conf"
+        dest: /etc/rsyslog.d/90-ocsf-forwarder.conf
+        mode: "0644"
+        remote_src: true
+      notify: restart rsyslog
+
+    - name: Start Falco-SIEM bridge
+      ansible.builtin.systemd:
+        name: falco-siem-bridge
+        state: started
+        enabled: true
+        daemon_reload: true
+
+  handlers:
+    - name: restart rsyslog
+      ansible.builtin.systemd:
+        name: rsyslog
+        state: restarted
