@@ -11,5 +11,5 @@ async def get_auth_config():
         "auth_mode": settings.auth_mode,
         "issuer": settings.oidc_issuer,
         "client_id": settings.oidc_client_id,
-        "scopes": "openid profile",
+        "scopes": settings.oidc_scopes,
     }

@@ -36,6 +36,7 @@ class KeylimeBackend:
             import ssl
 
             ctx = ssl.create_default_context(cafile=self._ca_cert)
+            ctx.check_hostname = False
             ctx.load_cert_chain(self._client_cert, self._client_key)
             kwargs["verify"] = ctx
         return httpx.AsyncClient(**kwargs)
@@ -51,7 +52,7 @@ class KeylimeBackend:
             )
         try:
             async with self._build_client() as client:
-                resp = await client.get(f"{self._verifier_url}/v2.1/agents/{agent_id}")
+                resp = await client.get(f"{self._verifier_url}/v2.5/agents/{agent_id}")
                 resp.raise_for_status()
                 data = resp.json()
                 results = data.get("results", {})
@@ -101,7 +102,7 @@ class KeylimeBackend:
                     "runtime_policy": policy.get("runtime_policy", ""),
                 }
                 resp = await client.post(
-                    f"{self._verifier_url}/v2.1/agents/{agent_id}", json=payload
+                    f"{self._verifier_url}/v2.5/agents/{agent_id}", json=payload
                 )
                 resp.raise_for_status()
                 return EnrollResult(success=True, backend="keylime", detail=resp.json())
@@ -114,7 +115,7 @@ class KeylimeBackend:
             return RevokeResult(success=False, backend="keylime", detail={"error": "no agent_id"})
         try:
             async with self._build_client() as client:
-                resp = await client.delete(f"{self._verifier_url}/v2.1/agents/{agent_id}")
+                resp = await client.delete(f"{self._verifier_url}/v2.5/agents/{agent_id}")
                 resp.raise_for_status()
                 return RevokeResult(success=True, backend="keylime", detail=resp.json())
         except httpx.HTTPError as e:
@@ -123,7 +124,7 @@ class KeylimeBackend:
     async def health(self) -> BackendHealth:
         try:
             async with self._build_client() as client:
-                resp = await client.get(f"{self._verifier_url}/v2.1/agents/")
+                resp = await client.get(f"{self._verifier_url}/v2.5/agents/")
                 resp.raise_for_status()
                 return BackendHealth(
                     healthy=True,

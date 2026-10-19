@@ -124,13 +124,15 @@ class OIDCValidator:
         kid = unverified_header.get("kid", "")
         signing_key = await self._get_signing_key(kid)
 
-        claims = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
-            issuer=self._issuer,
-            audience=self._audience,
-        )
+        decode_opts: dict = {
+            "algorithms": ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
+            "issuer": self._issuer,
+        }
+        if self._audience:
+            decode_opts["audience"] = self._audience
+        else:
+            decode_opts["options"] = {"verify_aud": False}
+        claims = jwt.decode(token, signing_key.key, **decode_opts)
 
         principal = _traverse_claim(claims, self._principal_claim)
         if not principal:

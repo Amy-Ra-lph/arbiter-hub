@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     oidc_role_prefix: str = ""
     oidc_jwks_cache_ttl: int = 3600
     oidc_actor_type_claim: str = ""
+    oidc_scopes: str = "openid profile"
 
     kbs_encryption_key_file: str = "/etc/arbiter/kbs.key"
     policy_file: str = "/etc/arbiter/policies.yaml"

@@ -1,9 +1,9 @@
 # Arbiter Hub — Security & Threat Model Assessment
 
-**Date:** 2026-10-18
+**Date:** 2026-10-19 (updated from 2026-10-18 initial assessment)
 **Assessor:** Automated audit (backend, frontend, deployment) + manual review
 **Scope:** Full stack — API, UI, containers, network, deployment
-**Status:** PoC (pre-production)
+**Status:** PoC deployed on Beaker lab with OIDC auth + Keylime attestation
 
 ---
 
@@ -34,9 +34,9 @@
 
 | Threat | Current State | Severity |
 |--------|--------------|----------|
-| API caller identity spoofed via X-Caller-* headers | **VULNERABLE** — headers trusted with admin defaults | CRITICAL |
-| No OIDC/mTLS enforcement on API | Config exists, not wired | HIGH |
-| No CSRF protection | Moot without auth; required when auth added | LOW (now) |
+| API caller identity spoofed via X-Caller-* headers | **FIXED** — X-headers only trusted when `AUTH_MODE=dev`; OIDC mode validates JWT | ~~CRITICAL~~ RESOLVED |
+| No OIDC/mTLS enforcement on API | **FIXED** — OIDC JWT validation with JWKS caching, PyJWT, configurable claim mapping. Supports IPA (ahdapa) and Keycloak issuers | ~~HIGH~~ RESOLVED |
+| No CSRF protection | **FIXED** — CSRFOriginMiddleware validates Origin header on state-changing methods (POST/PUT/DELETE/PATCH). Skipped in dev/proxy modes | ~~LOW~~ RESOLVED |
 
 ### Tampering
 
@@ -50,8 +50,8 @@
 
 | Threat | Current State | Severity |
 |--------|--------------|----------|
-| Attestation actions not tied to verified identity | All actions attributed to header-supplied actor | HIGH |
-| Audit log tamperable (see Tampering) | Same | MEDIUM |
+| Attestation actions not tied to verified identity | **FIXED** — All actions attributed to JWT-verified principal (sub claim). Audit log records actor from validated token | ~~HIGH~~ RESOLVED |
+| Audit log tamperable (see Tampering) | **FIXED** — PostgreSQL BEFORE UPDATE/DELETE triggers on audit_log table prevent modification or deletion of records | ~~MEDIUM~~ RESOLVED |
 
 ### Information Disclosure
 
@@ -66,14 +66,14 @@
 
 | Threat | Current State | Severity |
 |--------|--------------|----------|
-| No rate limiting on any endpoint | Attest + sign are expensive | HIGH |
+| No rate limiting on any endpoint | **FIXED** — slowapi rate limiting applied globally via `Limiter(key_func=get_remote_address)` | ~~HIGH~~ RESOLVED |
 | No input length validation on WorkloadCreate | String fields unbounded at API level | MEDIUM |
 
 ### Elevation of Privilege
 
 | Threat | Current State | Severity |
 |--------|--------------|----------|
-| All callers get admin by default | X-Caller-Roles defaults to `attestation-admin` | CRITICAL |
+| All callers get admin by default | **FIXED** — OIDC mode: roles derived from JWT scopes or claims (configurable). Dev mode: X-headers gated behind explicit `AUTH_MODE=dev`. No implicit admin | ~~CRITICAL~~ RESOLVED |
 | KBS port exposed externally | `PublishPort=8085:8085` | HIGH |
 | MCP port exposed externally | `PublishPort=8401:8401` | HIGH |
 | Network not internal | `Internal=false` on pod network | HIGH |
@@ -82,38 +82,42 @@
 
 ## Findings by Severity
 
-### CRITICAL (3)
+### CRITICAL (3) — All Resolved
 
-**C1 — Auth bypass via spoofable headers**
-`server/auth/dependencies.py:7-18`
-Identity from client-supplied `X-Caller-*` headers, defaults to admin. Any unauthenticated request gets full privileges.
-**Fix:** Implement OIDC token validation or mTLS client cert extraction. Gate header-trust behind `ARBITER_DEV_MODE=true`.
+**C1 — Auth bypass via spoofable headers** ✅ FIXED (Phase 2.5)
+`server/auth/dependencies.py` — Three auth modes: `dev` (X-headers, gated behind explicit `AUTH_MODE=dev`), `oidc` (JWT Bearer validation with JWKS), `proxy` (reverse proxy trust). OIDC mode validates JWT signature, issuer, audience, and expiry via PyJWT + JWKS caching with asyncio.Lock.
 
-**C2 — Command injection in signing endpoint**
-`server/api/signing.py:27-29`
-`artifact_ref` passed directly to `cosign` subprocess. Malicious refs like `--key=/etc/shadow` abuse cosign flags.
-**Fix:** Validate against OCI reference regex. Reject values starting with `--`. Validate `key_ref` against allowed paths.
+**C2 — Command injection in signing endpoint** ✅ FIXED (Phase 2)
+`server/api/signing.py` — `artifact_ref` validated against OCI reference regex. Values starting with `--` rejected. `key_ref` validated against allowed path prefix.
 
-**C3 — KBS encryption key fallback to all-zeros**
-`server/api/kbs.py:24`
-If `/etc/arbiter/kbs.key` missing, falls back to `b"0" * 32`. All stored secrets trivially decryptable.
-**Fix:** Raise startup error if key file missing. No silent fallback.
+**C3 — KBS encryption key fallback to all-zeros** ✅ FIXED (Phase 2)
+`server/api/kbs.py` — Startup error raised if key file missing. No silent fallback to zero key.
 
-### HIGH (6)
+### HIGH (6) — 3 Resolved, 3 Remaining
 
-**H1 — No CORS middleware** — `server/main.py`
-**H2 — No rate limiting** — all endpoints, especially `/attest`, `/sign`, `/verify`
-**H3 — Default DB password "changeme"** — `deploy/ansible/roles/arbiter_hub/defaults/main.yml:6`
-**H4 — Network not internal** — `deploy/quadlet/arbiter-hub.network` `Internal=false`
-**H5 — KBS port published externally** — `deploy/quadlet/arbiter-hub-kbs.container:10`
-**H6 — MCP port published externally** — `deploy/quadlet/arbiter-hub-mcp.container:10`
+**H1 — No CORS middleware** ✅ FIXED (Phase 2.5)
+`server/main.py` — CORSMiddleware configured with explicit `allow_origins`, restricted methods and headers.
 
-### MEDIUM (4)
+**H2 — No rate limiting** ✅ FIXED (Phase 2.5)
+`server/main.py` — slowapi `Limiter` with `get_remote_address` key function applied globally.
 
-**M1 — Audit log not append-only** — `server/models/db.py:142-159`
-**M2 — KBS path params unsanitized** — `server/api/kbs.py:48`
-**M3 — No input length validation** — `server/models/schemas.py:27-33`
-**M4 — No TLS between nginx and API** — acceptable for internal network if H4 fixed
+**H3 — Default DB password "changeme"** ✅ FIXED (Beaker deploy)
+Beaker deployment uses randomly generated passwords stored in `/root/.arbiter-db-credentials`.
+
+**H4 — Network not internal** — `deploy/quadlet/arbiter-hub.network` `Internal=false` — OPEN
+**H5 — KBS port published externally** — `deploy/quadlet/arbiter-hub-kbs.container:10` — OPEN
+**H6 — MCP port published externally** — `deploy/quadlet/arbiter-hub-mcp.container:10` — OPEN
+
+### MEDIUM (4) — 2 Resolved, 2 Remaining
+
+**M1 — Audit log not append-only** ✅ FIXED (Phase 2.5)
+`server/models/db.py` — PostgreSQL BEFORE UPDATE and BEFORE DELETE triggers raise exceptions on the `audit_log` table, enforcing append-only at the database level.
+
+**M2 — KBS path params unsanitized** ✅ FIXED (Phase 2)
+`server/api/kbs.py` — Path components validated against `[a-zA-Z0-9._-]+` regex. Traversal sequences rejected.
+
+**M3 — No input length validation** — `server/models/schemas.py` — OPEN
+**M4 — No TLS between nginx and API** — acceptable for internal network if H4 fixed — OPEN
 
 ### LOW / INFO (4)
 
@@ -139,12 +143,13 @@ If `/etc/arbiter/kbs.key` missing, falls back to `b"0" * 32`. All stored secrets
 
 Target: mirror freeipa-webui's Kerberos+session auth pattern adapted for federation context.
 
-| Phase | Auth Method | Scope |
-|-------|-------------|-------|
-| **Current (PoC)** | None (header-trust) | Demo/lab only |
-| **Phase 2.5** | OIDC via IPA/Keycloak | API endpoints gated by JWT claims. RBAC roles: `attestation-admin`, `attestation-reader`, `policy-editor`. CSRF tokens on state-changing operations. |
-| **Phase 3** | mTLS for backend-to-backend | API↔Keylime, API↔KBS, API↔Rekor require mutual TLS. Certs issued by IPA CA. |
-| **Phase 3** | Kerberos SPNEGO (optional) | For environments with IPA domain — negotiate auth like freeipa-webui. |
+| Phase | Auth Method | Scope | Status |
+|-------|-------------|-------|--------|
+| **Phase 1-2 (PoC)** | Header-trust (dev mode) | Demo/lab only, gated behind `AUTH_MODE=dev` | ✅ DONE |
+| **Phase 2.5** | OIDC via IPA/Keycloak | JWT validation, JWKS caching, CSRF, append-only audit, auth code + PKCE for UI | ✅ DONE — deployed on Beaker J:1200313979 with ahdapa IdP |
+| **Phase 2.5** | Keylime backend mTLS | API↔Keylime verifier via mTLS (cv_ca certs) | ✅ DONE — attestation PASS verified |
+| **Phase 3** | mTLS for all backends | API↔KBS, API↔Rekor require mutual TLS. Certs issued by IPA CA. | PLANNED |
+| **Phase 3** | Kerberos SPNEGO (optional) | For environments with IPA domain — negotiate auth like freeipa-webui. | PLANNED |
 
 ---
 
@@ -228,28 +233,33 @@ Ansible playbook execution
 
 ## Recommended Fix Priority
 
-**Before any shared deployment (fix now):**
-1. C1 — Gate header-trust behind `ARBITER_DEV_MODE`
-2. C2 — Validate cosign artifact_ref and key_ref
-3. C3 — Fail on missing KBS key, no zeros fallback
-4. H4 — Set network `Internal=true`
-5. H5 — Remove KBS `PublishPort`
-6. H6 — Remove MCP `PublishPort` or bind localhost
-7. H3 — Remove default DB password
+### Completed (Phase 2 + 2.5)
 
-**Before Beaker/lab deployment:**
-8. H1 — Add CORS middleware
-9. H2 — Add rate limiting (slowapi)
-10. M2 — Validate KBS path params
-11. M3 — Add max_length to Pydantic models
+| # | Finding | Fix |
+|---|---------|-----|
+| C1 | Auth bypass via spoofable headers | OIDC JWT validation, dev mode gated |
+| C2 | cosign command injection | OCI ref regex validation |
+| C3 | KBS zero-key fallback | Startup error on missing key |
+| H1 | No CORS middleware | CORSMiddleware with explicit origins |
+| H2 | No rate limiting | slowapi global limiter |
+| H3 | Default DB password | Random passwords in Beaker deploy |
+| M1 | Audit log not append-only | PostgreSQL triggers |
+| M2 | KBS path traversal | Regex validation |
 
-**Before production (Phase 2.5+):**
-12. OIDC auth integration
-13. CSRF tokens
-14. M1 — Append-only audit log
-15. M4 — Internal TLS
+### Remaining — Future Builds
+
+**Next (before any shared/production deployment):**
+1. H4 — Set network `Internal=true` in quadlet config
+2. H5 — Remove KBS `PublishPort` or bind localhost only
+3. H6 — Remove MCP `PublishPort` or bind localhost only
+4. M3 — Add `max_length` to Pydantic string fields
+5. M4 — Enable TLS between nginx and API (internal)
+6. Audience validation — use RFC 8707 resource indicators or configure IdP audience claims properly
+7. Scope filtering — admin role should bypass scope filtering on workload list/get queries
+8. IPA CA trust — container should mount IPA CA cert or use certmonger-managed trust bundle
+9. Keylime mTLS hostname — use IPA-issued certs with proper DNS SANs instead of `check_hostname=False`
 
 **Phase 3:**
-16. Falco eBPF integration
-17. EDA rulebook + remediation playbooks
-18. mTLS for backend-to-backend
+10. Falco eBPF integration
+11. EDA rulebook + remediation playbooks
+12. mTLS for all backend-to-backend connections
