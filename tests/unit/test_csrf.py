@@ -70,3 +70,12 @@ async def test_post_with_bad_origin_rejected():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/test", json={}, headers={"Origin": "https://evil.com"})
         assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_proxy_mode_skips_csrf():
+    app = _make_app(allowed_origins=["https://hub.example.com"], auth_mode="proxy")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/test", json={})
+        assert resp.status_code == 200

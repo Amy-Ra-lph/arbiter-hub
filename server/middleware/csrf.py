@@ -12,7 +12,7 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
         self.auth_mode = auth_mode
 
     async def dispatch(self, request: Request, call_next):
-        if self.auth_mode == "dev":
+        if self.auth_mode in ("dev", "proxy"):
             return await call_next(request)
 
         if request.method in _SAFE_METHODS:

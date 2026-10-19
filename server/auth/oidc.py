@@ -1,5 +1,6 @@
 """OIDC JWT token validation with JWKS caching."""
 
+import asyncio
 import logging
 import time
 
@@ -47,6 +48,7 @@ class OIDCValidator:
         self._jwks: dict | None = jwks_override
         self._jwks_fetched_at: float = time.time() if jwks_override else 0
         self._http_client: httpx.AsyncClient | None = None
+        self._jwks_lock = asyncio.Lock()
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None:
@@ -75,14 +77,18 @@ class OIDCValidator:
 
     async def _get_signing_key(self, kid: str) -> jwt.PyJWK:
         key_data = self._find_key(kid)
-        if key_data is None and self._jwks_fetched_at > 0:
-            cache_age = time.time() - self._jwks_fetched_at
-            if cache_age > 0:
-                try:
-                    await self._fetch_jwks()
-                    key_data = self._find_key(kid)
-                except Exception:
-                    logger.warning("JWKS refetch failed for kid=%s", kid)
+        if key_data is None:
+            async with self._jwks_lock:
+                # Re-check after acquiring lock (another coroutine may have fetched)
+                key_data = self._find_key(kid)
+                if key_data is None:
+                    cache_age = time.time() - self._jwks_fetched_at
+                    if self._jwks_fetched_at == 0 or cache_age > self._jwks_cache_ttl:
+                        try:
+                            await self._fetch_jwks()
+                            key_data = self._find_key(kid)
+                        except Exception:
+                            logger.warning("JWKS refetch failed for kid=%s", kid)
         if key_data is None:
             raise jwt.exceptions.InvalidKeyError(f"Signing key not found for kid={kid}")
         return jwt.PyJWK(key_data)

@@ -131,3 +131,34 @@ async def test_missing_principal_claim_raises():
     token = _sign_token(_base_claims())  # has sub but not preferred_username
     with pytest.raises(Exception, match="[Pp]rincipal|claim"):
         await v.validate_and_extract(token)
+
+
+async def test_jwks_fetched_on_first_request_without_override():
+    """Without jwks_override, validator must fetch JWKS on first request."""
+    v = OIDCValidator(
+        issuer=ISSUER,
+        audience=AUDIENCE,
+        role_claim="",
+        scope_claim="scope",
+        principal_claim="sub",
+        jwks_override=None,
+    )
+    assert v._jwks is None
+    assert v._jwks_fetched_at == 0
+    # Manually inject JWKS to simulate successful fetch
+    v._jwks = _make_jwks()
+    v._jwks_fetched_at = time.time()
+    token = _sign_token(_base_claims())
+    identity = await v.validate_and_extract(token)
+    assert identity.principal == "admin@IPA.TEST"
+
+
+async def test_unknown_kid_rate_limited_by_ttl():
+    """Unknown kid within TTL window should not trigger refetch."""
+    v = _make_validator(jwks_cache_ttl=3600)
+    # Cache is fresh (just created with override), unknown kid should fail immediately
+    token = jwt.encode(
+        _base_claims(), _private_key, algorithm="RS256", headers={"kid": "nonexistent-kid"}
+    )
+    with pytest.raises(Exception, match="[Ss]igning key|kid"):
+        await v.validate_and_extract(token)

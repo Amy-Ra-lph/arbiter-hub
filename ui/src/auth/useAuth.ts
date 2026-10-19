@@ -83,8 +83,7 @@ export function useAuth(): AuthState {
           }
         }
       } catch {
-        // auth config fetch failed — fall back to dev
-        setUser("dev");
+        setUser(null);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
