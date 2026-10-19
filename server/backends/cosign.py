@@ -21,11 +21,13 @@ class CosignBackend:
         rekor_url: str = "",
         fulcio_url: str = "",
         tuf_root: str = "",
+        public_key: str = "",
     ):
         self._binary = cosign_binary
         self._rekor_url = rekor_url
         self._fulcio_url = fulcio_url
         self._tuf_root = tuf_root
+        self._public_key = public_key
 
     async def verify(self, workload: Workload) -> AttestationResult:
         artifact_ref = workload.metadata_.get("artifact_ref", "")
@@ -37,7 +39,10 @@ class CosignBackend:
                 detail={"error": "no artifact_ref in workload metadata"},
             )
         try:
-            cmd = [self._binary, "verify", "--yes", artifact_ref]
+            cmd = [self._binary, "verify", "--yes"]
+            if self._public_key:
+                cmd.extend(["--key", self._public_key])
+            cmd.append(artifact_ref)
             if self._rekor_url:
                 cmd.extend(["--rekor-url", self._rekor_url])
             if self._fulcio_url:

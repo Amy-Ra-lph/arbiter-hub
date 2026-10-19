@@ -28,6 +28,19 @@ async def lifespan(app: FastAPI):
                 client_key=settings.keylime_client_key,
             ),
         )
+    if settings.cosign_binary:
+        from server.backends.cosign import CosignBackend
+
+        registry.register(
+            "cosign",
+            CosignBackend(
+                cosign_binary=settings.cosign_binary,
+                rekor_url=settings.rekor_url,
+                fulcio_url=settings.rhtas_fulcio_url,
+                tuf_root=settings.rhtas_tuf_root,
+                public_key=settings.cosign_public_key,
+            ),
+        )
     app.state.backend_registry = registry
     yield
 
