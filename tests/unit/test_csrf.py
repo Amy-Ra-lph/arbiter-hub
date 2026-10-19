@@ -13,9 +13,11 @@ async def _echo(request: Request):
 
 
 def _make_app(*, allowed_origins: list[str], auth_mode: str = "oidc"):
-    app = Starlette(routes=[
-        Route("/test", _echo, methods=["GET", "POST", "PUT", "DELETE"]),
-    ])
+    app = Starlette(
+        routes=[
+            Route("/test", _echo, methods=["GET", "POST", "PUT", "DELETE"]),
+        ]
+    )
     app.add_middleware(
         CSRFOriginMiddleware,
         allowed_origins=allowed_origins,
@@ -39,9 +41,7 @@ async def test_post_with_valid_origin_allowed():
     app = _make_app(allowed_origins=["https://hub.example.com"])
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post(
-            "/test", json={}, headers={"Origin": "https://hub.example.com"}
-        )
+        resp = await client.post("/test", json={}, headers={"Origin": "https://hub.example.com"})
         assert resp.status_code == 200
 
 
@@ -68,7 +68,5 @@ async def test_post_with_bad_origin_rejected():
     app = _make_app(allowed_origins=["https://hub.example.com"])
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post(
-            "/test", json={}, headers={"Origin": "https://evil.com"}
-        )
+        resp = await client.post("/test", json={}, headers={"Origin": "https://evil.com"})
         assert resp.status_code == 403

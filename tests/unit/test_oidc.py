@@ -21,9 +21,7 @@ def _make_jwks():
     n = base64.urlsafe_b64encode(_public_numbers.n.to_bytes(256, "big")).rstrip(b"=").decode()
     e = base64.urlsafe_b64encode(_public_numbers.e.to_bytes(3, "big")).rstrip(b"=").decode()
     return {
-        "keys": [
-            {"kty": "RSA", "kid": "test-kid", "n": n, "e": e, "alg": "RS256", "use": "sig"}
-        ]
+        "keys": [{"kty": "RSA", "kid": "test-kid", "n": n, "e": e, "alg": "RS256", "use": "sig"}]
     }
 
 
@@ -98,9 +96,7 @@ async def test_keycloak_role_claim_extraction():
         principal_claim="preferred_username",
         role_prefix="attestation-",
     )
-    claims = _base_claims(
-        preferred_username="admin", realm_access={"roles": ["admin", "operator"]}
-    )
+    claims = _base_claims(preferred_username="admin", realm_access={"roles": ["admin", "operator"]})
     token = _sign_token(claims)
     identity = await v.validate_and_extract(token)
     assert identity.principal == "admin"

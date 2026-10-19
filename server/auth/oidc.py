@@ -84,9 +84,7 @@ class OIDCValidator:
                 except Exception:
                     logger.warning("JWKS refetch failed for kid=%s", kid)
         if key_data is None:
-            raise jwt.exceptions.InvalidKeyError(
-                f"Signing key not found for kid={kid}"
-            )
+            raise jwt.exceptions.InvalidKeyError(f"Signing key not found for kid={kid}")
         return jwt.PyJWK(key_data)
 
     def _extract_roles(self, claims: dict) -> list[str]:
@@ -130,9 +128,7 @@ class OIDCValidator:
 
         principal = _traverse_claim(claims, self._principal_claim)
         if not principal:
-            raise ValueError(
-                f"Principal claim '{self._principal_claim}' not found in token"
-            )
+            raise ValueError(f"Principal claim '{self._principal_claim}' not found in token")
 
         return CallerIdentity(
             principal=str(principal),
