@@ -8,6 +8,7 @@ import {
   CardBody,
   Alert,
   AlertGroup,
+  Label,
   AlertActionLink,
   DataList,
   DataListItem,
@@ -26,7 +27,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import TitleLayout from "src/components/layouts/TitleLayout";
 import StateBadge from "src/components/StateBadge";
-import VerdictBadge from "src/components/VerdictBadge";
+
 import DataSpinner from "src/components/DataSpinner";
 import { useGetWorkloadsQuery } from "src/services/rpcWorkloads";
 import { useGetBackendsQuery } from "src/services/rpcBackends";
@@ -34,7 +35,6 @@ import { useGetAuditQuery } from "src/services/rpcAudit";
 import { useGetHealthQuery } from "src/services/rpcHealth";
 import {
   WorkloadState,
-  AttestationVerdict,
 } from "src/utils/datatypes/globalDataTypes";
 import type { Workload } from "src/utils/datatypes/globalDataTypes";
 
@@ -290,25 +290,43 @@ const Dashboard: React.FC = () => {
                             <DataListCell key="time" width={1}>
                               {formatRelativeTime(event.created_at)}
                             </DataListCell>,
-                            <DataListCell key="action" width={2}>
-                              {event.action}
-                            </DataListCell>,
-                            <DataListCell key="actor" width={2}>
-                              {event.actor}
-                            </DataListCell>,
-                            <DataListCell key="verdict" width={1}>
+                            <DataListCell key="transition" width={2}>
                               {event.detail &&
                               typeof event.detail === "object" &&
-                              "verdict" in event.detail ? (
-                                <VerdictBadge
-                                  verdict={
-                                    event.detail
-                                      .verdict as AttestationVerdict
-                                  }
-                                />
+                              "from" in event.detail &&
+                              "to" in event.detail ? (
+                                <span>
+                                  <StateBadge state={event.detail.from as WorkloadState} />{" "}
+                                  <span style={{ margin: "0 4px" }}>&rarr;</span>{" "}
+                                  <StateBadge state={event.detail.to as WorkloadState} />
+                                </span>
                               ) : (
-                                event.target_type ?? ""
+                                event.action
                               )}
+                            </DataListCell>,
+                            <DataListCell key="actor" width={1}>
+                              {event.actor === "falco_alert" ? (
+                                <Label color="orange" isCompact>falco</Label>
+                              ) : event.actor === "attestation_result" ? (
+                                <Label color="blue" isCompact>attest</Label>
+                              ) : (
+                                <span style={{ fontSize: "13px" }}>{event.actor}</span>
+                              )}
+                            </DataListCell>,
+                            <DataListCell key="detail" width={3}>
+                              <span style={{ fontSize: "13px", color: "var(--pf-t--global--color--nonstatus--gray--default)" }}>
+                                {event.detail &&
+                                typeof event.detail === "object" &&
+                                "justification" in event.detail
+                                  ? (event.detail.justification as string).length > 80
+                                    ? (event.detail.justification as string).slice(0, 80) + "..."
+                                    : (event.detail.justification as string)
+                                  : event.detail &&
+                                    typeof event.detail === "object" &&
+                                    "verdict" in event.detail
+                                  ? String(event.detail.verdict)
+                                  : ""}
+                              </span>
                             </DataListCell>,
                           ]}
                         />

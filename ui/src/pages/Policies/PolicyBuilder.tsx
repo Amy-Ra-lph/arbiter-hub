@@ -303,8 +303,7 @@ const PolicyBuilder: React.FC<PolicyBuilderProps> = ({
             const v = Number((evt.target as HTMLInputElement).value);
             if (!isNaN(v)) updateRequirement(ruleIdx, reqIdx, "value", v);
           }}
-          unit="sec"
-          widthChars={6}
+          widthChars={8}
         />
       );
     }
