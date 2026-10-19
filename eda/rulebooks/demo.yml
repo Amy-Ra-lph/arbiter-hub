@@ -1,0 +1,17 @@
+---
+- name: Arbiter Hub Demo
+  hosts: all
+  sources:
+    - arbiter_hub:
+        host: 0.0.0.0
+        port: 5001
+        secret: "{{ arbiter_webhook_secret }}"
+  rules:
+    - name: Auto-quarantine on failure
+      condition: event.event_type == "state_transition" and event.to_state == "failed"
+      action:
+        run_playbook:
+          name: playbooks/quarantine.yml
+          extra_vars:
+            workload_id: "{{ event.workload_id }}"
+            reason: "{{ event.detail.rule | default('demo - attestation failure') }}"

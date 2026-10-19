@@ -46,6 +46,24 @@ class AttestationBackend(Protocol):
     async def health(self) -> BackendHealth: ...
 
 
+@dataclass
+class CompositeAttestationResult:
+    composite_verdict: AttestationVerdict
+    backend_results: list[AttestationResult]
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(__import__("datetime").timezone.utc)
+    )
+
+
+def compute_composite_verdict(results: list[AttestationResult]) -> AttestationVerdict:
+    verdicts = [r.verdict for r in results]
+    if AttestationVerdict.FAIL in verdicts:
+        return AttestationVerdict.FAIL
+    if AttestationVerdict.UNAVAILABLE in verdicts or AttestationVerdict.ERROR in verdicts:
+        return AttestationVerdict.UNAVAILABLE
+    return AttestationVerdict.PASS
+
+
 class BackendRegistry:
     def __init__(self):
         self._backends: dict[str, AttestationBackend] = {}

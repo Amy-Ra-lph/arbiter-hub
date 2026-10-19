@@ -21,7 +21,7 @@ def _make_workload(**overrides):
         display_name="Test Agent",
         workload_type=WorkloadType.AGENTIC,
         current_state=WorkloadState.ATTESTING,
-        backend_type=BackendType.KEYLIME,
+        backend_types=[BackendType.KEYLIME.value],
         stale_ttl_seconds=3600,
         registered_at=datetime.now(UTC),
         last_attested_at=None,

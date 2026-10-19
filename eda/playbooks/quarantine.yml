@@ -1,0 +1,35 @@
+---
+- name: Quarantine failed workload
+  hosts: "{{ target_host | default('server') }}"
+  gather_facts: false
+  vars:
+    arbiter_api: "{{ arbiter_api_url | default('http://localhost:8400') }}"
+    arbiter_token: "{{ arbiter_bearer_token | default('') }}"
+
+  tasks:
+    - name: Disconnect container from network
+      containers.podman.podman_container:
+        name: "{{ workload_id }}"
+        network_mode: none
+        state: started
+      ignore_errors: true
+
+    - name: Notify Arbiter Hub of remediation
+      ansible.builtin.uri:
+        url: "{{ arbiter_api }}/workloads/{{ workload_id }}/remediate"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ arbiter_token }}"
+          Content-Type: application/json
+        body_format: json
+        body:
+          justification: "Auto-quarantined: {{ reason | default('attestation failure') }}"
+        status_code: [200, 409]
+      register: remediate_result
+
+    - name: Log quarantine action
+      ansible.builtin.debug:
+        msg: >-
+          Workload {{ workload_id }} quarantined.
+          Reason: {{ reason | default('unknown') }}.
+          Remediation status: {{ remediate_result.status | default('unknown') }}

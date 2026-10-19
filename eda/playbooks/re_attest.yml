@@ -1,0 +1,25 @@
+---
+- name: Re-attest stale workload
+  hosts: "{{ target_host | default('server') }}"
+  gather_facts: false
+  vars:
+    arbiter_api: "{{ arbiter_api_url | default('http://localhost:8400') }}"
+    arbiter_token: "{{ arbiter_bearer_token | default('') }}"
+
+  tasks:
+    - name: Trigger re-attestation
+      ansible.builtin.uri:
+        url: "{{ arbiter_api }}/workloads/{{ workload_id }}/attest"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ arbiter_token }}"
+          Content-Type: application/json
+        status_code: [200, 409]
+      register: attest_result
+
+    - name: Log re-attestation result
+      ansible.builtin.debug:
+        msg: >-
+          Re-attestation for {{ workload_id }}:
+          verdict={{ attest_result.json.verdict | default('unknown') }},
+          state={{ attest_result.json.state | default('unknown') }}

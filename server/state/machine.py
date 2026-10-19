@@ -18,7 +18,7 @@ class InvalidTransitionError(Exception):
 VALID_TRANSITIONS: dict[WorkloadState, set[WorkloadState]] = {
     WorkloadState.REGISTERED: {WorkloadState.ATTESTING},
     WorkloadState.ATTESTING: {WorkloadState.HEALTHY, WorkloadState.FAILED},
-    WorkloadState.HEALTHY: {WorkloadState.STALE, WorkloadState.REVOKED},
+    WorkloadState.HEALTHY: {WorkloadState.STALE, WorkloadState.FAILED, WorkloadState.REVOKED},
     WorkloadState.STALE: {WorkloadState.ATTESTING},
     WorkloadState.FAILED: {WorkloadState.UNDER_REMEDIATION, WorkloadState.REVOKED},
     WorkloadState.UNDER_REMEDIATION: {WorkloadState.ATTESTING},

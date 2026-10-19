@@ -143,7 +143,9 @@ class MockAsyncSession:
                 display_name: str = ""
                 workload_type: WorkloadType = WorkloadType.AGENTIC
                 current_state: WorkloadState = WorkloadState.REGISTERED
-                backend_type: BackendType = BackendType.KEYLIME
+                backend_types: list[str] = field(
+                    default_factory=lambda: [BackendType.KEYLIME.value],
+                )
                 stale_ttl_seconds: int = 3600
                 registered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
                 last_attested_at: datetime | None = None
@@ -158,7 +160,7 @@ class MockAsyncSession:
                 ipa_principal=obj.ipa_principal,
                 display_name=obj.display_name,
                 workload_type=obj.workload_type,
-                backend_type=obj.backend_type,
+                backend_types=obj.backend_types,
                 stale_ttl_seconds=obj.stale_ttl_seconds,
                 current_state=obj.current_state or WorkloadState.REGISTERED,
                 metadata_=obj.metadata_ if obj.metadata_ else {},

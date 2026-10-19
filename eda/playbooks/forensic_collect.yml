@@ -1,0 +1,52 @@
+---
+- name: Forensic evidence collection
+  hosts: "{{ target_host | default('server') }}"
+  gather_facts: false
+  vars:
+    forensics_dir: /var/lib/arbiter/forensics
+    timestamp: "{{ ansible_date_time.iso8601_basic_short | default(lookup('pipe', 'date +%Y%m%dT%H%M%S')) }}"
+
+  tasks:
+    - name: Create forensics directory
+      ansible.builtin.file:
+        path: "{{ forensics_dir }}/{{ workload_id }}/{{ timestamp }}"
+        state: directory
+        mode: "0700"
+
+    - name: Collect container inspect
+      ansible.builtin.command:
+        cmd: "podman inspect {{ container_id }}"
+      register: inspect_result
+      ignore_errors: true
+
+    - name: Save container inspect
+      ansible.builtin.copy:
+        content: "{{ inspect_result.stdout | default('inspect failed') }}"
+        dest: "{{ forensics_dir }}/{{ workload_id }}/{{ timestamp }}/inspect.json"
+        mode: "0600"
+
+    - name: Collect container logs
+      ansible.builtin.command:
+        cmd: "podman logs --tail 1000 {{ container_id }}"
+      register: logs_result
+      ignore_errors: true
+
+    - name: Save container logs
+      ansible.builtin.copy:
+        content: "{{ logs_result.stdout | default('logs unavailable') }}"
+        dest: "{{ forensics_dir }}/{{ workload_id }}/{{ timestamp }}/container.log"
+        mode: "0600"
+
+    - name: Create evidence archive
+      ansible.builtin.command:
+        cmd: >-
+          tar czf {{ forensics_dir }}/{{ workload_id }}/{{ timestamp }}.tar.gz
+          -C {{ forensics_dir }}/{{ workload_id }} {{ timestamp }}
+      register: tar_result
+
+    - name: Log forensic collection
+      ansible.builtin.debug:
+        msg: >-
+          Forensic evidence for {{ workload_id }} (container {{ container_id }})
+          collected at {{ forensics_dir }}/{{ workload_id }}/{{ timestamp }}.tar.gz.
+          Rule: {{ rule | default('unknown') }}
