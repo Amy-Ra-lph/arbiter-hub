@@ -1,0 +1,54 @@
+---
+# webhook-setup.yaml — Register arbiter-hub → EDA webhooks
+# Connects state_transition events to the EDA controller on the same host
+- name: Register arbiter-hub webhooks
+  hosts: hub.arbiter.demo
+  become: true
+  vars:
+    arbiter_api_url: "http://localhost:8400"
+    eda_listener_url: "http://localhost:5001/"
+    webhook_events:
+      - state_transition
+  tasks:
+    - name: Read webhook secret
+      ansible.builtin.slurp:
+        src: /etc/arbiter/webhook-secret
+      register: webhook_secret_file
+
+    - name: Set webhook secret fact
+      ansible.builtin.set_fact:
+        arbiter_webhook_secret: "{{ webhook_secret_file.content | b64decode | trim }}"
+
+    - name: Register webhook for state transitions
+      ansible.builtin.uri:
+        url: "{{ arbiter_api_url }}/api/v1/webhooks"
+        method: POST
+        body_format: json
+        body:
+          url: "{{ eda_listener_url }}"
+          events: "{{ webhook_events }}"
+          secret: "{{ arbiter_webhook_secret }}"
+          active: true
+        status_code: [200, 201, 409]
+      register: webhook_result
+
+    - name: Verify webhook registered
+      ansible.builtin.uri:
+        url: "{{ arbiter_api_url }}/api/v1/webhooks"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: webhooks_list
+
+    - name: Confirm EDA webhook exists
+      ansible.builtin.assert:
+        that:
+          - webhooks_list.json | length > 0
+        fail_msg: "No webhooks registered — EDA will not receive events"
+
+    - name: Display webhook status
+      ansible.builtin.debug:
+        msg: >-
+          Webhook registered: {{ eda_listener_url }}
+          Events: {{ webhook_events | join(', ') }}
+          Total webhooks: {{ webhooks_list.json | length }}

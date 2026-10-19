@@ -1,0 +1,106 @@
+---
+# falco-deploy.yaml — Deploy Falco eBPF runtime monitoring on agent node
+#
+# Installs Falco with eBPF driver (not kernel module), loads arbiter-specific
+# rules, configures HTTP output to forward alerts to Arbiter Hub API.
+- name: Deploy Falco runtime monitoring
+  hosts: agent.arbiter.demo
+  become: true
+  vars:
+    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+    arbiter_repo_dir: "/opt/arbiter-hub"
+    falco_rules_dir: "/etc/falco/rules.d"
+  tasks:
+    - name: Install Falco GPG key
+      ansible.builtin.rpm_key:
+        key: https://falco.org/repo/falcosecurity-packages.asc
+        state: present
+
+    - name: Add Falco repository
+      ansible.builtin.yum_repository:
+        name: falcosecurity
+        description: Falco Security
+        baseurl: https://download.falco.org/packages/rpm/
+        gpgcheck: true
+        gpgkey: https://falco.org/repo/falcosecurity-packages.asc
+        enabled: true
+
+    - name: Install Falco and eBPF dependencies
+      ansible.builtin.dnf:
+        name:
+          - falco
+          - kernel-devel
+          - clang
+          - llvm
+          - bpftool
+        state: present
+
+    - name: Copy arbiter-specific Falco rules
+      ansible.builtin.copy:
+        src: "{{ arbiter_repo_dir }}/deploy/falco/arbiter-rules.yaml"
+        dest: "{{ falco_rules_dir }}/arbiter-rules.yaml"
+        mode: "0644"
+        remote_src: true
+
+    - name: Configure Falco for eBPF driver
+      ansible.builtin.copy:
+        dest: /etc/falco/config.d/arbiter.yaml
+        mode: "0644"
+        content: |
+          engine:
+            kind: ebpf
+
+          http_output:
+            enabled: true
+            url: {{ arbiter_hub_api }}/api/v1/falco/alerts
+            user_agent: falco/arbiter-demo
+
+          json_output: true
+          json_include_output_property: true
+          json_include_tags_property: true
+
+          stdout_output:
+            enabled: false
+
+          syslog_output:
+            enabled: false
+
+          log_level: info
+
+    - name: Start Falco service
+      ansible.builtin.systemd:
+        name: falco
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for Falco startup
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Verify Falco is running with eBPF
+      ansible.builtin.command:
+        cmd: falco --version
+      register: falco_version
+      changed_when: false
+
+    - name: Verify Falco process is active
+      ansible.builtin.command:
+        cmd: systemctl is-active falco
+      register: falco_status
+      changed_when: false
+      failed_when: falco_status.stdout != 'active'
+
+    - name: Check Falco loaded arbiter rules
+      ansible.builtin.command:
+        cmd: grep -l "Arbiter" {{ falco_rules_dir }}/arbiter-rules.yaml
+      register: rules_check
+      changed_when: false
+      failed_when: rules_check.rc != 0
+
+    - name: Display Falco status
+      ansible.builtin.debug:
+        msg: >-
+          Falco {{ falco_version.stdout }} running with eBPF driver.
+          Arbiter rules loaded from {{ falco_rules_dir }}/arbiter-rules.yaml.
+          HTTP output → {{ arbiter_hub_api }}/api/v1/falco/alerts

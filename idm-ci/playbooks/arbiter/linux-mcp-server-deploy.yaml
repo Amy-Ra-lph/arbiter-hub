@@ -1,0 +1,129 @@
+---
+# linux-mcp-server-deploy.yaml — Deploy linux-mcp-server in OpenShell sandbox
+#
+# Installs linux-mcp-server (19 RHEL diagnostic tools) on agent node,
+# registers with OpenShell gateway, configures GSSAPI auth.
+- name: Deploy linux-mcp-server
+  hosts: agent.arbiter.demo
+  become: true
+  vars:
+    openshell_config_dir: "/etc/openshell"
+    mcp_server_port: 8402
+    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+  tasks:
+    - name: Install linux-mcp-server dependencies
+      ansible.builtin.dnf:
+        name:
+          - python3-pip
+          - python3-gssapi
+          - strace
+          - tcpdump
+          - lsof
+          - sysstat
+          - perf
+          - bpftrace
+          - audit
+          - policycoreutils-python-utils
+          - setools-console
+        state: present
+
+    - name: Install linux-mcp-server via pip
+      ansible.builtin.pip:
+        name: linux-mcp-server
+        state: present
+
+    - name: Deploy linux-mcp-server configuration
+      ansible.builtin.copy:
+        dest: "{{ openshell_config_dir }}/linux-mcp-server.yaml"
+        mode: "0644"
+        content: |
+          server:
+            host: 127.0.0.1
+            port: {{ mcp_server_port }}
+            name: linux-mcp-server
+
+          auth:
+            method: gssapi
+            keytab: /etc/krb5.keytab
+
+          tools:
+            - systemctl_status
+            - journalctl_query
+            - ps_aux
+            - ss_listen
+            - df_usage
+            - free_memory
+            - uptime_info
+            - rpm_query
+            - dnf_check_update
+            - selinux_status
+            - getenforce
+            - audit_log_search
+            - firewall_list
+            - ip_addr
+            - ip_route
+            - lsof_port
+            - strace_attach
+            - tcpdump_capture
+            - sysctl_get
+
+    - name: Deploy linux-mcp-server systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/linux-mcp-server.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Linux MCP Server (RHEL diagnostic tools)
+          After=openshell-gateway.service
+          Wants=openshell-gateway.service
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/linux-mcp-server --config {{ openshell_config_dir }}/linux-mcp-server.yaml
+          Restart=on-failure
+          RestartSec=5
+          Environment=KRB5_KTNAME=/etc/krb5.keytab
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Register linux-mcp-server with OpenShell
+      ansible.builtin.copy:
+        dest: "{{ openshell_config_dir }}/mcp-servers.d/linux-mcp-server.yaml"
+        mode: "0644"
+        content: |
+          name: linux-mcp-server
+          description: "19 RHEL diagnostic tools via MCP"
+          endpoint: "http://127.0.0.1:{{ mcp_server_port }}"
+          auth: gssapi
+          tools: 19
+
+    - name: Create mcp-servers.d directory
+      ansible.builtin.file:
+        path: "{{ openshell_config_dir }}/mcp-servers.d"
+        state: directory
+        mode: "0755"
+
+    - name: Start linux-mcp-server
+      ansible.builtin.systemd:
+        name: linux-mcp-server
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Verify linux-mcp-server responds
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ mcp_server_port }}/tools/list"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: tools_list
+      retries: 10
+      delay: 3
+      until: tools_list.status == 200
+
+    - name: Verify tool count
+      ansible.builtin.assert:
+        that:
+          - tools_list.json | length >= 19
+        fail_msg: "Expected at least 19 tools, got {{ tools_list.json | length }}"

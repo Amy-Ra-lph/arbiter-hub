@@ -1,0 +1,300 @@
+---
+# spire-deploy.yaml — Deploy SPIRE server + agent for workload identity
+# Server on ipaserver node, agent on agent node.
+# JWT-SVID federation with ahdapa for workload→IdP identity bridging.
+- name: Deploy SPIRE server
+  hosts: ipaserver
+  become: true
+  vars:
+    spire_version: "1.11.1"
+    spire_install_dir: /opt/spire
+    spire_data_dir: /var/lib/spire/server
+    spire_conf_dir: /etc/spire/server
+    trust_domain: "arbiter.demo"
+    ahdapa_issuer: "https://{{ ansible_fqdn }}/ahdapa"
+  tasks:
+    - name: Create spire user
+      ansible.builtin.user:
+        name: spire
+        system: true
+        shell: /sbin/nologin
+        home: "{{ spire_data_dir }}"
+
+    - name: Create SPIRE directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: spire
+        group: spire
+        mode: "0750"
+      loop:
+        - "{{ spire_install_dir }}"
+        - "{{ spire_data_dir }}"
+        - "{{ spire_conf_dir }}"
+
+    - name: Download SPIRE release
+      ansible.builtin.unarchive:
+        src: "https://github.com/spiffe/spire/releases/download/v{{ spire_version }}/spire-{{ spire_version }}-linux-amd64-musl.tar.gz"
+        dest: "{{ spire_install_dir }}"
+        remote_src: true
+        creates: "{{ spire_install_dir }}/spire-{{ spire_version }}/bin/spire-server"
+
+    - name: Symlink SPIRE binaries
+      ansible.builtin.file:
+        src: "{{ spire_install_dir }}/spire-{{ spire_version }}/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+      loop:
+        - spire-server
+        - spire-agent
+
+    - name: Deploy SPIRE server config
+      ansible.builtin.copy:
+        dest: "{{ spire_conf_dir }}/server.conf"
+        owner: spire
+        group: spire
+        mode: "0640"
+        content: |
+          server {
+              bind_address = "0.0.0.0"
+              bind_port = "8081"
+              trust_domain = "{{ trust_domain }}"
+              data_dir = "{{ spire_data_dir }}"
+              log_level = "INFO"
+
+              ca_ttl = "24h"
+              default_x509_svid_ttl = "1h"
+              default_jwt_svid_ttl = "5m"
+          }
+
+          plugins {
+              DataStore "sql" {
+                  plugin_data {
+                      database_type = "sqlite3"
+                      connection_string = "{{ spire_data_dir }}/datastore.sqlite3"
+                  }
+              }
+
+              NodeAttestor "join_token" {
+                  plugin_data {}
+              }
+
+              KeyManager "disk" {
+                  plugin_data {
+                      keys_path = "{{ spire_data_dir }}/keys.json"
+                  }
+              }
+          }
+
+          # Federation with ahdapa for JWT-SVID → OIDC bridging
+          federation {
+              bundle_endpoint {
+                  address = "0.0.0.0"
+                  port = 8443
+              }
+              federates_with "{{ trust_domain }}" {
+                  bundle_endpoint_url = "{{ ahdapa_issuer }}/.well-known/openid-configuration"
+                  bundle_endpoint_profile "https_web" {}
+              }
+          }
+      notify: restart spire-server
+
+    - name: Deploy SPIRE server systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/spire-server.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=SPIRE Server
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User=spire
+          Group=spire
+          ExecStart=/usr/local/bin/spire-server run -config {{ spire_conf_dir }}/server.conf
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start SPIRE server
+      ansible.builtin.systemd:
+        name: spire-server
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for SPIRE server health
+      ansible.builtin.command:
+        cmd: spire-server healthcheck -socketPath {{ spire_data_dir }}/api.sock
+      register: spire_health
+      retries: 15
+      delay: 5
+      until: spire_health.rc == 0
+      changed_when: false
+
+    - name: Generate join token for agent node
+      ansible.builtin.command:
+        cmd: >-
+          spire-server token generate
+          -spiffeID spiffe://{{ trust_domain }}/agent/arbiter-agent
+          -socketPath {{ spire_data_dir }}/api.sock
+          -ttl 600
+      register: join_token_result
+      changed_when: true
+
+    - name: Extract join token
+      ansible.builtin.set_fact:
+        spire_join_token: "{{ join_token_result.stdout | regex_search('Token: (.+)', '\\1') | first }}"
+
+  handlers:
+    - name: restart spire-server
+      ansible.builtin.systemd:
+        name: spire-server
+        state: restarted
+
+- name: Deploy SPIRE agent
+  hosts: ipaclient[1]
+  become: true
+  vars:
+    spire_version: "1.11.1"
+    spire_install_dir: /opt/spire
+    spire_data_dir: /var/lib/spire/agent
+    spire_conf_dir: /etc/spire/agent
+    trust_domain: "arbiter.demo"
+    spire_server_host: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] }}"
+    spire_join_token: "{{ hostvars[groups['ipaserver'][0]]['spire_join_token'] }}"
+  tasks:
+    - name: Create spire user
+      ansible.builtin.user:
+        name: spire
+        system: true
+        shell: /sbin/nologin
+        home: "{{ spire_data_dir }}"
+
+    - name: Create SPIRE agent directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: spire
+        group: spire
+        mode: "0750"
+      loop:
+        - "{{ spire_install_dir }}"
+        - "{{ spire_data_dir }}"
+        - "{{ spire_conf_dir }}"
+
+    - name: Download SPIRE release
+      ansible.builtin.unarchive:
+        src: "https://github.com/spiffe/spire/releases/download/v{{ spire_version }}/spire-{{ spire_version }}-linux-amd64-musl.tar.gz"
+        dest: "{{ spire_install_dir }}"
+        remote_src: true
+        creates: "{{ spire_install_dir }}/spire-{{ spire_version }}/bin/spire-agent"
+
+    - name: Symlink SPIRE agent binary
+      ansible.builtin.file:
+        src: "{{ spire_install_dir }}/spire-{{ spire_version }}/bin/spire-agent"
+        dest: /usr/local/bin/spire-agent
+        state: link
+
+    - name: Deploy SPIRE agent config
+      ansible.builtin.copy:
+        dest: "{{ spire_conf_dir }}/agent.conf"
+        owner: spire
+        group: spire
+        mode: "0640"
+        content: |
+          agent {
+              data_dir = "{{ spire_data_dir }}"
+              log_level = "INFO"
+              server_address = "{{ spire_server_host }}"
+              server_port = "8081"
+              trust_domain = "{{ trust_domain }}"
+              trust_bundle_path = "{{ spire_data_dir }}/bootstrap.crt"
+          }
+
+          plugins {
+              NodeAttestor "join_token" {
+                  plugin_data {}
+              }
+
+              KeyManager "disk" {
+                  plugin_data {
+                      directory = "{{ spire_data_dir }}/keys"
+                  }
+              }
+
+              WorkloadAttestor "unix" {
+                  plugin_data {
+                      discover_workload_path = true
+                  }
+              }
+          }
+      notify: restart spire-agent
+
+    - name: Fetch SPIRE server bundle
+      ansible.builtin.command:
+        cmd: >-
+          curl -sk https://{{ spire_server_host }}:8443
+          -o {{ spire_data_dir }}/bootstrap.crt
+        creates: "{{ spire_data_dir }}/bootstrap.crt"
+
+    - name: Deploy SPIRE agent systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/spire-agent.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=SPIRE Agent
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User=spire
+          Group=spire
+          ExecStart=/usr/local/bin/spire-agent run -config {{ spire_conf_dir }}/agent.conf -joinToken {{ spire_join_token }}
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start SPIRE agent
+      ansible.builtin.systemd:
+        name: spire-agent
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for agent attestation
+      ansible.builtin.command:
+        cmd: spire-agent healthcheck -socketPath {{ spire_data_dir }}/api.sock
+      register: agent_health
+      retries: 15
+      delay: 5
+      until: agent_health.rc == 0
+      changed_when: false
+
+- name: Verify SPIRE agent registration
+  hosts: ipaserver
+  become: true
+  vars:
+    spire_data_dir: /var/lib/spire/server
+  tasks:
+    - name: List registered agents
+      ansible.builtin.command:
+        cmd: spire-server agent list -socketPath {{ spire_data_dir }}/api.sock
+      register: agent_list
+      changed_when: false
+
+    - name: Verify agent is attested
+      ansible.builtin.assert:
+        that:
+          - "'arbiter-agent' in agent_list.stdout"
+        fail_msg: "SPIRE agent not registered with server"
+
+    - name: Display registered agents
+      ansible.builtin.debug:
+        var: agent_list.stdout_lines

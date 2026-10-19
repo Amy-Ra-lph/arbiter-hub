@@ -1,0 +1,102 @@
+---
+# demo-workloads.yaml — Deploy demo workloads for attestation scenarios
+#
+# Creates two demo containers on agent node:
+#   demo-good-workload: healthy container, passes attestation
+#   demo-bad-workload:  triggers Falco alerts, demonstrates remediation flow
+# Both registered with Arbiter Hub on hub node.
+- name: Deploy demo workloads
+  hosts: agent.arbiter.demo
+  become: true
+  vars:
+    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+    demo_image: "registry.access.redhat.com/ubi10/ubi:latest"
+    keylime_agent_uuid: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
+  tasks:
+    - name: Pull demo base image
+      containers.podman.podman_image:
+        name: "{{ demo_image }}"
+        state: present
+
+    - name: Create demo-good-workload container
+      containers.podman.podman_container:
+        name: demo-good-workload
+        image: "{{ demo_image }}"
+        state: started
+        command: ["sleep", "infinity"]
+        label:
+          arbiter.demo: "true"
+          arbiter.workload.type: "good"
+        network_mode: bridge
+        restart_policy: on-failure
+
+    - name: Create demo-bad-workload container (stopped — started during demo)
+      containers.podman.podman_container:
+        name: demo-bad-workload
+        image: "{{ demo_image }}"
+        state: created
+        command: ["sleep", "infinity"]
+        label:
+          arbiter.demo: "true"
+          arbiter.workload.type: "bad"
+        network_mode: bridge
+        restart_policy: on-failure
+
+    - name: Register demo-good-workload with Arbiter Hub
+      ansible.builtin.uri:
+        url: "{{ arbiter_hub_api }}/api/v1/workloads"
+        method: POST
+        body_format: json
+        body:
+          name: demo-good-workload
+          owner: admin
+          backends:
+            - keylime
+          metadata:
+            keylime_agent_uuid: "{{ keylime_agent_uuid }}"
+            keylime_agent_ip: "{{ ansible_default_ipv4.address }}"
+            container_id: demo-good-workload
+            description: "Healthy demo workload — passes attestation"
+        status_code: [200, 201, 409]
+      register: good_reg
+
+    - name: Register demo-bad-workload with Arbiter Hub
+      ansible.builtin.uri:
+        url: "{{ arbiter_hub_api }}/api/v1/workloads"
+        method: POST
+        body_format: json
+        body:
+          name: demo-bad-workload
+          owner: admin
+          backends:
+            - keylime
+            - falco
+          metadata:
+            keylime_agent_uuid: "{{ keylime_agent_uuid }}"
+            keylime_agent_ip: "{{ ansible_default_ipv4.address }}"
+            container_id: demo-bad-workload
+            description: "Demo workload for remediation scenarios — triggers Falco alerts"
+        status_code: [200, 201, 409]
+      register: bad_reg
+
+    - name: Verify workloads registered in Arbiter Hub
+      ansible.builtin.uri:
+        url: "{{ arbiter_hub_api }}/api/v1/workloads"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: workloads_list
+
+    - name: Check both workloads present
+      ansible.builtin.assert:
+        that:
+          - workloads_list.json | selectattr('name', 'equalto', 'demo-good-workload') | list | length > 0
+          - workloads_list.json | selectattr('name', 'equalto', 'demo-bad-workload') | list | length > 0
+        fail_msg: "Demo workloads not found in Arbiter Hub"
+
+    - name: Display workload status
+      ansible.builtin.debug:
+        msg: >-
+          Demo workloads deployed:
+          - demo-good-workload (running, registered)
+          - demo-bad-workload (created/stopped, registered — start during demo)

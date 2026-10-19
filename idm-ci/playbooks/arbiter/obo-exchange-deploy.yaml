@@ -1,0 +1,82 @@
+---
+# obo-exchange-deploy.yaml — Deploy OBO token exchange service (RFC 8693)
+# Configures on-behalf-of token exchange for delegated attestation workflows
+- name: Deploy OBO token exchange service
+  hosts: ipaserver
+  become: true
+  vars:
+    ahdapa_conf_dir: /etc/ahdapa
+    obo_conf_file: /etc/ahdapa/obo-exchange.conf
+  tasks:
+    - name: Deploy OBO exchange configuration
+      ansible.builtin.copy:
+        dest: "{{ obo_conf_file }}"
+        owner: apache
+        group: apache
+        mode: "0640"
+        content: |
+          [exchange]
+          enabled = true
+          grant_type = urn:ietf:params:oauth:grant-type:token-exchange
+          token_type = urn:ietf:params:oauth:token-type:jwt
+
+          [policy]
+          # Allow arbiter-hub to exchange tokens on behalf of workloads
+          allowed_actors = arbiter-hub
+          # Scopes the exchange can mint
+          allowed_scopes = arbiter:attest,arbiter:enroll,arbiter:view
+          # Maximum delegation depth
+          max_delegation_depth = 2
+          # Token lifetime for exchanged tokens (seconds)
+          exchanged_token_lifetime = 3600
+
+          [audit]
+          log_exchanges = true
+          log_file = /var/log/ahdapa/obo-exchange.log
+      notify: restart httpd
+
+    - name: Create audit log directory
+      ansible.builtin.file:
+        path: /var/log/ahdapa
+        state: directory
+        owner: apache
+        group: apache
+        mode: "0750"
+
+    - name: Register OBO exchange with ahdapa
+      ansible.builtin.command:
+        cmd: >-
+          ahdapa-exchange-register
+          --config {{ obo_conf_file }}
+          --issuer https://{{ ansible_fqdn }}/ahdapa
+      register: exchange_result
+      changed_when: "'registered' in exchange_result.stdout"
+      failed_when: exchange_result.rc != 0 and 'already registered' not in exchange_result.stderr
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Verify token exchange endpoint
+      ansible.builtin.uri:
+        url: "https://{{ ansible_fqdn }}/ahdapa/token"
+        method: POST
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          grant_type: "urn:ietf:params:oauth:grant-type:token-exchange"
+          subject_token_type: "urn:ietf:params:oauth:token-type:access_token"
+          subject_token: "test-invalid-token"
+        status_code: [400, 401]
+      register: exchange_test
+
+    - name: Confirm exchange endpoint responds
+      ansible.builtin.assert:
+        that:
+          - exchange_test.status in [400, 401]
+        fail_msg: "OBO exchange endpoint not responding"
+
+  handlers:
+    - name: restart httpd
+      ansible.builtin.systemd:
+        name: httpd
+        state: restarted

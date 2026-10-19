@@ -1,0 +1,101 @@
+---
+# enforcement-mcp-deploy.yaml — Deploy enforcement-mcp on hub node
+# SELinux/fapolicyd/MLS/AIDE policy MCP server connected to Arbiter Hub
+- name: Deploy enforcement-mcp
+  hosts: hub.arbiter.demo
+  become: true
+  vars:
+    enforcement_mcp_repo: "https://github.com/Amy-Ra-lph/enforcement-mcp.git"
+    enforcement_mcp_branch: "main"
+    enforcement_mcp_dir: "/opt/enforcement-mcp"
+    enforcement_mcp_port: 8402
+    arbiter_api_url: "http://localhost:8400"
+  tasks:
+    - name: Install system dependencies
+      ansible.builtin.dnf:
+        name:
+          - python3-pip
+          - python3-devel
+          - gcc
+          - selinux-policy-devel
+          - libselinux-python3
+          - fapolicyd
+          - aide
+        state: present
+
+    - name: Clone enforcement-mcp
+      ansible.builtin.git:
+        repo: "{{ enforcement_mcp_repo }}"
+        dest: "{{ enforcement_mcp_dir }}"
+        version: "{{ enforcement_mcp_branch }}"
+        force: true
+
+    - name: Install Python dependencies
+      ansible.builtin.pip:
+        requirements: "{{ enforcement_mcp_dir }}/requirements.txt"
+        state: present
+
+    - name: Install enforcement-mcp package
+      ansible.builtin.pip:
+        name: "{{ enforcement_mcp_dir }}"
+        editable: true
+        state: present
+
+    - name: Create enforcement-mcp config directory
+      ansible.builtin.file:
+        path: /etc/enforcement-mcp
+        state: directory
+        mode: "0755"
+
+    - name: Template enforcement-mcp config
+      ansible.builtin.copy:
+        dest: /etc/enforcement-mcp/config.yaml
+        mode: "0644"
+        content: |
+          server:
+            host: 0.0.0.0
+            port: {{ enforcement_mcp_port }}
+          arbiter:
+            api_url: {{ arbiter_api_url }}
+          policy:
+            selinux_enabled: true
+            fapolicyd_enabled: true
+            aide_enabled: true
+            mls_enabled: false
+
+    - name: Create systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/enforcement-mcp.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Enforcement MCP Server (SELinux/fapolicyd/MLS/AIDE)
+          After=network-online.target arbiter-hub-api.service
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/python3 -m enforcement_mcp.server --config /etc/enforcement-mcp/config.yaml
+          WorkingDirectory={{ enforcement_mcp_dir }}
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start enforcement-mcp
+      ansible.builtin.systemd:
+        name: enforcement-mcp
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for enforcement-mcp health
+      ansible.builtin.uri:
+        url: "http://localhost:{{ enforcement_mcp_port }}/health"
+        method: GET
+        status_code: 200
+      register: emcp_health
+      retries: 15
+      delay: 3
+      until: emcp_health.status == 200

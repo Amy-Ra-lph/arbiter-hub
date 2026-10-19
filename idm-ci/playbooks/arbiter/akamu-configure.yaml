@@ -1,0 +1,101 @@
+---
+# akamu-configure.yaml — Post-install configuration of akamu MTC CA
+# akamu RPM installed via COPR abbra/modrnizer-darc in prep phase.
+# This playbook configures ML-DSA-65 signing and ACME endpoint.
+- name: Configure akamu MTC CA
+  hosts: ipaserver
+  become: true
+  vars:
+    akamu_conf_dir: /etc/akamu
+    akamu_data_dir: /var/lib/akamu
+    akamu_port: 9443
+  tasks:
+    - name: Verify akamu is installed
+      ansible.builtin.command:
+        cmd: rpm -q akamu
+      changed_when: false
+
+    - name: Create akamu directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: akamu
+        group: akamu
+        mode: "0750"
+      loop:
+        - "{{ akamu_conf_dir }}"
+        - "{{ akamu_data_dir }}"
+        - "{{ akamu_data_dir }}/certs"
+        - "{{ akamu_data_dir }}/keys"
+
+    - name: Generate ML-DSA-65 CA signing key
+      ansible.builtin.command:
+        cmd: >-
+          akamu-keygen --algorithm ml-dsa-65
+          --output {{ akamu_data_dir }}/keys/ca-ml-dsa-65.key
+        creates: "{{ akamu_data_dir }}/keys/ca-ml-dsa-65.key"
+
+    - name: Set CA key permissions
+      ansible.builtin.file:
+        path: "{{ akamu_data_dir }}/keys/ca-ml-dsa-65.key"
+        owner: akamu
+        group: akamu
+        mode: "0600"
+
+    - name: Deploy akamu configuration
+      ansible.builtin.copy:
+        dest: "{{ akamu_conf_dir }}/akamu.conf"
+        owner: akamu
+        group: akamu
+        mode: "0640"
+        content: |
+          [global]
+          listen = 0.0.0.0:{{ akamu_port }}
+          data_dir = {{ akamu_data_dir }}
+
+          [ca]
+          algorithm = ml-dsa-65
+          key_file = {{ akamu_data_dir }}/keys/ca-ml-dsa-65.key
+          validity_days = 365
+          issuer_cn = Akamu MTC CA
+
+          [acme]
+          enabled = true
+          directory_path = /acme/directory
+          challenge_types = http-01,dns-01
+
+          [tls]
+          cert_file = /etc/ipa/ca.crt
+          key_file = ""
+          use_ipa_certs = true
+      notify: restart akamu
+
+    - name: Enable and start akamu
+      ansible.builtin.systemd:
+        name: akamu
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for ACME directory endpoint
+      ansible.builtin.uri:
+        url: "https://{{ ansible_fqdn }}:{{ akamu_port }}/acme/directory"
+        validate_certs: false
+        return_content: true
+      register: acme_directory
+      retries: 15
+      delay: 5
+      until: acme_directory.status == 200
+
+    - name: Verify ACME directory response
+      ansible.builtin.assert:
+        that:
+          - "'newOrder' in acme_directory.content"
+          - "'newAccount' in acme_directory.content"
+        fail_msg: "ACME directory missing required endpoints"
+
+  handlers:
+    - name: restart akamu
+      ansible.builtin.systemd:
+        name: akamu
+        state: restarted

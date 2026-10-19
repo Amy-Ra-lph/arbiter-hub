@@ -1,0 +1,100 @@
+---
+# oauth2-plugin-deploy.yaml — Configure IPA OAuth2 server plugin
+# Sets up LDAP schema, OIDC clients, and scopes for arbiter-hub
+- name: Configure IPA OAuth2 plugin
+  hosts: ipaserver
+  become: true
+  vars:
+    ipa_admin_password: "{{ ipaserver_admin_password }}"
+    hub_host: "{{ groups['ipaclient'][0] }}"
+    hub_fqdn: "{{ hostvars[hub_host]['ansible_fqdn'] | default('hub.arbiter.demo') }}"
+    ahdapa_issuer: "https://{{ ansible_fqdn }}/ahdapa"
+    arbiter_hub_redirect_uri: "https://{{ hub_fqdn }}:8400/auth/callback"
+    eda_redirect_uri: "https://{{ hub_fqdn }}:5001/auth/callback"
+  tasks:
+    - name: Obtain admin Kerberos ticket
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipa_admin_password }}"
+      changed_when: false
+
+    - name: Install OAuth2 schema extensions
+      ansible.builtin.command:
+        cmd: ahdapa-schema-install --ldap-modify
+      register: schema_result
+      changed_when: "'already installed' not in schema_result.stdout"
+      failed_when: schema_result.rc != 0 and 'already installed' not in schema_result.stdout
+
+    - name: Register arbiter-hub OIDC client
+      ansible.builtin.command:
+        cmd: >-
+          ahdapa-client-register
+          --client-id arbiter-hub
+          --client-name "Arbiter Hub"
+          --redirect-uri {{ arbiter_hub_redirect_uri }}
+          --grant-types authorization_code,client_credentials
+          --response-types code
+          --token-endpoint-auth-method client_secret_basic
+      register: hub_client
+      changed_when: "'registered' in hub_client.stdout"
+      failed_when: hub_client.rc != 0 and 'already exists' not in hub_client.stderr
+
+    - name: Save arbiter-hub client secret
+      ansible.builtin.copy:
+        content: "{{ hub_client.stdout | regex_search('client_secret: (.+)', '\\1') | first | default('') }}"
+        dest: /etc/arbiter/oidc-client-secret
+        mode: "0600"
+      when: "'client_secret' in hub_client.stdout"
+
+    - name: Register EDA controller OIDC client
+      ansible.builtin.command:
+        cmd: >-
+          ahdapa-client-register
+          --client-id eda-controller
+          --client-name "EDA Controller"
+          --redirect-uri {{ eda_redirect_uri }}
+          --grant-types client_credentials
+          --token-endpoint-auth-method client_secret_basic
+      register: eda_client
+      changed_when: "'registered' in eda_client.stdout"
+      failed_when: eda_client.rc != 0 and 'already exists' not in eda_client.stderr
+
+    - name: Create OAuth2 scopes
+      ansible.builtin.command:
+        cmd: >-
+          ahdapa-scope-create
+          --scope {{ item.name }}
+          --description "{{ item.desc }}"
+      loop:
+        - { name: "arbiter:attest", desc: "Request and view attestation results" }
+        - { name: "arbiter:enroll", desc: "Register and manage workloads" }
+        - { name: "arbiter:admin", desc: "Full administrative access" }
+        - { name: "arbiter:view", desc: "Read-only access to workloads and attestation" }
+      register: scope_result
+      changed_when: "'created' in scope_result.stdout"
+      failed_when: scope_result.rc != 0 and 'already exists' not in scope_result.stderr
+
+    - name: Assign scopes to arbiter-hub client
+      ansible.builtin.command:
+        cmd: >-
+          ahdapa-client-update --client-id arbiter-hub
+          --add-scope arbiter:attest,arbiter:enroll,arbiter:admin,arbiter:view
+      register: assign_result
+      changed_when: "'updated' in assign_result.stdout"
+      failed_when: assign_result.rc != 0 and 'already assigned' not in assign_result.stderr
+
+    - name: Assign scopes to EDA client
+      ansible.builtin.command:
+        cmd: >-
+          ahdapa-client-update --client-id eda-controller
+          --add-scope arbiter:attest,arbiter:enroll
+      register: eda_assign
+      changed_when: "'updated' in eda_assign.stdout"
+      failed_when: eda_assign.rc != 0 and 'already assigned' not in eda_assign.stderr
+
+    - name: Verify OIDC client registration
+      ansible.builtin.command:
+        cmd: ahdapa-client-list --format json
+      register: client_list
+      changed_when: false
+      failed_when: "'arbiter-hub' not in client_list.stdout"

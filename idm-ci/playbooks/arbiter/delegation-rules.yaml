@@ -1,0 +1,78 @@
+---
+# delegation-rules.yaml — Configure OBO delegation rules in IPA
+# Allows arbiter-hub, EDA, and agent workloads to use token exchange (RFC 8693)
+- name: Configure OBO delegation rules
+  hosts: ipaserver
+  become: true
+  vars:
+    ipa_admin_password: "{{ ipaserver_admin_password }}"
+  tasks:
+    - name: Obtain admin Kerberos ticket
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipa_admin_password }}"
+      changed_when: false
+
+    - name: Create delegation group for arbiter-hub service
+      ansible.builtin.command:
+        cmd: ipa group-add arbiter-hub-delegation --desc="Arbiter Hub OBO delegation"
+      register: deleg_group
+      changed_when: deleg_group.rc == 0
+      failed_when: deleg_group.rc != 0 and 'already exists' not in deleg_group.stderr
+
+    - name: Create delegation group for EDA controller
+      ansible.builtin.command:
+        cmd: ipa group-add eda-delegation --desc="EDA controller OBO delegation"
+      register: eda_group
+      changed_when: eda_group.rc == 0
+      failed_when: eda_group.rc != 0 and 'already exists' not in eda_group.stderr
+
+    - name: Create delegation group for agent workloads
+      ansible.builtin.command:
+        cmd: ipa group-add agent-delegation --desc="Agent workload OBO delegation"
+      register: agent_group
+      changed_when: agent_group.rc == 0
+      failed_when: agent_group.rc != 0 and 'already exists' not in agent_group.stderr
+
+    - name: Create delegation — arbiter-hub acts on behalf of operators
+      ansible.builtin.command:
+        cmd: >-
+          ipa delegation-add "arbiter-hub-operator-delegation"
+          --group=attestation-operator
+          --membergroup=arbiter-hub-delegation
+          --attrs=uid --attrs=memberof
+      register: deleg1
+      changed_when: deleg1.rc == 0
+      failed_when: deleg1.rc != 0 and 'already exists' not in deleg1.stderr
+
+    - name: Create delegation — EDA acts on behalf of pipeline
+      ansible.builtin.command:
+        cmd: >-
+          ipa delegation-add "eda-pipeline-delegation"
+          --group=attestation-pipeline
+          --membergroup=eda-delegation
+          --attrs=uid --attrs=memberof
+      register: deleg2
+      changed_when: deleg2.rc == 0
+      failed_when: deleg2.rc != 0 and 'already exists' not in deleg2.stderr
+
+    - name: Create delegation — agents request OBO tokens
+      ansible.builtin.command:
+        cmd: >-
+          ipa delegation-add "agent-service-delegation"
+          --group=attestation-agent
+          --membergroup=agent-delegation
+          --attrs=uid --attrs=memberof
+      register: deleg3
+      changed_when: deleg3.rc == 0
+      failed_when: deleg3.rc != 0 and 'already exists' not in deleg3.stderr
+
+    - name: Verify delegation rules
+      ansible.builtin.command:
+        cmd: ipa delegation-find
+      register: deleg_list
+      changed_when: false
+
+    - name: Display delegation rules
+      ansible.builtin.debug:
+        msg: "{{ deleg_list.stdout_lines }}"

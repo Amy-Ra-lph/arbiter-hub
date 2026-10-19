@@ -1,0 +1,170 @@
+---
+# metadata-arbiter-demo-3node.yaml — idm-ci metadata for full agentic security demo
+#
+# 3-node topology for persistent ("showroom") demo environment:
+#
+#   idm.arbiter.demo (IPA primary):
+#     - FreeIPA server + DNS
+#     - ahdapa native IdP (OAuth2/OIDC, ML-DSA-65 + ES256)
+#     - akamu MTC CA (ML-DSA-65, ACME)
+#     - SPIRE server (workload identity bootstrap)
+#     - Keylime verifier + registrar
+#     - OAuth2 plugin (clients, scopes, workloads, delegations)
+#     - OBO token exchange service (RFC 8693)
+#     - KBS (key broker service)
+#
+#   hub.arbiter.demo (Attestation + Policy hub):
+#     - Arbiter Hub API + UI (OIDC auth via ahdapa)
+#     - PostgreSQL (arbiter-hub backend)
+#     - enforcement-mcp (SELinux/fapolicyd/MLS/AIDE)
+#     - EDA controller (ansible-rulebook)
+#     - Webhook receiver for remediation workflows
+#     - mock-kbs (Trustee-compatible, for testing)
+#
+#   agent.arbiter.demo (Agent runtime):
+#     - OpenShell gateway + supervisor
+#     - linux-mcp-server (19 RHEL diagnostic tools)
+#     - OpenShell sandbox (UBI 10, policy-gated)
+#     - Keylime agent + swtpm
+#     - SPIRE agent (JWT-SVID → ahdapa federation)
+#     - Falco (eBPF runtime monitoring)
+#     - Demo agent workloads (attested containers)
+#
+# Lifetime: 7 days. Do NOT set IDMCI_SUT_LIFETIME env var when triggering
+# Jenkins — reservation duration handled by Jenkins job config.
+# For local `te` runs only:
+#   # IDMCI_SUT_LIFETIME=604800 te metadata-arbiter-demo-3node.yaml
+#
+# OS: Fedora 44 — COPR abbra/modrnizer-darc (includes synta/ahdapa/akamu).
+# F45 COPR known broken. Verify F44 COPR builds before first provision.
+#
+# Usage:
+#   te metadata-arbiter-demo-3node.yaml                        # full pipeline
+#   te metadata-arbiter-demo-3node.yaml --phase prep       # IPA + base packages
+#   te metadata-arbiter-demo-3node.yaml --phase identity   # ahdapa + akamu + SPIRE + OAuth2
+#   te metadata-arbiter-demo-3node.yaml --phase keylime    # Keylime + swtpm
+#   te metadata-arbiter-demo-3node.yaml --phase arbiter    # Hub + enforcement-mcp
+#   te metadata-arbiter-demo-3node.yaml --phase agents     # OpenShell + linux-mcp-server + Falco
+#   te metadata-arbiter-demo-3node.yaml --phase eda        # EDA rulebooks + webhooks
+#   te metadata-arbiter-demo-3node.yaml --phase test       # E2E smoke tests
+
+domains:
+  - name: arbiter.demo
+    type: ipa
+    hosts:
+      - name: idm.arbiter.demo
+        role: master
+        group: ipaserver
+        os: fedora-44
+      - name: hub.arbiter.demo
+        role: client
+        group: ipaclient
+        os: fedora-44
+      - name: agent.arbiter.demo
+        role: client
+        group: ipaclient
+        os: fedora-44
+
+phases:
+  - name: init
+    steps:
+      - playbook: init/testrunner-dir.yaml
+
+  - name: provision
+    steps:
+      - playbook: provision/mrack-up.yaml
+      - playbook: provision/wait.yaml
+
+  - name: prep
+    steps:
+      - playbook: prep/redhat-base.yaml
+      - playbook: prep/copr.yaml
+        extra_vars:
+          enable_copr:
+            - abbra/modrnizer-darc  # includes synta (ahdapa + akamu)
+      - playbook: prep/repos.yaml
+      - playbook: prep/install-ipa-packages.yaml
+        extra_vars:
+          IPA_VERSION: '4.14'
+      - playbook: prep/firewall.yaml
+      - playbook: prep/ipa-network.yaml
+      - playbook: prep/ipa-server-install.yaml
+        extra_vars:
+          ipaserver_setup_dns: true
+          ipaserver_forwarders:
+            - 8.8.8.8
+          ipaserver_no_reverse: true
+      - playbook: prep/ipa-client-install.yaml
+      # Container + dev tooling on hub and agent nodes
+      - command: |
+          dnf -y install podman buildah skopeo python3-pip git \
+            podman-plugins containernetworking-plugins
+        host: hub.arbiter.demo
+      - command: |
+          dnf -y install podman buildah skopeo python3-pip git \
+            podman-plugins containernetworking-plugins \
+            python3-gssapi krb5-devel tpm2-tools
+        host: agent.arbiter.demo
+
+  - name: identity
+    steps:
+      # ahdapa + akamu installed via abbra/modrnizer-darc COPR with IPA packages.
+      # This phase configures them post-install.
+      - playbook: arbiter/ahdapa-configure.yaml
+      - playbook: arbiter/akamu-configure.yaml
+      # OAuth2 plugin — schema + DIT + server plugins
+      - playbook: arbiter/oauth2-plugin-deploy.yaml
+      # OBO token exchange service
+      - playbook: arbiter/obo-exchange-deploy.yaml
+      # SPIRE server on idm, agent on agent node
+      - playbook: arbiter/spire-deploy.yaml
+
+  - name: keylime
+    steps:
+      # swtpm on both idm and agent nodes
+      # Keylime verifier+registrar on idm, agent on agent node
+      - playbook: arbiter/keylime-setup.yaml
+
+  - name: arbiter
+    steps:
+      # Arbiter Hub API + UI + PostgreSQL on hub node
+      - playbook: arbiter/container-deploy.yaml
+        extra_vars:
+          arbiter_hub_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
+          arbiter_hub_ui_image: "quay.io/rhel-security/arbiter-hub-ui:latest"
+          arbiter_hub_kbs_image: "quay.io/rhel-security/arbiter-hub-kbs:latest"
+          arbiter_hub_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
+      # IPA roles + OIDC client registration for arbiter-hub
+      - playbook: arbiter/ipa-roles.yaml
+      # enforcement-mcp (SELinux/fapolicyd policy tools)
+      - playbook: arbiter/enforcement-mcp-deploy.yaml
+      - playbook: arbiter/health-check.yaml
+
+  - name: agents
+    steps:
+      # OpenShell gateway + supervisor on agent node
+      - playbook: arbiter/openshell-deploy.yaml
+      # linux-mcp-server in OpenShell sandbox (UBI 10, GSSAPI auth)
+      - playbook: arbiter/linux-mcp-server-deploy.yaml
+      # Falco eBPF runtime monitoring on agent node
+      - playbook: arbiter/falco-deploy.yaml
+      # Demo workloads (attested containers for demo scenarios)
+      - playbook: arbiter/demo-workloads.yaml
+
+  - name: eda
+    steps:
+      # EDA controller (ansible-rulebook) on hub node
+      - playbook: arbiter/eda-deploy.yaml
+      # Webhook registrations (arbiter-hub → EDA)
+      - playbook: arbiter/webhook-setup.yaml
+      # OBO delegation rules for demo agents
+      - playbook: arbiter/delegation-rules.yaml
+
+  - name: test
+    steps:
+      - playbook: arbiter/e2e-test.yaml
+
+  # No teardown — persistent demo environment
+  - name: teardown
+    steps:
+      - command: echo "Demo environment ready — no teardown"

@@ -1,0 +1,130 @@
+---
+# openshell-deploy.yaml — Deploy OpenShell gateway + supervisor on agent node
+#
+# Installs OpenShell (v0.0.111+) with GSSAPI auth against IPA,
+# configures UBI 10 sandbox profile, starts gateway on port 8443.
+- name: Deploy OpenShell gateway
+  hosts: agent.arbiter.demo
+  become: true
+  vars:
+    openshell_version: "0.0.111"
+    openshell_gateway_port: 8443
+    openshell_sandbox_image: "registry.access.redhat.com/ubi10/ubi:latest"
+    openshell_config_dir: "/etc/openshell"
+    openshell_data_dir: "/var/lib/openshell"
+    ipa_server: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] }}"
+  tasks:
+    - name: Install OpenShell dependencies
+      ansible.builtin.dnf:
+        name:
+          - python3-pip
+          - python3-gssapi
+          - krb5-workstation
+          - podman
+        state: present
+
+    - name: Install OpenShell via pip
+      ansible.builtin.pip:
+        name: "openshell>={{ openshell_version }}"
+        state: present
+
+    - name: Create config directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ openshell_config_dir }}"
+        - "{{ openshell_data_dir }}"
+        - "{{ openshell_data_dir }}/sandboxes"
+
+    - name: Pull sandbox base image
+      containers.podman.podman_image:
+        name: "{{ openshell_sandbox_image }}"
+        state: present
+
+    - name: Deploy gateway configuration
+      ansible.builtin.copy:
+        dest: "{{ openshell_config_dir }}/gateway.yaml"
+        mode: "0644"
+        content: |
+          gateway:
+            host: 0.0.0.0
+            port: {{ openshell_gateway_port }}
+            tls:
+              cert: /etc/ipa/nssdb/cert.pem
+              key: /etc/ipa/nssdb/key.pem
+
+          auth:
+            method: gssapi
+            keytab: /etc/krb5.keytab
+            service: HTTP/{{ ansible_fqdn }}
+
+          sandbox:
+            runtime: podman
+            image: {{ openshell_sandbox_image }}
+            network_mode: slirp4netns
+            memory_limit: 512m
+            cpu_limit: "1.0"
+            read_only: true
+            data_dir: {{ openshell_data_dir }}/sandboxes
+
+          supervisor:
+            max_sessions: 10
+            idle_timeout: 3600
+            health_check_interval: 30
+
+    - name: Request IPA service principal for OpenShell
+      ansible.builtin.command:
+        cmd: ipa service-add HTTP/{{ ansible_fqdn }}
+      register: svc_add
+      changed_when: svc_add.rc == 0
+      failed_when: svc_add.rc != 0 and 'already exists' not in svc_add.stderr
+      delegate_to: "{{ ipa_server }}"
+
+    - name: Retrieve keytab for OpenShell service
+      ansible.builtin.command:
+        cmd: >-
+          ipa-getkeytab -s {{ ipa_server }}
+          -p HTTP/{{ ansible_fqdn }}
+          -k /etc/krb5.keytab
+      args:
+        creates: /etc/krb5.keytab
+
+    - name: Deploy OpenShell gateway systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/openshell-gateway.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=OpenShell Gateway
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/openshell-gateway --config {{ openshell_config_dir }}/gateway.yaml
+          Restart=on-failure
+          RestartSec=5
+          Environment=KRB5_KTNAME=/etc/krb5.keytab
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start OpenShell gateway
+      ansible.builtin.systemd:
+        name: openshell-gateway
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for OpenShell gateway health
+      ansible.builtin.uri:
+        url: "https://localhost:{{ openshell_gateway_port }}/health"
+        validate_certs: false
+        method: GET
+        status_code: 200
+      register: gw_health
+      retries: 15
+      delay: 5
+      until: gw_health.status == 200
