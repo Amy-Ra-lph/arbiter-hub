@@ -110,7 +110,7 @@ const workloadsApi = api.injectEndpoints({
       PaginatedResponse<AttestationRecord>,
       { id: string; startIndex?: number; count?: number }
     >({
-      query: ({ id, startIndex = 0, count = 25 }) =>
+      query: ({ id, startIndex = 1, count = 25 }) =>
         `/workloads/${id}/attestations?startIndex=${startIndex}&count=${count}`,
     }),
 
@@ -118,7 +118,7 @@ const workloadsApi = api.injectEndpoints({
       PaginatedResponse<StateTransition>,
       { id: string; startIndex?: number; count?: number }
     >({
-      query: ({ id, startIndex = 0, count = 25 }) =>
+      query: ({ id, startIndex = 1, count = 25 }) =>
         `/workloads/${id}/transitions?startIndex=${startIndex}&count=${count}`,
     }),
   }),
