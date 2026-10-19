@@ -1,11 +1,11 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.api.webhooks import dispatch_webhooks
-from server.auth.dependencies import require_permission
+from server.auth.dependencies import get_caller, require_permission
 from server.auth.models import CallerIdentity
 from server.models.db import (
     AttestationRecord,
@@ -97,7 +97,17 @@ async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
 @router.post("/api/alerts/falco")
 async def receive_falco_alert(
     alert: dict,
+    request: Request,
     session: AsyncSession = Depends(get_session),
-    caller: CallerIdentity = require_permission("trigger_attestation"),
 ):
+    # Falco HTTP output cannot send Bearer tokens — accept from localhost
+    client = request.client
+    if client and client.host not in ("127.0.0.1", "::1", "10.89.0.1"):
+        caller = await get_caller(request)
+        from server.auth.rbac import check_permission
+
+        if not check_permission(caller, "trigger_attestation"):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=403, detail="permission denied")
     return await _handle_falco_alert(alert, session)

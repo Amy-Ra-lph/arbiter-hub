@@ -16,6 +16,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "read_compliance",
         "request_reattest",
         "manage_kbs",
+        "register_webhook",
     },
     Role.OPERATOR.value: {
         "read_workload",
@@ -63,6 +64,8 @@ def check_permission(identity: CallerIdentity, action: str) -> bool:
 
 
 def check_scope(identity: CallerIdentity, workload_scope: str) -> bool:
+    if Role.ADMIN.value in identity.roles:
+        return True
     if "*" in identity.scopes:
         return True
     return workload_scope in identity.scopes

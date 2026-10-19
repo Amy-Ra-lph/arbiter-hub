@@ -91,17 +91,21 @@ const Dashboard: React.FC = () => {
   const {
     data: workloadsData,
     isLoading: wlLoading,
+    isError: wlError,
   } = useGetWorkloadsQuery({ count: 100 }, { pollingInterval: 30000 });
   const {
     data: backendsData,
     isLoading: beLoading,
+    isError: beError,
   } = useGetBackendsQuery(undefined, { pollingInterval: 30000 });
   const {
     data: auditData,
     isLoading: auLoading,
+    isError: auError,
   } = useGetAuditQuery({ count: 20 }, { pollingInterval: 30000 });
   const {
     data: healthData,
+    isError: healthError,
   } = useGetHealthQuery(undefined, { pollingInterval: 15000 });
 
   if (wlLoading || beLoading || auLoading) {
@@ -131,7 +135,11 @@ const Dashboard: React.FC = () => {
           <Card>
             <CardTitle>Cluster Status</CardTitle>
             <CardBody>
-              {healthData ? (
+              {healthError ? (
+                <Alert variant="danger" title="API Unreachable" isInline>
+                  Cannot connect to the Arbiter Hub API. Check that the API container is running.
+                </Alert>
+              ) : healthData ? (
                 <div style={{ display: "flex", gap: "24px", alignItems: "center", flexWrap: "wrap" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <Icon status={healthData.status === "ok" ? "success" : "danger"}>
@@ -159,7 +167,9 @@ const Dashboard: React.FC = () => {
           <Card>
             <CardTitle>Workload States</CardTitle>
             <CardBody>
-              {workloads.length === 0 ? (
+              {wlError ? (
+                <Alert variant="warning" title="Could not load workloads" isInline />
+              ) : workloads.length === 0 ? (
                 <EmptyState
                   titleText="No workloads registered"
                   icon={CubesIcon}
@@ -194,7 +204,9 @@ const Dashboard: React.FC = () => {
           <Card>
             <CardTitle>Backend Health</CardTitle>
             <CardBody>
-              {Object.keys(backends).length === 0 ? (
+              {beError ? (
+                <Alert variant="warning" title="Could not load backends" isInline />
+              ) : Object.keys(backends).length === 0 ? (
                 <EmptyState
                   titleText="No backends configured"
                   headingLevel="h4"
@@ -264,7 +276,9 @@ const Dashboard: React.FC = () => {
           <Card>
             <CardTitle>Recent Events</CardTitle>
             <CardBody>
-              {auditItems.length === 0 ? (
+              {auError ? (
+                <Alert variant="warning" title="Could not load events" isInline />
+              ) : auditItems.length === 0 ? (
                 <div>No recent events.</div>
               ) : (
                 <DataList aria-label="Recent events">

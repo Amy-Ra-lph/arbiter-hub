@@ -18,6 +18,16 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
         if request.method in _SAFE_METHODS:
             return await call_next(request)
 
+        # Bearer token requests are not vulnerable to CSRF
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            return await call_next(request)
+
+        # Internal service calls (Falco, EDA) from container network
+        client = request.client
+        if client and client.host in ("127.0.0.1", "::1", "10.89.0.1"):
+            return await call_next(request)
+
         origin = request.headers.get("Origin")
         if not origin or origin not in self.allowed_origins:
             return JSONResponse(

@@ -18,6 +18,15 @@ export interface AuthState {
 }
 
 let _accessToken: string | null = null;
+let _loggedOut = false;
+
+export function isLoggedOut(): boolean {
+  return _loggedOut;
+}
+
+export function clearLoggedOut(): void {
+  _loggedOut = false;
+}
 
 export function getStoredToken(): string | null {
   return _accessToken;
@@ -101,8 +110,9 @@ export function useAuth(): AuthState {
 
   const logout = useCallback(() => {
     _accessToken = null;
+    _loggedOut = true;
     setUser(null);
-    managerRef.current?.signoutRedirect();
+    managerRef.current?.removeUser();
   }, []);
 
   return {

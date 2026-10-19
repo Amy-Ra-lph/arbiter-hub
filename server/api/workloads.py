@@ -63,9 +63,11 @@ async def list_workloads(
         stmt = stmt.where(Workload.workload_type == workload_type)
         count_stmt = count_stmt.where(Workload.workload_type == workload_type)
 
-    # Scope filtering: agents only see workloads matching their scope
-    if "*" not in caller.scopes:
-        # Extract principal realm/domain for scoped filtering
+    # Scope filtering: agents see only their own workloads; admins see all
+    from server.auth.models import Role
+
+    is_admin = Role.ADMIN.value in caller.roles
+    if not is_admin and "*" not in caller.scopes:
         scope_principals = []
         if "@" in caller.principal:
             realm = caller.principal.split("@")[-1]

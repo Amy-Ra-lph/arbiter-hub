@@ -44,7 +44,7 @@ const Workloads: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<string>("");
 
   const { data, isLoading, isError } = useGetWorkloadsQuery({
-    count: 200,
+    count: 100,
   });
 
   const allWorkloads = data?.items ?? [];
