@@ -25,6 +25,7 @@ from server.models.schemas import (
     PaginatedResponse,
     PolicyCreate,
     PolicyRead,
+    PolicyUpdate,
     StateTransitionRead,
     WorkloadCreate,
     WorkloadList,
@@ -407,6 +408,29 @@ async def create_policy(
         created_by=caller.principal,
     )
     session.add(policy)
+    await session.commit()
+    await session.refresh(policy)
+    return PolicyRead.model_validate(policy)
+
+
+@router.patch("/policies/{policy_id}")
+async def update_policy(
+    policy_id: UUID,
+    body: PolicyUpdate,
+    session: AsyncSession = Depends(get_session),
+    caller: CallerIdentity = require_permission("update_policy"),
+):
+    result = await session.execute(select(Policy).where(Policy.id == policy_id))
+    policy = result.scalar_one_or_none()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    if body.active is not None:
+        policy.active = body.active
+    if body.policy_content is not None:
+        policy.policy_content = body.policy_content
+    if body.scope is not None:
+        policy.scope = body.scope
+    policy.updated_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(policy)
     return PolicyRead.model_validate(policy)

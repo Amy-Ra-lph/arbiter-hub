@@ -33,7 +33,8 @@ import SearchInputLayout from "src/components/layouts/SearchInputLayout";
 import PaginationLayout from "src/components/layouts/PaginationLayout";
 import DataSpinner from "src/components/DataSpinner";
 import PolicyBuilder from "./PolicyBuilder";
-import { useGetPoliciesQuery, useCreatePolicyMutation } from "src/services/rpcPolicies";
+import { useGetPoliciesQuery, useCreatePolicyMutation, useUpdatePolicyMutation } from "src/services/rpcPolicies";
+import { useGetWhoamiQuery } from "src/services/rpcAuth";
 
 const Policies: React.FC = () => {
   const [page, setPage] = useState(1);
@@ -53,6 +54,9 @@ const Policies: React.FC = () => {
 
   const { data, isLoading } = useGetPoliciesQuery();
   const [createPolicy, { isLoading: creating }] = useCreatePolicyMutation();
+  const [updatePolicy] = useUpdatePolicyMutation();
+  const { data: whoami } = useGetWhoamiQuery();
+  const isAdmin = whoami?.roles?.includes("attestation-admin") ?? false;
 
   const items = data?.items ?? [];
 
@@ -207,9 +211,20 @@ const Policies: React.FC = () => {
                   <Td dataLabel="Type">{policy.policy_type}</Td>
                   <Td dataLabel="Scope">{policy.scope ?? "global"}</Td>
                   <Td dataLabel="Status">
-                    <Label color={policy.active ? "green" : "grey"}>
-                      {policy.active ? "active" : "inactive"}
-                    </Label>
+                    {isAdmin ? (
+                      <Switch
+                        id={`policy-toggle-${policy.id}`}
+                        isChecked={policy.active}
+                        onChange={(_evt, checked) =>
+                          updatePolicy({ id: policy.id, active: checked })
+                        }
+                        label="Active"
+                      />
+                    ) : (
+                      <Label color={policy.active ? "green" : "grey"}>
+                        {policy.active ? "active" : "inactive"}
+                      </Label>
+                    )}
                   </Td>
                   <Td dataLabel="Created By">{policy.created_by}</Td>
                   <Td dataLabel="Created">

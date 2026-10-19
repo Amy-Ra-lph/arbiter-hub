@@ -34,7 +34,7 @@ const History: React.FC = () => {
   const [search, setSearch] = useState("");
   const [verdictFilter, setVerdictFilter] = useState("");
 
-  const { data, isLoading } = useGetAuditQuery({ count: 200 });
+  const { data, isLoading } = useGetAuditQuery({ count: 100 });
 
   const items = data?.items ?? [];
 

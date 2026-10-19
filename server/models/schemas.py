@@ -99,6 +99,12 @@ class PolicyCreate(BaseModel):
     active: bool = True
 
 
+class PolicyUpdate(BaseModel):
+    active: bool | None = None
+    policy_content: dict | None = None
+    scope: ConstrainedName | None = None
+
+
 class PolicyRead(BaseModel):
     id: uuid.UUID
     name: str

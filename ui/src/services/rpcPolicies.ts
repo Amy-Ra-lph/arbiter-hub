@@ -9,6 +9,13 @@ interface PolicyCreatePayload {
   active: boolean;
 }
 
+interface PolicyUpdatePayload {
+  id: string;
+  active?: boolean;
+  policy_content?: Record<string, unknown>;
+  scope?: string | null;
+}
+
 const policiesApi = api.injectEndpoints({
   endpoints: (builder) => ({
     getPolicies: builder.query<PaginatedResponse<Policy>, void>({
@@ -23,7 +30,19 @@ const policiesApi = api.injectEndpoints({
       }),
       invalidatesTags: ["Policy"],
     }),
+    updatePolicy: builder.mutation<Policy, PolicyUpdatePayload>({
+      query: ({ id, ...body }) => ({
+        url: `/policies/${id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Policy"],
+    }),
   }),
 });
 
-export const { useGetPoliciesQuery, useCreatePolicyMutation } = policiesApi;
+export const {
+  useGetPoliciesQuery,
+  useCreatePolicyMutation,
+  useUpdatePolicyMutation,
+} = policiesApi;
