@@ -43,9 +43,10 @@ const Workloads: React.FC = () => {
   const [stateFilter, setStateFilter] = useState<string>(initialState);
   const [typeFilter, setTypeFilter] = useState<string>("");
 
-  const { data, isLoading, isError } = useGetWorkloadsQuery({
-    count: 100,
-  });
+  const { data, isLoading, isError } = useGetWorkloadsQuery(
+    { count: 100 },
+    { pollingInterval: 15000 },
+  );
 
   const allWorkloads = data?.items ?? [];
 
