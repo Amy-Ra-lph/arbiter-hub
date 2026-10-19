@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -9,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.auth.dependencies import require_permission
 from server.auth.models import CallerIdentity
-from server.backends.base import BackendRegistry
+from server.backends.base import BackendRegistry, compute_composite_verdict
 from server.models.db import (
     AttestationRecord,
     AttestationVerdict,
@@ -18,6 +20,8 @@ from server.models.db import (
     get_session,
 )
 from server.state.machine import InvalidTransitionError, transition
+
+log = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -60,49 +64,79 @@ async def trigger_attestation(
     if not registry:
         raise HTTPException(status_code=500, detail="backend registry not initialized")
 
-    try:
-        primary_backend = workload.backend_types[0]
-        backend = registry.get(primary_backend)
-    except KeyError:
+    # Resolve backends for all declared types, skip missing with warning
+    backends = []
+    for bt in workload.backend_types:
+        try:
+            backends.append((bt, registry.get(bt)))
+        except KeyError:
+            log.warning("backend %s not configured, skipping", bt)
+    if not backends:
         raise HTTPException(
-            status_code=503, detail=f"backend {workload.backend_types[0]} not configured"
+            status_code=503,
+            detail=f"no configured backends for types {workload.backend_types}",
         )
 
-    att_result = await backend.verify(workload)
-
-    # Record attestation result
-    record = AttestationRecord(
-        workload_id=workload.id,
-        backend=workload.backend_types[0],
-        verdict=att_result.verdict,
-        evidence_hash=att_result.evidence_hash,
-        detail=att_result.detail,
+    # Run all backends in parallel
+    raw_results = await asyncio.gather(
+        *[b.verify(workload) for _, b in backends], return_exceptions=True
     )
-    session.add(record)
 
-    # Transition based on verdict
-    # CRITICAL: UNAVAILABLE does NOT transition to Failed
-    if att_result.verdict == AttestationVerdict.PASS:
+    att_results = []
+    for (bt, _), raw in zip(backends, raw_results):
+        if isinstance(raw, Exception):
+            log.error("backend %s raised %s", bt, raw)
+            from server.backends.base import AttestationResult
+
+            att_results.append(
+                AttestationResult(
+                    verdict=AttestationVerdict.ERROR,
+                    backend=bt,
+                    evidence_hash="",
+                    detail={"error": str(raw)},
+                )
+            )
+        else:
+            att_results.append(raw)
+
+    # Create one attestation record per backend
+    record_ids = []
+    for ar in att_results:
+        record = AttestationRecord(
+            workload_id=workload.id,
+            backend=ar.backend,
+            verdict=ar.verdict,
+            evidence_hash=ar.evidence_hash,
+            detail=ar.detail,
+        )
+        session.add(record)
+        record_ids.append(record.id)
+
+    # Compute composite verdict
+    composite = compute_composite_verdict(att_results)
+
+    # Transition based on composite verdict
+    if composite == AttestationVerdict.PASS:
         await transition(session, workload, WorkloadState.HEALTHY, "attestation_result")
         workload.last_attested_at = datetime.now(UTC)
-    elif att_result.verdict == AttestationVerdict.FAIL:
+    elif composite == AttestationVerdict.FAIL:
         await transition(session, workload, WorkloadState.FAILED, "attestation_result")
-    # For UNAVAILABLE and ERROR: stay in Attesting, do not transition to Failed
 
     await session.commit()
 
-    # Return detailed response
     response_detail = {
         "workload_id": str(workload_id),
-        "verdict": att_result.verdict.value,
+        "verdict": composite.value,
         "state": workload.current_state.value,
-        "attestation_id": str(record.id),
+        "attestation_id": str(record_ids[0]),
+        "per_backend": [
+            {"backend": ar.backend, "verdict": ar.verdict.value} for ar in att_results
+        ],
     }
 
-    # Add message for UNAVAILABLE verdict
-    if att_result.verdict == AttestationVerdict.UNAVAILABLE:
+    if composite == AttestationVerdict.UNAVAILABLE:
         response_detail["message"] = (
-            "Backend temporarily unavailable; workload remains in current state"
+            "One or more backends unavailable; workload remains in current state"
         )
 
     return response_detail
