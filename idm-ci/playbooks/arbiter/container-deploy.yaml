@@ -17,7 +17,7 @@
   hosts: arbiter_hub
   become: true
   vars:
-    arbiter_api_image: "localhost/arbiter-hub-api:latest"
+    arbiter_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
     arbiter_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
     arbiter_ui_image: "docker.io/library/nginx:alpine"
     arbiter_db_image: "registry.redhat.io/rhel10/postgresql-16:latest"
