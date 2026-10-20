@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     trustee_url: str = ""
     cosign_binary: str = "cosign"
     cosign_public_key: str = ""
+    cosign_insecure_ignore_tlog: bool = False
     falco_healthz_url: str = ""
     rekor_url: str = ""
     rhtas_fulcio_url: str = ""

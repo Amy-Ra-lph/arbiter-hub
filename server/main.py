@@ -57,6 +57,7 @@ async def lifespan(app: FastAPI):
                 fulcio_url=settings.rhtas_fulcio_url,
                 tuf_root=settings.rhtas_tuf_root,
                 public_key=settings.cosign_public_key,
+                insecure_ignore_tlog=settings.cosign_insecure_ignore_tlog,
             ),
         )
     app.state.backend_registry = registry

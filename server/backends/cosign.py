@@ -22,12 +22,14 @@ class CosignBackend:
         fulcio_url: str = "",
         tuf_root: str = "",
         public_key: str = "",
+        insecure_ignore_tlog: bool = False,
     ):
         self._binary = cosign_binary
         self._rekor_url = rekor_url
         self._fulcio_url = fulcio_url
         self._tuf_root = tuf_root
         self._public_key = public_key
+        self._insecure_ignore_tlog = insecure_ignore_tlog
 
     async def verify(self, workload: Workload) -> AttestationResult:
         artifact_ref = workload.metadata_.get("artifact_ref", "")
@@ -39,9 +41,11 @@ class CosignBackend:
                 detail={"error": "no artifact_ref in workload metadata"},
             )
         try:
-            cmd = [self._binary, "verify", "--yes"]
+            cmd = [self._binary, "verify"]
             if self._public_key:
                 cmd.extend(["--key", self._public_key])
+            if self._insecure_ignore_tlog:
+                cmd.append("--insecure-ignore-tlog")
             cmd.append(artifact_ref)
             if self._rekor_url:
                 cmd.extend(["--rekor-url", self._rekor_url])
