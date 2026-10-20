@@ -48,12 +48,25 @@ class KeylimeBackend:
             kwargs["verify"] = ctx
         return httpx.AsyncClient(**kwargs)
 
+    def _build_registrar_client(self) -> httpx.AsyncClient:
+        """Registrar uses a different server cert; disable verification but send mTLS client cert."""
+        kwargs: dict = {"timeout": self._timeout, "verify": False}
+        if self._client_cert and self._client_key:
+            import ssl
+
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            ctx.load_cert_chain(self._client_cert, self._client_key)
+            kwargs["verify"] = ctx
+        return httpx.AsyncClient(**kwargs)
+
     async def _fetch_registrar_agent(self, agent_id: str) -> dict | None:
         """Fetch agent registration data (ak_tpm, mtls_cert, ip) from registrar."""
         if not self._registrar_url:
             return None
         try:
-            async with self._build_client() as client:
+            async with self._build_registrar_client() as client:
                 resp = await client.get(
                     f"{self._registrar_url}/v2.5/agents/{agent_id}"
                 )

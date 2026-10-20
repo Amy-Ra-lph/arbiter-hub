@@ -60,9 +60,13 @@ async def test_enroll_builds_correct_payload(keylime_backend, mock_workload):
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = {"results": {}}
 
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_resp)
-    mock_client.get = AsyncMock(return_value=AsyncMock(
+    verifier_client = AsyncMock()
+    verifier_client.post = AsyncMock(return_value=mock_resp)
+    verifier_client.__aenter__ = AsyncMock(return_value=verifier_client)
+    verifier_client.__aexit__ = AsyncMock(return_value=False)
+
+    registrar_client = AsyncMock()
+    registrar_client.get = AsyncMock(return_value=AsyncMock(
         raise_for_status=MagicMock(),
         json=MagicMock(return_value={
             "results": {
@@ -72,17 +76,18 @@ async def test_enroll_builds_correct_payload(keylime_backend, mock_workload):
             }
         }),
     ))
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+    registrar_client.__aenter__ = AsyncMock(return_value=registrar_client)
+    registrar_client.__aexit__ = AsyncMock(return_value=False)
 
-    with patch.object(keylime_backend, "_build_client", return_value=mock_client):
+    with patch.object(keylime_backend, "_build_client", return_value=verifier_client), \
+         patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client):
         result = await keylime_backend.enroll(mock_workload, {})
 
     assert result.success is True
     assert result.detail["agent_id"] == "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
     assert result.detail["registrar_data_used"] is True
 
-    post_call = mock_client.post.call_args
+    post_call = verifier_client.post.call_args
     payload = post_call.kwargs["json"]
     assert payload["agent_id"] == "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
     assert payload["ip"] == "192.0.2.10"
@@ -102,25 +107,30 @@ async def test_enroll_custom_tpm_policy(keylime_backend, mock_workload):
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = {"results": {}}
 
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_resp)
-    mock_client.get = AsyncMock(return_value=AsyncMock(
+    verifier_client = AsyncMock()
+    verifier_client.post = AsyncMock(return_value=mock_resp)
+    verifier_client.__aenter__ = AsyncMock(return_value=verifier_client)
+    verifier_client.__aexit__ = AsyncMock(return_value=False)
+
+    registrar_client = AsyncMock()
+    registrar_client.get = AsyncMock(return_value=AsyncMock(
         raise_for_status=MagicMock(),
         json=MagicMock(return_value={"results": {}}),
     ))
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+    registrar_client.__aenter__ = AsyncMock(return_value=registrar_client)
+    registrar_client.__aexit__ = AsyncMock(return_value=False)
 
     custom_policy = {
         "tpm_policy": {"mask": "0x408000", "22": ["sha256:abc123"]},
         "ak_tpm": "override-ak",
     }
 
-    with patch.object(keylime_backend, "_build_client", return_value=mock_client):
+    with patch.object(keylime_backend, "_build_client", return_value=verifier_client), \
+         patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client):
         result = await keylime_backend.enroll(mock_workload, custom_policy)
 
     assert result.success is True
-    payload = mock_client.post.call_args.kwargs["json"]
+    payload = verifier_client.post.call_args.kwargs["json"]
     tpm_policy = json.loads(payload["tpm_policy"])
     assert tpm_policy["mask"] == "0x408000"
     assert "22" in tpm_policy
@@ -189,22 +199,27 @@ async def test_enroll_tpm_policy_dict_without_mask(keylime_backend, mock_workloa
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = {"results": {}}
 
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_resp)
-    mock_client.get = AsyncMock(return_value=AsyncMock(
+    verifier_client = AsyncMock()
+    verifier_client.post = AsyncMock(return_value=mock_resp)
+    verifier_client.__aenter__ = AsyncMock(return_value=verifier_client)
+    verifier_client.__aexit__ = AsyncMock(return_value=False)
+
+    registrar_client = AsyncMock()
+    registrar_client.get = AsyncMock(return_value=AsyncMock(
         raise_for_status=MagicMock(),
         json=MagicMock(return_value={"results": {}}),
     ))
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+    registrar_client.__aenter__ = AsyncMock(return_value=registrar_client)
+    registrar_client.__aexit__ = AsyncMock(return_value=False)
 
-    with patch.object(keylime_backend, "_build_client", return_value=mock_client):
+    with patch.object(keylime_backend, "_build_client", return_value=verifier_client), \
+         patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client):
         result = await keylime_backend.enroll(
             mock_workload, {"tpm_policy": {"22": ["sha256:xyz"]}}
         )
 
     assert result.success is True
-    payload = mock_client.post.call_args.kwargs["json"]
+    payload = verifier_client.post.call_args.kwargs["json"]
     tpm_policy = json.loads(payload["tpm_policy"])
     assert tpm_policy["mask"] == "0x0"
     assert "22" in tpm_policy
