@@ -14,7 +14,7 @@
 #   - Sandboxes registered in Arbiter Hub with Falco backend for runtime monitoring
 #   - linux-mcp-server deployed separately (see linux-mcp-server-deploy.yaml)
 - name: Deploy OpenShell gateway and sandboxes
-  hosts: arbiter_agent
+  hosts: agent.arbiter.demo
   become: true
   vars:
     openshell_gateway_image: "quay.io/rhel-security/poc-openshell-rhhi:gateway-0.0.111"
@@ -22,7 +22,7 @@
     openshell_pki_dir: "/etc/openshell/pki"
     openshell_health_port: 17672
     openshell_gateway_port: 8080
-    arbiter_hub_host: "{{ hostvars[groups['arbiter_hub'][0]]['ansible_fqdn'] | default('hub.arbiter.demo') }}"
+    arbiter_hub_host: "hub.arbiter.demo"
     arbiter_hub_port: 8400
     sandbox_tiers:
       - name: wid-sovereign
