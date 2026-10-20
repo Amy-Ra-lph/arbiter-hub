@@ -34,6 +34,8 @@
     arbiter_cosign_public_key: "/etc/arbiter/cosign/cosign.pub"
     cosign_version: "2.4.1"
     quadlet_dir: "/etc/containers/systemd"
+    quay_robot_user: "{{ vault_quay_robot_user | default('') }}"
+    quay_robot_token: "{{ vault_quay_robot_token | default('') }}"
     arbiter_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
     arbiter_repo_branch: "main"
   tasks:
@@ -83,6 +85,27 @@
         - "{{ arbiter_api_image }}"
         - "{{ arbiter_mcp_image }}"
         - "{{ arbiter_db_image }}"
+
+    - name: Login to Quay for cosign signature push
+      ansible.builtin.command:
+        cmd: podman login quay.io -u {{ quay_robot_user }} -p {{ quay_robot_token }}
+      when: quay_robot_user | length > 0
+      no_log: true
+
+    - name: Sign container images with cosign
+      ansible.builtin.command:
+        cmd: >-
+          cosign sign --key /etc/arbiter/cosign/cosign.key
+          --tlog-upload=false
+          {{ item }}
+      environment:
+        COSIGN_PASSWORD: ""
+      loop:
+        - "{{ arbiter_api_image }}"
+        - "{{ arbiter_mcp_image }}"
+      register: cosign_sign
+      changed_when: "'Pushing signature' in cosign_sign.stderr"
+      when: quay_robot_user | length > 0
 
     - name: Clone arbiter-hub repo
       ansible.builtin.git:
@@ -159,7 +182,8 @@
           Environment=ARBITER_KEYLIME_CLIENT_KEY=/etc/arbiter/keylime/client.key
           Environment=ARBITER_FALCO_HEALTHZ_URL={{ arbiter_falco_healthz_url }}
           Environment=ARBITER_COSIGN_PUBLIC_KEY={{ arbiter_cosign_public_key }}
-          ReadOnly=true
+          Environment=ARBITER_COSIGN_INSECURE_IGNORE_TLOG=true
+          SecurityLabelDisable=true
 
           [Service]
           Restart=always
