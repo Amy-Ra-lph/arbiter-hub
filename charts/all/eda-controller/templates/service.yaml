@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eda-controller
+  labels:
+    app.kubernetes.io/name: eda-controller
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selector:
+    app.kubernetes.io/name: eda-controller
+  ports:
+    - name: webhook
+      port: {{ .Values.webhookPort }}
+      targetPort: webhook

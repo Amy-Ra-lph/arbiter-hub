@@ -1,0 +1,5 @@
+apiVersion: v2
+name: falco
+description: Falco eBPF runtime security monitoring with agent-specific rules
+version: 0.1.0
+type: application

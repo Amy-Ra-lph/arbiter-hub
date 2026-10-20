@@ -1,0 +1,7 @@
+trustDomain: arbiter.demo
+server:
+  image: ghcr.io/spiffe/spire-server:1.11.1
+  port: 8081
+agent:
+  image: ghcr.io/spiffe/spire-agent:1.11.1
+  socketPath: /tmp/spire-agent/public/api.sock

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: arbiter-keylime-vm
+version: 0.1.0
+description: Keylime TPM attestation server VM with vTPM support
+type: application

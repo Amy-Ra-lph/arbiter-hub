@@ -1,0 +1,6 @@
+arbiterApiUrl: http://arbiter-hub-api.arbiter-system.svc.cluster.local:8400
+webhookPort: 5001
+image:
+  repository: quay.io/afarley/arbiter-eda
+  tag: latest
+javaVersion: "25"

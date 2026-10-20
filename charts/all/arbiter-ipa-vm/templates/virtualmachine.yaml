@@ -1,0 +1,115 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ include "arbiter-ipa-vm.fullname" . }}
+  labels:
+    {{- include "arbiter-ipa-vm.labels" . | nindent 4 }}
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        {{- include "arbiter-ipa-vm.selectorLabels" . | nindent 8 }}
+    spec:
+      domain:
+        cpu:
+          cores: {{ .Values.vm.cpus }}
+        memory:
+          guest: {{ .Values.vm.memory }}
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: cloudinit
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+        resources:
+          requests:
+            memory: {{ .Values.vm.memory }}
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: {{ include "arbiter-ipa-vm.fullname" . }}-rootdisk
+        - name: cloudinit
+          cloudInitNoCloud:
+            secretRef:
+              name: {{ include "arbiter-ipa-vm.fullname" . }}-cloudinit
+  dataVolumeTemplates:
+    - metadata:
+        name: {{ include "arbiter-ipa-vm.fullname" . }}-rootdisk
+      spec:
+        pvc:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.vm.disk }}
+          {{- if .Values.vm.storageClass }}
+          storageClassName: {{ .Values.vm.storageClass }}
+          {{- end }}
+        source:
+          registry:
+            url: docker://{{ .Values.vm.image }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "arbiter-ipa-vm.fullname" . }}-cloudinit
+  labels:
+    {{- include "arbiter-ipa-vm.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  userdata: |
+    #cloud-config
+    hostname: {{ .Values.ipa.hostname }}
+    fqdn: {{ .Values.ipa.hostname }}
+
+    packages:
+      - ipa-server
+      - ipa-server-dns
+      - ipa-server-trust-ad
+
+    runcmd:
+      - |
+        IPA_ADMIN_PASSWORD=$(cat /run/secrets/ipa/admin_password)
+        IPA_DM_PASSWORD=$(cat /run/secrets/ipa/dm_password)
+
+        ipa-server-install \
+          --unattended \
+          --realm={{ .Values.ipa.realm }} \
+          --domain={{ .Values.ipa.domain }} \
+          --hostname={{ .Values.ipa.hostname }} \
+          --admin-password="${IPA_ADMIN_PASSWORD}" \
+          --ds-password="${IPA_DM_PASSWORD}" \
+          --setup-dns \
+          --no-forwarders \
+          --no-ntp
+
+        # Create arbiter service accounts and groups
+        echo "${IPA_ADMIN_PASSWORD}" | kinit admin
+
+        ipa group-add attestation-operators --desc="Attestation pipeline operators"
+        ipa group-add arbiter-agents --desc="Arbiter agent nodes"
+        ipa group-add arbiter-hub-delegation --desc="Hub delegation group"
+
+        ipa role-add "Attestation Operator" --desc="Can read host/service certs and manage attestation"
+        ipa role-add-privilege "Attestation Operator" --privileges="Host Administrators"
+
+        kdestroy
+
+    write_files:
+      - path: /run/secrets/ipa/admin_password
+        permissions: '0600'
+        defer: true
+        content: VAULT_INJECTED
+      - path: /run/secrets/ipa/dm_password
+        permissions: '0600'
+        defer: true
+        content: VAULT_INJECTED

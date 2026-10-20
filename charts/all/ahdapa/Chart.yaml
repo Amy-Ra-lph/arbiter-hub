@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ahdapa
+description: OAuth2/OIDC identity provider with IPA backend and federation
+version: 0.1.0
+type: application

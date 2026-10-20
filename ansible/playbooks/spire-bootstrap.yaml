@@ -1,0 +1,92 @@
+---
+# spire-bootstrap.yaml — VP imperative job: SPIRE trust bootstrap
+# Fetches server bundle, creates workload registration entries
+# IMPORTANT: bootstrap cert must be SPIRE server's own CA, NOT the IPA CA
+- name: Bootstrap SPIRE trust infrastructure
+  hosts: localhost
+  connection: local
+  vars:
+    spire_server_pod: spire-server-0
+    spire_namespace: arbiter-spire
+    trust_domain: arbiter.demo
+    server_socket: /tmp/spire-server/private/api.sock
+    bundle_path: /tmp/spire-bootstrap-bundle.pem
+
+  tasks:
+    - name: Wait for SPIRE server pod
+      ansible.builtin.command:
+        cmd: >-
+          oc wait pod/{{ spire_server_pod }}
+          -n {{ spire_namespace }}
+          --for=condition=Ready
+          --timeout=300s
+      changed_when: false
+
+    - name: Fetch SPIRE server trust bundle
+      ansible.builtin.command:
+        cmd: >-
+          oc exec {{ spire_server_pod }}
+          -n {{ spire_namespace }}
+          -- spire-server bundle show
+          -socketPath {{ server_socket }}
+      register: spire_bundle
+      changed_when: false
+
+    - name: Save trust bundle locally
+      ansible.builtin.copy:
+        content: "{{ spire_bundle.stdout }}"
+        dest: "{{ bundle_path }}"
+        mode: "0644"
+
+    - name: Create SPIRE registration entry for arbiter-hub
+      ansible.builtin.command:
+        cmd: >-
+          oc exec {{ spire_server_pod }}
+          -n {{ spire_namespace }}
+          -- spire-server entry create
+          -socketPath {{ server_socket }}
+          -spiffeID spiffe://{{ trust_domain }}/arbiter-hub
+          -parentID spiffe://{{ trust_domain }}/agent
+          -selector k8s:pod-label:app:arbiter-hub-api
+          -dns arbiter-hub-api.arbiter-system.svc.cluster.local
+      register: hub_entry
+      changed_when: "'Entry ID' in hub_entry.stdout"
+      failed_when: false
+
+    - name: Create SPIRE registration entry for arbiter-agent
+      ansible.builtin.command:
+        cmd: >-
+          oc exec {{ spire_server_pod }}
+          -n {{ spire_namespace }}
+          -- spire-server entry create
+          -socketPath {{ server_socket }}
+          -spiffeID spiffe://{{ trust_domain }}/arbiter-agent
+          -parentID spiffe://{{ trust_domain }}/agent
+          -selector k8s:pod-label:app:arbiter-agent
+          -dns arbiter-agent.arbiter-system.svc.cluster.local
+      register: agent_entry
+      changed_when: "'Entry ID' in agent_entry.stdout"
+      failed_when: false
+
+    - name: Create SPIRE registration entry for EDA controller
+      ansible.builtin.command:
+        cmd: >-
+          oc exec {{ spire_server_pod }}
+          -n {{ spire_namespace }}
+          -- spire-server entry create
+          -socketPath {{ server_socket }}
+          -spiffeID spiffe://{{ trust_domain }}/eda-controller
+          -parentID spiffe://{{ trust_domain }}/agent
+          -selector k8s:pod-label:app:eda-controller
+          -dns eda-controller.arbiter-eda.svc.cluster.local
+      register: eda_entry
+      changed_when: "'Entry ID' in eda_entry.stdout"
+      failed_when: false
+
+    - name: Display registration results
+      ansible.builtin.debug:
+        msg: >-
+          SPIRE bootstrap complete.
+          Hub entry: {{ hub_entry.stdout_lines | default(['skipped']) | last }},
+          Agent entry: {{ agent_entry.stdout_lines | default(['skipped']) | last }},
+          EDA entry: {{ eda_entry.stdout_lines | default(['skipped']) | last }}

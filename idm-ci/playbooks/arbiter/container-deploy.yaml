@@ -17,8 +17,9 @@
   hosts: arbiter_hub
   become: true
   vars:
-    arbiter_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
+    arbiter_api_image: "localhost/arbiter-hub-api:latest"
     arbiter_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
+    arbiter_ui_image: "docker.io/library/nginx:alpine"
     arbiter_db_image: "registry.redhat.io/rhel10/postgresql-16:latest"
     arbiter_db_password: "{{ vault_arbiter_db_password }}"
     arbiter_db_user: "arbiter"
@@ -26,6 +27,9 @@
     arbiter_keylime_verifier_host: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] }}"
     arbiter_keylime_verifier_ip: "{{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }}"
     arbiter_keylime_verifier_url: "https://{{ arbiter_keylime_verifier_host }}:8881"
+    arbiter_agent_host: "{{ hostvars[groups['arbiter_agent'][0]]['ansible_fqdn'] | default('agent.arbiter.demo') }}"
+    arbiter_agent_ip: "{{ hostvars[groups['arbiter_agent'][0]]['ansible_default_ipv4']['address'] }}"
+    arbiter_falco_healthz_url: "http://{{ arbiter_agent_host }}:8765/healthz"
     arbiter_cert_dir: "/etc/arbiter/keylime"
     quadlet_dir: "/etc/containers/systemd"
     arbiter_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
@@ -110,6 +114,7 @@
           Network=arbiter-hub.network
           PublishPort=8400:8400
           AddHost={{ arbiter_keylime_verifier_host }}:{{ arbiter_keylime_verifier_ip }}
+          AddHost={{ arbiter_agent_host }}:{{ arbiter_agent_ip }}
           Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
           Volume={{ arbiter_cert_dir }}:/etc/arbiter/keylime:ro,Z
           Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
@@ -117,6 +122,7 @@
           Environment=ARBITER_KEYLIME_CA_CERT=/etc/arbiter/keylime/ca.crt
           Environment=ARBITER_KEYLIME_CLIENT_CERT=/etc/arbiter/keylime/client.crt
           Environment=ARBITER_KEYLIME_CLIENT_KEY=/etc/arbiter/keylime/client.key
+          Environment=ARBITER_FALCO_HEALTHZ_URL={{ arbiter_falco_healthz_url }}
           ReadOnly=true
 
           [Service]
@@ -244,3 +250,74 @@
       ansible.builtin.systemd:
         name: arbiter-hub-api
         state: restarted
+
+- name: Deploy arbiter-hub UI via nginx
+  hosts: arbiter_hub
+  become: true
+  vars:
+    arbiter_ui_image: "docker.io/library/nginx:alpine"
+    arbiter_repo_dir: /opt/arbiter-hub
+  tasks:
+    - name: Build UI (requires node/npm) or use pre-built dist
+      ansible.builtin.stat:
+        path: "{{ arbiter_repo_dir }}/ui/dist/index.html"
+      register: ui_dist
+
+    - name: Upload pre-built UI dist from controller
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../ui/dist/"
+        dest: "{{ arbiter_repo_dir }}/ui/dist/"
+        mode: "0644"
+      when: not ui_dist.stat.exists
+
+    - name: Deploy nginx config for UI
+      ansible.builtin.copy:
+        src: "{{ arbiter_repo_dir }}/deploy/nginx/nginx.conf"
+        dest: "{{ arbiter_repo_dir }}/deploy/nginx/nginx.conf"
+        remote_src: true
+        mode: "0644"
+
+    - name: Pull nginx image
+      ansible.builtin.command:
+        cmd: podman pull {{ arbiter_ui_image }}
+      register: pull_result
+      changed_when: "'Pulling' in pull_result.stderr"
+
+    - name: Stop existing UI container
+      ansible.builtin.command:
+        cmd: podman rm -f arbiter-hub-ui
+      failed_when: false
+      changed_when: true
+
+    - name: Start UI container
+      ansible.builtin.command:
+        cmd: >-
+          podman run -d
+          --name arbiter-hub-ui
+          --network systemd-arbiter-hub
+          -p 8443:8080
+          -v {{ arbiter_repo_dir }}/ui/dist:/opt/app-root/src:ro,Z
+          -v {{ arbiter_repo_dir }}/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
+          {{ arbiter_ui_image }}
+      register: ui_start
+
+    - name: Wait for UI
+      ansible.builtin.wait_for:
+        port: 8443
+        timeout: 15
+
+    - name: Verify UI serves dashboard
+      ansible.builtin.uri:
+        url: http://localhost:8443/
+        status_code: 200
+      register: ui_check
+
+    - name: Verify API proxy works through nginx
+      ansible.builtin.uri:
+        url: http://localhost:8443/api/health
+        status_code: 200
+      register: proxy_check
+
+    - name: Display UI status
+      ansible.builtin.debug:
+        msg: "UI: http://{{ ansible_fqdn }}:8443 — API proxy: {{ proxy_check.status }}"

@@ -30,6 +30,53 @@
         state: directory
         mode: "0755"
 
+    - name: Create demo user
+      ansible.builtin.command:
+        cmd: >-
+          ipa user-add demo
+          --first=Demo --last=User
+          --password
+        stdin: "redhat123\nredhat123"
+      register: demo_user
+      failed_when: false
+      changed_when: "'Added user' in demo_user.stdout"
+
+    - name: Create engineer user
+      ansible.builtin.command:
+        cmd: >-
+          ipa user-add engineer
+          --first=Security --last=Engineer
+          --password
+        stdin: "redhat123\nredhat123"
+      register: engineer_user
+      failed_when: false
+      changed_when: "'Added user' in engineer_user.stdout"
+
+    - name: Add demo user to arbiter-hub-delegation
+      ansible.builtin.command:
+        cmd: ipa group-add-member arbiter-hub-delegation --users=demo
+      failed_when: false
+      changed_when: true
+
+    - name: Add engineer to all delegation groups
+      ansible.builtin.command:
+        cmd: "ipa group-add-member {{ item }} --users=engineer"
+      loop:
+        - arbiter-hub-delegation
+        - eda-delegation
+        - agent-delegation
+      failed_when: false
+      changed_when: true
+
+    - name: Extend password expiry for demo users
+      ansible.builtin.command:
+        cmd: "ipa user-mod {{ item }} --setattr=krbPasswordExpiration=20271231000000Z"
+      loop:
+        - demo
+        - engineer
+      failed_when: false
+      changed_when: true
+
     - name: Mark IPA roles as configured
       ansible.builtin.file:
         path: /etc/arbiter/.ipa-roles-configured

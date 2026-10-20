@@ -1,0 +1,102 @@
+---
+# ipa-configure.yaml — VP imperative job: post-boot IPA configuration
+# Creates delegation groups, service principals, and trust infrastructure
+# Runs after arbiter-ipa-vm is healthy
+- name: Configure IPA for Arbiter Hub attestation infrastructure
+  hosts: localhost
+  connection: local
+  vars:
+    ipa_host: ipa.arbiter-ipa.svc.cluster.local
+    ipa_realm: ARBITER.DEMO
+    ipa_admin_password: "{{ lookup('env', 'IPA_ADMIN_PASSWORD') }}"
+    hub_fqdn: arbiter-hub-api.arbiter-system.svc.cluster.local
+    agent_fqdn: arbiter-agent.arbiter-system.svc.cluster.local
+
+  tasks:
+    - name: Wait for IPA to be reachable
+      ansible.builtin.uri:
+        url: "https://{{ ipa_host }}/ipa/config/ca.crt"
+        validate_certs: false
+        status_code: 200
+      register: ipa_health
+      until: ipa_health.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Obtain Kerberos TGT
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipa_admin_password }}"
+      changed_when: false
+      no_log: true
+
+    # --- Delegation groups for RBAC ---
+
+    - name: Create attestation delegation groups
+      ansible.builtin.command:
+        cmd: >-
+          ipa group-add {{ item.name }}
+          --desc="{{ item.desc }}"
+      loop:
+        - name: arbiter-hub-delegation
+          desc: "Arbiter Hub API service accounts"
+        - name: eda-delegation
+          desc: "EDA controller service accounts"
+        - name: agent-delegation
+          desc: "Arbiter agent node service accounts"
+      register: group_result
+      changed_when: "'Added' in group_result.stdout"
+      failed_when: false
+
+    - name: Create attestation operator group
+      ansible.builtin.command:
+        cmd: >-
+          ipa group-add attestation-operators
+          --desc="Operators allowed to manage attestation workflows"
+      register: op_group
+      changed_when: "'Added' in op_group.stdout"
+      failed_when: false
+
+    # --- Delegation rules ---
+
+    - name: Create delegation rules
+      ansible.builtin.command:
+        cmd: >-
+          ipa delegation-add "{{ item.name }}"
+          --group={{ item.group }}
+          --membergroup={{ item.membergroup }}
+          --attrs={{ item.attrs }}
+      loop:
+        - name: arbiter-hub-attestation-delegation
+          group: arbiter-hub-delegation
+          membergroup: attestation-operators
+          attrs: memberof
+        - name: eda-pipeline-delegation
+          group: eda-delegation
+          membergroup: attestation-operators
+          attrs: memberof
+        - name: agent-attestation-delegation
+          group: agent-delegation
+          membergroup: attestation-operators
+          attrs: memberof
+      register: deleg_result
+      changed_when: "'Added' in deleg_result.stdout"
+      failed_when: false
+
+    # --- Service principals ---
+
+    - name: Create service principals for arbiter components
+      ansible.builtin.command:
+        cmd: "ipa service-add {{ item }}"
+      loop:
+        - "HTTP/{{ hub_fqdn }}@{{ ipa_realm }}"
+        - "arbiter/{{ hub_fqdn }}@{{ ipa_realm }}"
+        - "arbiter/{{ agent_fqdn }}@{{ ipa_realm }}"
+      register: svc_result
+      changed_when: "'Added' in svc_result.stdout"
+      failed_when: false
+
+    - name: Destroy Kerberos TGT
+      ansible.builtin.command:
+        cmd: kdestroy -A
+      changed_when: false

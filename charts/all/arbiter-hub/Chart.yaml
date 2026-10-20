@@ -1,0 +1,5 @@
+apiVersion: v2
+name: arbiter-hub
+description: Arbiter Hub attestation API, PostgreSQL, and MCP server
+version: 0.1.0
+type: application

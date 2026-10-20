@@ -1,0 +1,23 @@
+ipa:
+  realm: ARBITER.DEMO
+  domain: arbiter.demo
+  hostname: idm.arbiter.demo
+
+vm:
+  cpus: 4
+  memory: 8Gi
+  disk: 40Gi
+  image: registry.redhat.io/rhel9/rhel-guest-image:9.4
+  storageClass: ""
+
+secrets:
+  adminPassword:
+    secretName: ipa-credentials
+    key: admin_password
+  dmPassword:
+    secretName: ipa-credentials
+    key: dm_password
+
+vault:
+  path: secret/data/hub/ipa
+  server: vault.vault.svc.cluster.local:8200

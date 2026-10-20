@@ -1,0 +1,5 @@
+apiVersion: v2
+name: spire
+description: SPIRE server and agent for workload identity attestation
+version: 0.1.0
+type: application

@@ -1,0 +1,12 @@
+---
+# Arbiter Hub — Validated Pattern global configuration
+# Hardware-rooted attestation for agentic AI workloads
+global:
+  pattern: arbiter-hub
+  options:
+    useCSV: false
+    syncPolicy: Automatic
+    installPlanApproval: Automatic
+  multiSourceConfig:
+    enabled: true
+    clusterGroupChartVersion: "0.9.*"

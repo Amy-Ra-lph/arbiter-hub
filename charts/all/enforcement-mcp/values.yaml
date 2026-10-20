@@ -1,0 +1,5 @@
+mcpPort: 8500
+image:
+  repository: quay.io/afarley/enforcement-mcp
+  tag: latest
+replicas: 1

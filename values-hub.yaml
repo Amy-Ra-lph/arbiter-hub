@@ -1,0 +1,133 @@
+---
+# Arbiter Hub — hub cluster group
+# Deploys IPA + Keylime as KubeVirt VMs, everything else as containers
+clusterGroup:
+  name: hub
+  isHubCluster: true
+
+  namespaces:
+    - arbiter-system
+    - arbiter-ipa
+    - arbiter-keylime
+    - arbiter-spire
+    - arbiter-eda
+    - arbiter-falco
+
+  subscriptions:
+    # OpenShift Virtualization — KubeVirt VMs for IPA and Keylime
+    kubevirt:
+      name: kubevirt-hyperconverged
+      namespace: openshift-cnv
+      source: redhat-operators
+      channel: stable
+
+    # External Secrets Operator — Vault-backed secret injection
+    external-secrets:
+      name: external-secrets-operator
+      namespace: openshift-operators
+      source: community-operators
+      channel: stable
+
+  applications:
+    # --- KubeVirt VMs (IPA + Keylime need full RHEL with systemd) ---
+
+    arbiter-ipa-vm:
+      name: arbiter-ipa-vm
+      namespace: arbiter-ipa
+      project: arbiter-hub
+      path: charts/all/arbiter-ipa-vm
+      overrides:
+        - name: ipaRealm
+          value: ARBITER.DEMO
+        - name: ipaDomain
+          value: arbiter.demo
+
+    arbiter-keylime-vm:
+      name: arbiter-keylime-vm
+      namespace: arbiter-keylime
+      project: arbiter-hub
+      path: charts/all/arbiter-keylime-vm
+      overrides:
+        - name: vtpmEnabled
+          value: "true"
+        - name: verifierPort
+          value: "8881"
+        - name: registrarPort
+          value: "8891"
+
+    # --- Container workloads ---
+
+    arbiter-hub:
+      name: arbiter-hub
+      namespace: arbiter-system
+      project: arbiter-hub
+      path: charts/all/arbiter-hub
+      overrides:
+        - name: apiPort
+          value: "8400"
+        - name: database.storageSize
+          value: 5Gi
+
+    ahdapa:
+      name: ahdapa
+      namespace: arbiter-system
+      project: arbiter-hub
+      path: charts/all/ahdapa
+      overrides:
+        - name: ipaServer
+          value: ipa.arbiter-ipa.svc.cluster.local
+        - name: issuerUrl
+          value: https://ahdapa.arbiter-system.svc.cluster.local/idp
+
+    spire:
+      name: spire
+      namespace: arbiter-spire
+      project: arbiter-hub
+      path: charts/all/spire
+      overrides:
+        - name: trustDomain
+          value: arbiter.demo
+
+    eda-controller:
+      name: eda-controller
+      namespace: arbiter-eda
+      project: arbiter-hub
+      path: charts/all/eda-controller
+      overrides:
+        - name: arbiterApiUrl
+          value: http://arbiter-hub-api.arbiter-system.svc.cluster.local:8400
+        - name: webhookPort
+          value: "5001"
+
+    falco:
+      name: falco
+      namespace: arbiter-falco
+      project: arbiter-hub
+      path: charts/all/falco
+      overrides:
+        - name: driver
+          value: ebpf
+        - name: customRules.enabled
+          value: "true"
+
+    enforcement-mcp:
+      name: enforcement-mcp
+      namespace: arbiter-system
+      project: arbiter-hub
+      path: charts/all/enforcement-mcp
+      overrides:
+        - name: mcpPort
+          value: "8500"
+
+  # Imperative Ansible jobs — run post-install configuration
+  imperative:
+    jobs:
+      - name: ipa-configure
+        playbook: ansible/playbooks/ipa-configure.yaml
+        timeout: 600
+      - name: keylime-configure
+        playbook: ansible/playbooks/keylime-configure.yaml
+        timeout: 300
+      - name: spire-bootstrap
+        playbook: ansible/playbooks/spire-bootstrap.yaml
+        timeout: 300

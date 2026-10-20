@@ -1,0 +1,146 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ include "arbiter-keylime-vm.fullname" . }}
+  labels:
+    {{- include "arbiter-keylime-vm.labels" . | nindent 4 }}
+spec:
+  running: true
+  template:
+    metadata:
+      labels:
+        {{- include "arbiter-keylime-vm.selectorLabels" . | nindent 8 }}
+    spec:
+      domain:
+        cpu:
+          cores: {{ .Values.vm.cpus }}
+        memory:
+          guest: {{ .Values.vm.memory }}
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: keylime-data
+              disk:
+                bus: virtio
+            - name: cloudinit
+              disk:
+                bus: virtio
+          {{- if .Values.vm.tpm }}
+          tpm: {}
+          {{- end }}
+          interfaces:
+            - name: default
+              masquerade: {}
+        resources:
+          requests:
+            memory: {{ .Values.vm.memory }}
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: {{ include "arbiter-keylime-vm.fullname" . }}-rootdisk
+        - name: keylime-data
+          persistentVolumeClaim:
+            claimName: {{ include "arbiter-keylime-vm.fullname" . }}-data
+        - name: cloudinit
+          cloudInitNoCloud:
+            secretRef:
+              name: {{ include "arbiter-keylime-vm.fullname" . }}-cloudinit
+  dataVolumeTemplates:
+    - metadata:
+        name: {{ include "arbiter-keylime-vm.fullname" . }}-rootdisk
+      spec:
+        pvc:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.vm.disk }}
+          {{- if .Values.vm.storageClass }}
+          storageClassName: {{ .Values.vm.storageClass }}
+          {{- end }}
+        source:
+          registry:
+            url: docker://{{ .Values.vm.image }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "arbiter-keylime-vm.fullname" . }}-data
+  labels:
+    {{- include "arbiter-keylime-vm.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  {{- if .Values.vm.storageClass }}
+  storageClassName: {{ .Values.vm.storageClass }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "arbiter-keylime-vm.fullname" . }}-cloudinit
+  labels:
+    {{- include "arbiter-keylime-vm.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  userdata: |
+    #cloud-config
+    hostname: keylime.arbiter.demo
+    fqdn: keylime.arbiter.demo
+
+    packages:
+      - keylime-verifier
+      - keylime-registrar
+      - keylime-agent
+      - keylime-tenant
+      - tpm2-tools
+      - tpm2-tss
+
+    write_files:
+      - path: /etc/keylime/ca/cacert.crt
+        permissions: '0644'
+        defer: true
+        content: VAULT_INJECTED
+      - path: /etc/keylime/ca/server.crt
+        permissions: '0644'
+        defer: true
+        content: VAULT_INJECTED
+      - path: /etc/keylime/ca/server.key
+        permissions: '0600'
+        defer: true
+        content: VAULT_INJECTED
+
+    runcmd:
+      - |
+        # Mount persistent data volume
+        mkdir -p /var/lib/keylime
+        if ! mountpoint -q /var/lib/keylime; then
+          DISK=$(lsblk -dpno NAME | grep -v 'vda\|sr0' | head -1)
+          if [ -n "$DISK" ]; then
+            mkfs.ext4 -F "$DISK" 2>/dev/null || true
+            mount "$DISK" /var/lib/keylime
+            echo "$DISK /var/lib/keylime ext4 defaults 0 2" >> /etc/fstab
+          fi
+        fi
+
+        # Configure verifier
+        sed -i 's/^ip = .*/ip = 0.0.0.0/' /etc/keylime/verifier.conf
+        sed -i 's|^tls_dir = .*|tls_dir = /etc/keylime/ca|' /etc/keylime/verifier.conf
+
+        # Configure registrar
+        sed -i 's/^ip = .*/ip = 0.0.0.0/' /etc/keylime/registrar.conf
+        sed -i 's|^tls_dir = .*|tls_dir = /etc/keylime/ca|' /etc/keylime/registrar.conf
+
+        # Configure agent with vTPM
+        sed -i 's|^tpm_ownerpassword = .*|tpm_ownerpassword = |' /etc/keylime/agent.conf
+
+        # Start services
+        systemctl enable --now keylime_verifier keylime_registrar keylime_agent

@@ -1,0 +1,52 @@
+---
+# keylime-configure.yaml — VP imperative job: Keylime verifier/agent registration
+# Runs after arbiter-keylime-vm is healthy
+- name: Configure Keylime attestation backend
+  hosts: localhost
+  connection: local
+  vars:
+    verifier_host: keylime-verifier.arbiter-keylime.svc.cluster.local
+    verifier_port: 8881
+    registrar_host: keylime-registrar.arbiter-keylime.svc.cluster.local
+    registrar_port: 8891
+    keylime_ca_cert: /tmp/keylime-ca.pem
+
+  tasks:
+    - name: Wait for Keylime verifier
+      ansible.builtin.uri:
+        url: "https://{{ verifier_host }}:{{ verifier_port }}/v2.1/agents/"
+        validate_certs: false
+        status_code: 200
+      register: verifier_health
+      until: verifier_health.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Wait for Keylime registrar
+      ansible.builtin.uri:
+        url: "https://{{ registrar_host }}:{{ registrar_port }}/v2.1/agents/"
+        validate_certs: false
+        status_code: 200
+      register: registrar_health
+      until: registrar_health.status == 200
+      retries: 20
+      delay: 10
+
+    - name: Fetch Keylime CA cert from Vault
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'KEYLIME_CA_CERT') }}"
+        dest: "{{ keylime_ca_cert }}"
+        mode: "0644"
+      when: lookup('env', 'KEYLIME_CA_CERT') | length > 0
+
+    - name: Verify agent registration with registrar
+      ansible.builtin.uri:
+        url: "https://{{ registrar_host }}:{{ registrar_port }}/v2.1/agents/"
+        validate_certs: false
+        method: GET
+        return_content: true
+      register: registered_agents
+
+    - name: Display registered agents
+      ansible.builtin.debug:
+        msg: "Keylime agents registered: {{ registered_agents.json.results.uuids | default([]) | length }}"

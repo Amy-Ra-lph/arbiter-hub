@@ -1,0 +1,7 @@
+ipaServer: ipa.arbiter-ipa.svc.cluster.local
+issuerUrl: https://ahdapa.arbiter-system.svc.cluster.local/idp
+image:
+  repository: quay.io/afarley/ahdapa
+  tag: latest
+port: 8443
+replicas: 1

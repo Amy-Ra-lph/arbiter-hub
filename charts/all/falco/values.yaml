@@ -1,0 +1,7 @@
+driver: ebpf
+customRules:
+  enabled: true
+  configMapName: falco-custom-rules
+image:
+  repository: docker.io/falcosecurity/falco-no-driver
+  tag: latest

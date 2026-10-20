@@ -1,0 +1,12 @@
+apiPort: 8400
+mcpPort: 8500
+image:
+  repository: quay.io/afarley/arbiter-hub
+  tag: latest
+  pullPolicy: Always
+database:
+  storageSize: 5Gi
+  user: arbiter
+  name: arbiter_hub
+  passwordSecret: arbiter-db-credentials
+replicas: 1

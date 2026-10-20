@@ -1,0 +1,50 @@
+{{- if .Values.customRules.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.customRules.configMapName }}
+  labels:
+    app.kubernetes.io/name: falco
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  agent-security.yaml: |
+    - rule: Agent Credential Access
+      desc: Detect agent processes reading sensitive credential files
+      condition: >
+        open_read and
+        (fd.name startswith /root/.aws or
+         fd.name startswith /root/.ssh or
+         fd.name startswith /root/.kube) and
+        not proc.name in (sshd, ssh, ssh-agent)
+      output: >
+        Agent credential access detected
+        (user=%user.name command=%proc.cmdline file=%fd.name container=%container.id)
+      priority: CRITICAL
+      tags: [agent-security, credential-theft]
+
+    - rule: Agent Reverse Shell
+      desc: Detect reverse shell attempts from agent processes
+      condition: >
+        spawned_process and
+        ((proc.name = bash and proc.args contains "/dev/tcp") or
+         (proc.name = python3 and proc.args contains "socket") or
+         (proc.name = nc and proc.args contains "-e"))
+      output: >
+        Reverse shell attempt detected
+        (user=%user.name command=%proc.cmdline container=%container.id)
+      priority: CRITICAL
+      tags: [agent-security, reverse-shell]
+
+    - rule: Agent Data Exfiltration
+      desc: Detect suspicious outbound data transfer by agent processes
+      condition: >
+        spawned_process and
+        proc.name in (curl, wget) and
+        (proc.args contains "POST" or proc.args contains "--data" or proc.args contains "--upload")
+      output: >
+        Potential data exfiltration detected
+        (user=%user.name command=%proc.cmdline container=%container.id)
+      priority: WARNING
+      tags: [agent-security, data-exfil]
+{{- end }}

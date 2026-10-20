@@ -1,0 +1,5 @@
+apiVersion: v2
+name: enforcement-mcp
+description: SELinux/fapolicyd/MLS/AIDE policy MCP server
+version: 0.1.0
+type: application

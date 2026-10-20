@@ -1,0 +1,5 @@
+apiVersion: v2
+name: arbiter-ipa-vm
+version: 0.1.0
+description: FreeIPA server VM for Arbiter Hub identity infrastructure
+type: application

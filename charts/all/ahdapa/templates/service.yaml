@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ahdapa
+  labels:
+    app.kubernetes.io/name: ahdapa
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selector:
+    app.kubernetes.io/name: ahdapa
+  ports:
+    - name: https
+      port: {{ .Values.port }}
+      targetPort: https

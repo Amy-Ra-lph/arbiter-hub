@@ -1,0 +1,26 @@
+keylime:
+  verifierPort: 8881
+  registrarPort: 8891
+
+vm:
+  cpus: 2
+  memory: 4Gi
+  disk: 20Gi
+  image: registry.redhat.io/rhel9/rhel-guest-image:9.4
+  storageClass: ""
+  tpm: true
+
+secrets:
+  tlsCa:
+    secretName: keylime-tls
+    key: ca_cert
+  tlsCert:
+    secretName: keylime-tls
+    key: server_cert
+  tlsKey:
+    secretName: keylime-tls
+    key: server_key
+
+vault:
+  path: secret/data/hub/keylime
+  server: vault.vault.svc.cluster.local:8200
