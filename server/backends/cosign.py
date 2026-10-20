@@ -32,13 +32,13 @@ class CosignBackend:
         self._insecure_ignore_tlog = insecure_ignore_tlog
 
     async def verify(self, workload: Workload) -> AttestationResult:
-        artifact_ref = workload.metadata_.get("artifact_ref", "")
+        artifact_ref = workload.artifact_ref or workload.metadata_.get("artifact_ref", "")
         if not artifact_ref:
             return AttestationResult(
                 verdict=AttestationVerdict.ERROR,
                 backend="cosign",
                 evidence_hash="",
-                detail={"error": "no artifact_ref in workload metadata"},
+                detail={"error": "no artifact_ref on workload"},
             )
         try:
             cmd = [self._binary, "verify"]
@@ -112,13 +112,22 @@ class CosignBackend:
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            if proc.returncode == 0:
+                lines = stdout.decode().strip().split("\n")
+                version_line = next(
+                    (l.strip() for l in lines if "GitVersion:" in l),
+                    "",
+                )
+                ver = version_line.split(":", 1)[-1].strip() if version_line else "unknown"
+                key_status = "key loaded" if self._public_key else "no key"
+                detail = f"{ver}, {key_status}"
+            else:
+                detail = "cosign unhealthy"
             return BackendHealth(
                 healthy=proc.returncode == 0,
                 backend="cosign",
                 last_check=datetime.now(UTC),
-                detail=stdout.decode().strip().split("\n")[0]
-                if proc.returncode == 0
-                else "cosign unhealthy",
+                detail=detail,
             )
         except Exception as e:
             return BackendHealth(
