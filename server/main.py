@@ -11,6 +11,7 @@ from server.api import (
     attestation,
     audit,
     auth_config,
+    enrollment,
     health,
     kbs,
     rotation,
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
                 ca_cert=settings.keylime_ca_cert,
                 client_cert=settings.keylime_client_cert,
                 client_key=settings.keylime_client_key,
+                registrar_url=settings.keylime_registrar_url,
             ),
         )
     if settings.falco_healthz_url:
@@ -116,5 +118,6 @@ def create_app() -> FastAPI:
     app.include_router(webhooks.router, tags=["webhooks"])
     app.include_router(signing.router, tags=["signing"])
     app.include_router(rotation.router, tags=["rotation"])
+    app.include_router(enrollment.router, tags=["enrollment"])
     app.include_router(kbs.router, tags=["kbs"])
     return app

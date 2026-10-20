@@ -189,3 +189,21 @@ class GateCheckResult(BaseModel):
     compliance: ComplianceResult
     attestation_current: bool
     detail: dict
+
+
+class EnrollRequest(BaseModel):
+    tpm_policy: dict = Field(default_factory=lambda: {"mask": "0x0"})
+    runtime_policy: str = ""
+    runtime_policy_name: str = ""
+    ak_tpm: str = ""
+    mtls_cert: str = ""
+    auto_attest: bool = True
+
+
+class EnrollResult(BaseModel):
+    workload_id: uuid.UUID
+    success: bool
+    backend: str
+    state: WorkloadState
+    attestation_triggered: bool = False
+    detail: dict = Field(default_factory=dict)

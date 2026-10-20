@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     mcp_port: int = 8401
 
     keylime_verifier_url: str = ""
+    keylime_registrar_url: str = ""
     keylime_ca_cert: str = ""
     keylime_client_cert: str = ""
     keylime_client_key: str = ""
