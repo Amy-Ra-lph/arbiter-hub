@@ -104,10 +104,22 @@ phases:
           ipaserver_forwarders:
             - 8.8.8.8
           ipaserver_no_reverse: true
-      # Wait for IPA DNS to be ready before client enrollment (race condition fix)
+      # Point clients at IPA DNS before enrollment — system resolver must serve SRV records
       - command: |
+          IPA_IP=$(getent hosts idm.arbiter.demo | awk '{print $1}')
+          if [ -z "$IPA_IP" ]; then
+            echo "ERROR: cannot resolve idm.arbiter.demo"
+            exit 1
+          fi
+          # Prepend IPA server as primary nameserver
+          cp /etc/resolv.conf /etc/resolv.conf.bak
+          sed -i "1i nameserver $IPA_IP" /etc/resolv.conf
+          echo "Added $IPA_IP as primary nameserver"
+          # Wait for SRV records to be resolvable
           for i in $(seq 1 30); do
-            dig _ldap._tcp.arbiter.demo SRV @idm.arbiter.demo +short 2>/dev/null | grep -q 389 && exit 0
+            dig _ldap._tcp.arbiter.demo SRV +short 2>/dev/null | grep -q 389 && {
+              echo "IPA DNS ready"; exit 0
+            }
             echo "Waiting for IPA DNS... attempt $i/30"
             sleep 5
           done
