@@ -181,9 +181,9 @@
         body:
           ipa_principal: "openshell/{{ item.name }}@ARBITER.DEMO"
           display_name: "OpenShell Sandbox: {{ item.name }}"
-          workload_type: sandbox
+          workload_type: agentic
           backend_types:
-            - FALCO
+            - falco
           metadata:
             trust_tier: "{{ item.tier }}"
             container_name: "{{ item.name }}"

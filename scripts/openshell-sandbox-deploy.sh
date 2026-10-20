@@ -171,7 +171,7 @@ register_workload() {
         return 0
     fi
 
-    local workload_type="sandbox"
+    local workload_type="agentic"
     local container_id
     container_id=$(podman inspect "$name" --format '{{.Id}}' 2>/dev/null | head -c 12)
 
@@ -181,7 +181,7 @@ register_workload() {
     "ipa_principal": "openshell/${name}@ARBITER.DEMO",
     "display_name": "OpenShell Sandbox: ${name}",
     "workload_type": "${workload_type}",
-    "backend_types": ["FALCO"],
+    "backend_types": ["falco"],
     "metadata": {
         "trust_tier": "${tier}",
         "container_id": "${container_id}",
