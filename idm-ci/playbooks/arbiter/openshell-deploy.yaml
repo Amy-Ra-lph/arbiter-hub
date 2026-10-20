@@ -1,31 +1,24 @@
 ---
 # openshell-deploy.yaml — Deploy OpenShell gateway + supervisor on agent node
 #
-# Installs OpenShell (v0.0.111+) with GSSAPI auth against IPA,
-# configures UBI 10 sandbox profile, starts gateway on port 8443.
-- name: Deploy OpenShell gateway
-  hosts: agent.arbiter.demo
+# Uses container images (not pip) with GSSAPI auth against IPA.
+# Gateway on port 8443, supervisor manages sandbox sessions.
+- name: Deploy OpenShell containers
+  hosts: arbiter_agent
   become: true
   vars:
-    openshell_version: "0.0.111"
+    openshell_gateway_image: "localhost/openshell-gateway:0.0.111-rhhi"
+    openshell_supervisor_image: "localhost/openshell-supervisor:0.0.111-rhhi"
     openshell_gateway_port: 8443
-    openshell_sandbox_image: "registry.access.redhat.com/ubi10/ubi:latest"
     openshell_config_dir: "/etc/openshell"
     openshell_data_dir: "/var/lib/openshell"
     ipa_server: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] }}"
   tasks:
-    - name: Install OpenShell dependencies
+    - name: Install runtime dependencies
       ansible.builtin.dnf:
         name:
-          - python3-pip
-          - python3-gssapi
-          - krb5-workstation
           - podman
-        state: present
-
-    - name: Install OpenShell via pip
-      ansible.builtin.pip:
-        name: "openshell>={{ openshell_version }}"
+          - krb5-workstation
         state: present
 
     - name: Create config directories
@@ -38,11 +31,6 @@
         - "{{ openshell_data_dir }}"
         - "{{ openshell_data_dir }}/sandboxes"
 
-    - name: Pull sandbox base image
-      containers.podman.podman_image:
-        name: "{{ openshell_sandbox_image }}"
-        state: present
-
     - name: Deploy gateway configuration
       ansible.builtin.copy:
         dest: "{{ openshell_config_dir }}/gateway.yaml"
@@ -52,8 +40,8 @@
             host: 0.0.0.0
             port: {{ openshell_gateway_port }}
             tls:
-              cert: /etc/ipa/nssdb/cert.pem
-              key: /etc/ipa/nssdb/key.pem
+              cert: /etc/pki/tls/certs/{{ ansible_fqdn }}.crt
+              key: /etc/pki/tls/private/{{ ansible_fqdn }}.key
 
           auth:
             method: gssapi
@@ -62,12 +50,11 @@
 
           sandbox:
             runtime: podman
-            image: {{ openshell_sandbox_image }}
             network_mode: slirp4netns
             memory_limit: 512m
             cpu_limit: "1.0"
             read_only: true
-            data_dir: {{ openshell_data_dir }}/sandboxes
+            data_dir: /var/lib/openshell/sandboxes
 
           supervisor:
             max_sessions: 10
@@ -91,40 +78,82 @@
       args:
         creates: /etc/krb5.keytab
 
-    - name: Deploy OpenShell gateway systemd unit
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/openshell-gateway.service
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=OpenShell Gateway
-          After=network-online.target
-          Wants=network-online.target
+    - name: Check if OpenShell images exist
+      ansible.builtin.command:
+        cmd: podman image exists {{ item }}
+      loop:
+        - "{{ openshell_gateway_image }}"
+        - "{{ openshell_supervisor_image }}"
+      register: image_check
+      failed_when: false
+      changed_when: false
 
-          [Service]
-          Type=simple
-          ExecStart=/usr/local/bin/openshell-gateway --config {{ openshell_config_dir }}/gateway.yaml
-          Restart=on-failure
-          RestartSec=5
-          Environment=KRB5_KTNAME=/etc/krb5.keytab
+    - name: Report missing images
+      ansible.builtin.debug:
+        msg: >-
+          OpenShell images need to be transferred to this node.
+          Missing: {{ image_check.results | selectattr('rc', 'ne', 0) | map(attribute='item') | list }}
+      when: image_check.results | selectattr('rc', 'ne', 0) | list | length > 0
 
-          [Install]
-          WantedBy=multi-user.target
+    - name: Create OpenShell gateway container
+      ansible.builtin.command:
+        cmd: >-
+          podman create --name openshell-gateway
+          --publish {{ openshell_gateway_port }}:{{ openshell_gateway_port }}
+          --volume {{ openshell_config_dir }}:/etc/openshell:ro
+          --volume /etc/krb5.keytab:/etc/krb5.keytab:ro
+          --volume /etc/pki/tls:/etc/pki/tls:ro
+          --volume {{ openshell_data_dir }}:/var/lib/openshell
+          --restart on-failure
+          {{ openshell_gateway_image }}
+      register: gw_create
+      changed_when: gw_create.rc == 0
+      failed_when: gw_create.rc != 0 and 'already in use' not in gw_create.stderr
 
-    - name: Start OpenShell gateway
-      ansible.builtin.systemd:
-        name: openshell-gateway
-        state: started
-        enabled: true
-        daemon_reload: true
+    - name: Start OpenShell gateway container
+      ansible.builtin.command:
+        cmd: podman start openshell-gateway
+      register: gw_start
+      changed_when: gw_start.rc == 0
+      failed_when: gw_start.rc != 0 and 'already running' not in gw_start.stderr
+
+    - name: Create OpenShell supervisor container
+      ansible.builtin.command:
+        cmd: >-
+          podman create --name openshell-supervisor
+          --volume {{ openshell_config_dir }}:/etc/openshell:ro
+          --volume /run/podman/podman.sock:/run/podman/podman.sock
+          --volume {{ openshell_data_dir }}:/var/lib/openshell
+          --restart on-failure
+          {{ openshell_supervisor_image }}
+      register: sv_create
+      changed_when: sv_create.rc == 0
+      failed_when: sv_create.rc != 0 and 'already in use' not in sv_create.stderr
+
+    - name: Start OpenShell supervisor container
+      ansible.builtin.command:
+        cmd: podman start openshell-supervisor
+      register: sv_start
+      changed_when: sv_start.rc == 0
+      failed_when: sv_start.rc != 0 and 'already running' not in sv_start.stderr
 
     - name: Wait for OpenShell gateway health
-      ansible.builtin.uri:
-        url: "https://localhost:{{ openshell_gateway_port }}/health"
-        validate_certs: false
-        method: GET
-        status_code: 200
+      ansible.builtin.command:
+        cmd: >-
+          curl -sk https://localhost:{{ openshell_gateway_port }}/health
       register: gw_health
       retries: 15
       delay: 5
-      until: gw_health.status == 200
+      until: gw_health.rc == 0 and 'ok' in gw_health.stdout
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display OpenShell status
+      ansible.builtin.command:
+        cmd: podman ps --filter name=openshell --format "{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}"
+      register: os_status
+      changed_when: false
+
+    - name: Show status
+      ansible.builtin.debug:
+        var: os_status.stdout_lines

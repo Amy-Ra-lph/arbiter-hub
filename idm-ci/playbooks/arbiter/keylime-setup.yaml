@@ -1,7 +1,14 @@
 ---
-# keylime-setup.yaml — deploy swtpm + Keylime on 2-node topology
-# master: swtpm + keylime-verifier + keylime-registrar + keylime-tenant
-# client: swtpm + keylime-agent (registers with master verifier)
+# keylime-setup.yaml — deploy swtpm + Keylime on 3-node topology
+# master (ipaserver): swtpm + keylime-verifier + keylime-registrar + keylime-tenant
+# clients (ipaclient): swtpm + keylime-agent-rust (registers with master)
+#
+# swtpm runs in TCP socket mode (ports 2321/2322) because OpenStack VMs
+# lack the vtpm-proxy kernel module needed for chardev mode.
+# A custom SELinux policy module (swtpm_systemd.te) provides:
+#   - init_t -> swtpm_t domain transition (stock policy only has svirt_t)
+#   - swtpm_t TCP bind permissions
+#   - keylime_agent_t -> swtpm TCP connect permission
 - name: Deploy swtpm on all hosts
   hosts: all
   become: true
@@ -15,6 +22,33 @@
           - tpm2-tss
         state: present
 
+    - name: Install SELinux policy tools
+      ansible.builtin.dnf:
+        name:
+          - checkpolicy
+          - policycoreutils-python-utils
+        state: present
+
+    - name: Copy swtpm systemd SELinux policy module
+      ansible.builtin.copy:
+        src: files/swtpm_systemd.te
+        dest: /tmp/swtpm_systemd.te
+        mode: "0644"
+
+    - name: Compile swtpm SELinux policy module
+      ansible.builtin.shell:
+        cmd: >-
+          checkmodule -M -m -o /tmp/swtpm_systemd.mod /tmp/swtpm_systemd.te &&
+          semodule_package -o /tmp/swtpm_systemd.pp -m /tmp/swtpm_systemd.mod
+        creates: /tmp/swtpm_systemd.pp
+
+    - name: Install swtpm SELinux policy module
+      ansible.builtin.command:
+        cmd: semodule -i /tmp/swtpm_systemd.pp
+      register: semodule_result
+      changed_when: semodule_result.rc == 0
+      failed_when: semodule_result.rc != 0
+
     - name: Create swtpm state directory
       ansible.builtin.file:
         path: /var/lib/swtpm/mytpm
@@ -26,18 +60,18 @@
         cmd: swtpm_setup --tpmstate /var/lib/swtpm/mytpm --tpm2 --createek
         creates: /var/lib/swtpm/mytpm/tpm2-00.permall
 
-    - name: Deploy swtpm systemd unit
+    - name: Deploy swtpm systemd unit (socket mode for VMs)
       ansible.builtin.copy:
         dest: /etc/systemd/system/swtpm.service
         mode: "0644"
         content: |
           [Unit]
-          Description=Software TPM 2.0
-          Before=keylime-agent.service
+          Description=Software TPM 2.0 (socket mode)
+          Before=keylime_agent.service
 
           [Service]
           Type=simple
-          ExecStart=/usr/bin/swtpm chardev --vtpm-proxy --tpmstate dir=/var/lib/swtpm/mytpm --tpm2 --flags startup-clear
+          ExecStart=/usr/bin/swtpm socket --tpmstate dir=/var/lib/swtpm/mytpm --tpm2 --flags startup-clear --server type=tcp,port=2321 --ctrl type=tcp,port=2322
           Restart=on-failure
 
           [Install]
@@ -46,13 +80,19 @@
     - name: Start swtpm
       ansible.builtin.systemd:
         name: swtpm
-        state: started
+        state: restarted
         enabled: true
         daemon_reload: true
 
-    - name: Verify TPM is accessible
+    - name: Wait for swtpm socket
+      ansible.builtin.wait_for:
+        port: 2321
+        host: 127.0.0.1
+        timeout: 15
+
+    - name: Verify TPM is accessible via swtpm TCTI
       ansible.builtin.command:
-        cmd: tpm2_getcap properties-fixed
+        cmd: tpm2_getcap -T "swtpm:host=127.0.0.1,port=2321" properties-fixed
       changed_when: false
 
 - name: Deploy Keylime verifier and registrar on master
@@ -67,27 +107,29 @@
           - keylime-tenant
         state: present
 
+    - name: Configure verifier TLS auto-generation
+      ansible.builtin.lineinfile:
+        path: /etc/keylime/verifier.conf
+        regexp: "^tls_dir ="
+        line: "tls_dir = generate"
+
     - name: Configure verifier to bind on all interfaces
       ansible.builtin.lineinfile:
         path: /etc/keylime/verifier.conf
         regexp: "^ip ="
-        line: "ip = 0.0.0.0"
-        create: true
-      ignore_errors: true
+        line: 'ip = "0.0.0.0"'
+
+    - name: Configure registrar TLS auto-generation
+      ansible.builtin.lineinfile:
+        path: /etc/keylime/registrar.conf
+        regexp: "^tls_dir ="
+        line: "tls_dir = generate"
 
     - name: Configure registrar to bind on all interfaces
       ansible.builtin.lineinfile:
         path: /etc/keylime/registrar.conf
         regexp: "^ip ="
-        line: "ip = 0.0.0.0"
-        create: true
-      ignore_errors: true
-
-    - name: Start keylime-registrar
-      ansible.builtin.systemd:
-        name: keylime_registrar
-        state: started
-        enabled: true
+        line: 'ip = "0.0.0.0"'
 
     - name: Start keylime-verifier
       ansible.builtin.systemd:
@@ -95,52 +137,83 @@
         state: started
         enabled: true
 
-- name: Deploy Keylime agent on client
+    - name: Wait for verifier TLS cert generation
+      ansible.builtin.wait_for:
+        path: /var/lib/keylime/cv_ca
+        timeout: 30
+
+    - name: Start keylime-registrar
+      ansible.builtin.systemd:
+        name: keylime_registrar
+        state: started
+        enabled: true
+
+    - name: Wait for registrar port
+      ansible.builtin.wait_for:
+        port: 8891
+        host: 0.0.0.0
+        timeout: 30
+
+- name: Deploy Keylime agent on clients
   hosts: ipaclient
   become: true
-  vars:
-    keylime_agent_uuid: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
   tasks:
-    - name: Install keylime agent
+    - name: Install keylime agent (Rust)
       ansible.builtin.dnf:
         name:
-          - keylime-agent
+          - keylime-agent-rust
         state: present
 
-    - name: Configure agent registrar IP
+    - name: Generate per-host UUID from hostname
+      ansible.builtin.set_fact:
+        keylime_agent_uuid: "{{ ansible_fqdn | to_uuid }}"
+
+    - name: Configure agent registrar IP (TOML quoted)
       ansible.builtin.lineinfile:
         path: /etc/keylime/agent.conf
         regexp: "^registrar_ip ="
-        line: "registrar_ip = {{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }}"
-        create: true
-      ignore_errors: true
+        line: 'registrar_ip = "{{ hostvars[groups["ipaserver"][0]]["ansible_default_ipv4"]["address"] }}"'
 
-    - name: Configure agent UUID
+    - name: Configure agent UUID (TOML quoted)
       ansible.builtin.lineinfile:
         path: /etc/keylime/agent.conf
         regexp: "^uuid ="
-        line: "uuid = {{ keylime_agent_uuid }}"
-        create: true
-      ignore_errors: true
+        line: 'uuid = "{{ keylime_agent_uuid }}"'
+
+    - name: Deploy TCTI override for swtpm socket mode
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/keylime_agent.service.d/swtpm.conf
+        mode: "0644"
+        content: |
+          [Service]
+          Environment="TCTI=swtpm:host=127.0.0.1,port=2321"
+          Environment="TPM2TOOLS_TCTI=swtpm:host=127.0.0.1,port=2321"
 
     - name: Start keylime-agent
       ansible.builtin.systemd:
         name: keylime_agent
         state: started
         enabled: true
+        daemon_reload: true
 
-- name: Register agent with verifier
+    - name: Wait for agent port
+      ansible.builtin.wait_for:
+        port: 9002
+        host: 127.0.0.1
+        timeout: 30
+
+- name: Register agents with verifier
   hosts: ipaserver
   become: true
-  vars:
-    keylime_agent_uuid: "d432fbb3-d2f1-4a97-9ef7-75bd81c00000"
   tasks:
-    - name: Register client agent
+    - name: Register each client agent with verifier
       ansible.builtin.command:
         cmd: >
           keylime_tenant -c add
-          -t {{ hostvars[groups['ipaclient'][0]]['ansible_default_ipv4']['address'] }}
-          --uuid {{ keylime_agent_uuid }}
+          -t {{ hostvars[item]['ansible_default_ipv4']['address'] }}
+          --uuid {{ hostvars[item]['ansible_fqdn'] | to_uuid }}
+      loop: "{{ groups['ipaclient'] }}"
       register: reg_result
       changed_when: "'SUCCESS' in reg_result.stdout"
       failed_when: reg_result.rc != 0 and 'already' not in reg_result.stderr
+      ignore_errors: true

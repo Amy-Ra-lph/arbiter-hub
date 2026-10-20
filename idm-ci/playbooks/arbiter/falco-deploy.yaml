@@ -35,12 +35,60 @@
           - bpftool
         state: present
 
-    - name: Copy arbiter-specific Falco rules
+    - name: Create Falco rules directory
+      ansible.builtin.file:
+        path: "{{ falco_rules_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy arbiter-specific Falco rules
       ansible.builtin.copy:
-        src: "{{ arbiter_repo_dir }}/deploy/falco/arbiter-rules.yaml"
         dest: "{{ falco_rules_dir }}/arbiter-rules.yaml"
         mode: "0644"
-        remote_src: true
+        content: |
+          ---
+          - rule: Arbiter Unexpected Process in Workload Container
+            desc: Detects unexpected process execution inside attested workload containers
+            condition: >-
+              spawned_process and container and
+              container.image.repository contains "arbiter" and
+              not proc.name in (python3, uvicorn, gunicorn, bash, sh)
+            output: >-
+              Unexpected process in attested workload
+              (container=%container.id process=%proc.name
+               cmdline=%proc.cmdline user=%user.name
+               image=%container.image.repository)
+            priority: WARNING
+            tags: [arbiter, workload, process]
+
+          - rule: Arbiter Reverse Shell Detected
+            desc: Detects reverse shell attempts from workload containers
+            condition: >-
+              spawned_process and container and
+              container.image.repository contains "arbiter" and
+              (proc.name in (nc, ncat, netcat, socat) or
+               proc.cmdline contains "/dev/tcp" or
+               proc.cmdline contains "bash -i")
+            output: >-
+              Reverse shell detected in attested workload
+              (container=%container.id process=%proc.name
+               cmdline=%proc.cmdline user=%user.name)
+            priority: CRITICAL
+            tags: [arbiter, workload, reverse-shell]
+
+          - rule: Arbiter Sensitive File Access
+            desc: Detects access to sensitive files from workload containers
+            condition: >-
+              open_read and container and
+              container.image.repository contains "arbiter" and
+              fd.name in (/etc/shadow, /etc/gshadow, /etc/sudoers,
+                          /root/.ssh/id_rsa, /root/.ssh/authorized_keys)
+            output: >-
+              Sensitive file accessed in attested workload
+              (container=%container.id file=%fd.name process=%proc.name
+               user=%user.name image=%container.image.repository)
+            priority: WARNING
+            tags: [arbiter, workload, file-access]
 
     - name: Configure Falco for eBPF driver
       ansible.builtin.copy:

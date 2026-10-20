@@ -1,134 +1,72 @@
 ---
-# ahdapa-configure.yaml — Post-install configuration of ahdapa native IdP
-# ahdapa RPM installed via COPR abbra/modrnizer-darc in prep phase.
-# This playbook configures it as an OIDC IdP backed by IPA's LDAP.
-- name: Configure ahdapa native IdP
+# ahdapa-configure.yaml — Register OAuth2 clients in ahdapa for Arbiter Hub
+# ahdapa itself is installed and configured by the IPA installer (modrnizer-darc COPR).
+# This playbook only registers the OAuth2 clients needed by the demo.
+- name: Register ahdapa OAuth2 clients for Arbiter Hub
   hosts: ipaserver
   become: true
   vars:
-    ahdapa_conf_dir: /etc/ahdapa
-    ahdapa_signing_dir: /var/lib/ahdapa/keys
-    ahdapa_httpd_conf: /etc/httpd/conf.d/ahdapa.conf
-    ipa_ldap_uri: "ldapi://%2Fvar%2Frun%2Fslapd-{{ ipaserver_realm | default('ARBITER-DEMO') | replace('.', '-') }}.socket"
-    ipa_base_dn: "{{ ipaserver_basedn | default('dc=arbiter,dc=demo') }}"
+    ahdapa_url: "https://{{ ansible_fqdn }}/idp"
+    admin_password: "Secret123"
   tasks:
-    - name: Verify ahdapa is installed
+    - name: Verify ahdapa is running
       ansible.builtin.command:
-        cmd: rpm -q ahdapa
+        cmd: ipactl status
+      changed_when: false
+      register: ipa_status
+      failed_when: "'ahdapa Service: RUNNING' not in ipa_status.stdout"
+
+    - name: Obtain admin Kerberos ticket
+      ansible.builtin.shell:
+        cmd: echo "{{ admin_password }}" | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Check existing clients
+      ansible.builtin.command:
+        cmd: >-
+          ahdapactl --url {{ ahdapa_url }} --kerberos --insecure
+          clients list
+      register: existing_clients
       changed_when: false
 
-    - name: Create ahdapa directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: apache
-        group: apache
-        mode: "0750"
-      loop:
-        - "{{ ahdapa_conf_dir }}"
-        - "{{ ahdapa_signing_dir }}"
-        - /var/lib/ahdapa
-        - /var/lib/ahdapa/db
-
-    - name: Generate ML-DSA-65 signing key
+    - name: Register arbiter-hub API client
       ansible.builtin.command:
         cmd: >-
-          ahdapa-keygen --algorithm ml-dsa-65
-          --output {{ ahdapa_signing_dir }}/ml-dsa-65.key
-        creates: "{{ ahdapa_signing_dir }}/ml-dsa-65.key"
+          ahdapactl --url {{ ahdapa_url }} --kerberos --insecure
+          clients create
+          --name arbiter-hub-api
+          --redirect-uris "https://hub.arbiter.demo:8443/callback"
+          --scopes "openid,profile,arbiter:admin"
+          --grant-types "authorization_code,client_credentials"
+          --generate-credentials client_secret
+      register: arbiter_client
+      when: "'arbiter-hub-api' not in existing_clients.stdout"
 
-    - name: Generate ES256 signing key
+    - name: Save arbiter-hub client credentials
+      ansible.builtin.copy:
+        dest: /etc/ahdapa/arbiter-hub-client.env
+        mode: "0600"
+        content: |
+          {{ arbiter_client.stdout | default('# client already registered') }}
+      when: arbiter_client is changed
+
+    - name: Register arbiter-hub UI client (public PKCE)
       ansible.builtin.command:
         cmd: >-
-          ahdapa-keygen --algorithm es256
-          --output {{ ahdapa_signing_dir }}/es256.key
-        creates: "{{ ahdapa_signing_dir }}/es256.key"
+          ahdapactl --url {{ ahdapa_url }} --kerberos --insecure
+          clients create
+          --name arbiter-hub-ui
+          --redirect-uris "https://hub.arbiter.demo:8443/,https://hub.arbiter.demo:8443/callback"
+          --scopes "openid,profile"
+          --grant-types "authorization_code"
+          --auth-method none
+      when: "'arbiter-hub-ui' not in existing_clients.stdout"
 
-    - name: Set key file permissions
-      ansible.builtin.file:
-        path: "{{ ahdapa_signing_dir }}/{{ item }}"
-        owner: apache
-        group: apache
-        mode: "0640"
-      loop:
-        - ml-dsa-65.key
-        - es256.key
-
-    - name: Deploy ahdapa configuration
-      ansible.builtin.copy:
-        dest: "{{ ahdapa_conf_dir }}/ahdapa.conf"
-        owner: apache
-        group: apache
-        mode: "0640"
-        content: |
-          [global]
-          issuer = https://{{ ansible_fqdn }}/ahdapa
-          base_url = https://{{ ansible_fqdn }}/ahdapa
-
-          [ldap]
-          uri = {{ ipa_ldap_uri }}
-          base_dn = {{ ipa_base_dn }}
-          bind_method = external
-
-          [signing]
-          algorithms = ml-dsa-65,es256
-          key_dir = {{ ahdapa_signing_dir }}
-          default_algorithm = es256
-
-          [database]
-          path = /var/lib/ahdapa/db/ahdapa.db
-      notify: restart httpd
-
-    - name: Deploy httpd module config for ahdapa
-      ansible.builtin.copy:
-        dest: "{{ ahdapa_httpd_conf }}"
-        mode: "0644"
-        content: |
-          # ahdapa OIDC IdP — served under /ahdapa/
-          WSGIDaemonProcess ahdapa user=apache group=apache threads=4
-          WSGIScriptAlias /ahdapa /usr/share/ahdapa/wsgi.py process-group=ahdapa
-
-          <Directory /usr/share/ahdapa>
-              <IfModule mod_authz_core.c>
-                  Require all granted
-              </IfModule>
-          </Directory>
-
-          Alias /.well-known/openid-configuration /usr/share/ahdapa/well-known-redirect
-          <Location /.well-known/openid-configuration>
-              <IfModule mod_authz_core.c>
-                  Require all granted
-              </IfModule>
-          </Location>
-      notify: restart httpd
-
-    - name: Flush handlers
-      ansible.builtin.meta: flush_handlers
-
-    - name: Initialize ahdapa database
-      ansible.builtin.command:
-        cmd: ahdapa-db-init --config {{ ahdapa_conf_dir }}/ahdapa.conf
-        creates: /var/lib/ahdapa/db/ahdapa.db
-
-    - name: Wait for OIDC discovery endpoint
+    - name: Verify OIDC discovery
       ansible.builtin.uri:
-        url: "https://{{ ansible_fqdn }}/.well-known/openid-configuration"
+        url: "{{ ahdapa_url }}/.well-known/openid-configuration"
         validate_certs: false
         return_content: true
       register: oidc_discovery
-      retries: 15
-      delay: 5
-      until: oidc_discovery.status == 200
-
-    - name: Verify discovery contains token endpoint
-      ansible.builtin.assert:
-        that:
-          - "'token_endpoint' in oidc_discovery.content"
-          - "'authorization_endpoint' in oidc_discovery.content"
-        fail_msg: "OIDC discovery response missing required endpoints"
-
-  handlers:
-    - name: restart httpd
-      ansible.builtin.systemd:
-        name: httpd
-        state: restarted
+      failed_when: "'token_endpoint' not in oidc_discovery.content"

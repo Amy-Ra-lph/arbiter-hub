@@ -31,15 +31,9 @@
         depth: 1
         force: true
 
-    - name: Install Python dependencies
-      ansible.builtin.pip:
-        requirements: "{{ enforcement_mcp_dir }}/requirements.txt"
-        state: present
-
     - name: Install enforcement-mcp package
       ansible.builtin.pip:
         name: "{{ enforcement_mcp_dir }}"
-        editable: true
         state: present
 
     - name: Create enforcement-mcp config directory
@@ -76,7 +70,7 @@
 
           [Service]
           Type=simple
-          ExecStart=/usr/bin/python3 -m enforcement_mcp.server --config /etc/enforcement-mcp/config.yaml
+          ExecStart=/usr/bin/python3 -m enforcement_mcp serve --transport sse --host 0.0.0.0 --port {{ enforcement_mcp_port }} localhost
           WorkingDirectory={{ enforcement_mcp_dir }}
           Restart=on-failure
           RestartSec=5

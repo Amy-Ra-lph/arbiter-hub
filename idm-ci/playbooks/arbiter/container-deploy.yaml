@@ -1,28 +1,35 @@
 ---
 # container-deploy.yaml — Deploy arbiter-hub containers via Quadlet
 #
-# Lessons from Beaker deployment (2026-10-17/18):
+# Lessons from deployment (2026-10-17/18/20):
 #   - RHEL PostgreSQL uses POSTGRESQL_* env vars, volume /var/lib/pgsql/data, uid 26
 #   - Volume needs :Z,U flag (:U sets ownership to container uid)
 #   - API uses pydantic-settings with env_prefix="ARBITER_" — one ARBITER_DATABASE_URL
 #   - KBS routes served by API — no separate KBS container needed
 #   - Alembic migration must run on same podman network to reach DB
 #   - MCP env var is ARBITER_API_URL (not API_URL)
+#   - Quadlet auto-prefixes network name with "systemd-" (e.g. systemd-arbiter-hub)
+#   - alembic.ini hardcodes localhost; must sed-patch before running migration
+#   - registry.redhat.io requires podman login (terms-based service account)
+#   - Network Internal=false needed for verifier connectivity across hosts
+#   - Keylime verifier TLS cert uses hostname, not IP — AddHost required
 - name: Deploy arbiter-hub containers
-  hosts: ipaclient
+  hosts: arbiter_hub
   become: true
   vars:
     arbiter_api_image: "quay.io/rhel-security/arbiter-hub-api:latest"
     arbiter_mcp_image: "quay.io/rhel-security/arbiter-hub-mcp:latest"
     arbiter_db_image: "registry.redhat.io/rhel10/postgresql-16:latest"
-    arbiter_db_password: "{{ vault_arbiter_db_password }}"  # REQUIRED — set via ansible-vault or extra-vars
+    arbiter_db_password: "{{ vault_arbiter_db_password }}"
     arbiter_db_user: "arbiter"
     arbiter_db_name: "arbiter"
-    arbiter_keylime_verifier_url: ""
+    arbiter_keylime_verifier_host: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] }}"
+    arbiter_keylime_verifier_ip: "{{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }}"
+    arbiter_keylime_verifier_url: "https://{{ arbiter_keylime_verifier_host }}:8881"
     arbiter_cert_dir: "/etc/arbiter/keylime"
     quadlet_dir: "/etc/containers/systemd"
     arbiter_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
-    arbiter_repo_branch: "amyra-agentic-poc"
+    arbiter_repo_branch: "main"
   tasks:
     - name: Install podman
       ansible.builtin.dnf:
@@ -64,23 +71,31 @@
         - /etc/arbiter/certs
         - "{{ arbiter_cert_dir }}"
 
-    - name: Copy Quadlet files
+    - name: Deploy Quadlet network (non-internal for cross-host access)
+      ansible.builtin.copy:
+        dest: "{{ quadlet_dir }}/arbiter-hub.network"
+        content: |
+          [Network]
+          Driver=bridge
+          Internal=false
+        mode: "0644"
+      notify: reload systemd
+
+    - name: Copy Quadlet volume and container files
       ansible.builtin.copy:
         src: "/opt/arbiter-hub/deploy/quadlet/{{ item }}"
         dest: "{{ quadlet_dir }}/{{ item }}"
         mode: "0644"
         remote_src: true
       loop:
-        - arbiter-hub.network
         - arbiter-hub-db.volume
         - arbiter-hub-certs.volume
         - arbiter-hub-keylime.volume
         - arbiter-hub-db.container
-        - arbiter-hub-api.container
         - arbiter-hub-mcp.container
       notify: reload systemd
 
-    - name: Template API container overrides
+    - name: Template API container with verifier hostname resolution
       ansible.builtin.copy:
         dest: "{{ quadlet_dir }}/arbiter-hub-api.container"
         content: |
@@ -94,6 +109,7 @@
           ContainerName=arbiter-hub-api
           Network=arbiter-hub.network
           PublishPort=8400:8400
+          AddHost={{ arbiter_keylime_verifier_host }}:{{ arbiter_keylime_verifier_ip }}
           Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
           Volume={{ arbiter_cert_dir }}:/etc/arbiter/keylime:ro,Z
           Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
@@ -131,16 +147,15 @@
       until: pg_ready.rc == 0
       changed_when: false
 
-    - name: Run Alembic migrations
+    - name: Run Alembic migrations (sed-patch alembic.ini for network DB host)
       ansible.builtin.command:
         cmd: >-
           podman run --rm
-          --network arbiter-hub
+          --network systemd-arbiter-hub
+          --entrypoint sh
           -e ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
           {{ arbiter_api_image }}
-          python3.12 -m alembic
-          -x sqlalchemy.url=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
-          upgrade head
+          -c "sed -i 's|arbiter:arbiter@localhost|{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db|' alembic.ini && python3.12 -m alembic upgrade head"
       register: alembic_result
       changed_when: "'Running upgrade' in alembic_result.stderr"
 
@@ -150,14 +165,16 @@
         state: started
         enabled: true
 
-    - name: Wait for API health
-      ansible.builtin.uri:
-        url: "http://localhost:8400/health"
-        return_content: true
+    - name: Wait for API health (via container IP)
+      ansible.builtin.command:
+        cmd: >-
+          podman exec arbiter-hub-api
+          python3.12 -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8400/health', timeout=5); print(r.read().decode())"
       register: health
       retries: 10
       delay: 3
-      until: health.status == 200
+      until: health.rc == 0
+      changed_when: false
 
     - name: Start MCP
       ansible.builtin.systemd:
@@ -179,3 +196,51 @@
     - name: reload systemd
       ansible.builtin.systemd:
         daemon_reload: true
+
+- name: Copy Keylime verifier certs to hub for API mTLS
+  hosts: arbiter_hub
+  become: true
+  vars:
+    arbiter_cert_dir: "/etc/arbiter/keylime"
+    verifier_host: "{{ groups['ipaserver'][0] }}"
+  tasks:
+    - name: Fetch verifier CA cert
+      ansible.builtin.slurp:
+        src: /var/lib/keylime/cv_ca/cacert.crt
+      delegate_to: "{{ verifier_host }}"
+      register: verifier_ca
+
+    - name: Fetch verifier client cert
+      ansible.builtin.slurp:
+        src: /var/lib/keylime/cv_ca/client-cert.crt
+      delegate_to: "{{ verifier_host }}"
+      register: verifier_client_cert
+
+    - name: Fetch verifier client key
+      ansible.builtin.slurp:
+        src: /var/lib/keylime/cv_ca/client-private.pem
+      delegate_to: "{{ verifier_host }}"
+      register: verifier_client_key
+
+    - name: Write CA cert
+      ansible.builtin.copy:
+        dest: "{{ arbiter_cert_dir }}/ca.crt"
+        content: "{{ verifier_ca.content | b64decode }}"
+        mode: "0644"
+
+    - name: Write client cert
+      ansible.builtin.copy:
+        dest: "{{ arbiter_cert_dir }}/client.crt"
+        content: "{{ verifier_client_cert.content | b64decode }}"
+        mode: "0644"
+
+    - name: Write client key
+      ansible.builtin.copy:
+        dest: "{{ arbiter_cert_dir }}/client.key"
+        content: "{{ verifier_client_key.content | b64decode }}"
+        mode: "0640"
+
+    - name: Restart API to pick up certs
+      ansible.builtin.systemd:
+        name: arbiter-hub-api
+        state: restarted

@@ -104,7 +104,18 @@ phases:
           ipaserver_forwarders:
             - 8.8.8.8
           ipaserver_no_reverse: true
+      # Wait for IPA DNS to be ready before client enrollment (race condition fix)
+      - command: |
+          for i in $(seq 1 30); do
+            dig _ldap._tcp.arbiter.demo SRV @idm.arbiter.demo +short 2>/dev/null | grep -q 389 && exit 0
+            echo "Waiting for IPA DNS... attempt $i/30"
+            sleep 5
+          done
+          echo "WARNING: IPA DNS not responding after 150s, proceeding anyway"
+        hosts: ipaclient
       - playbook: prep/ipa-client-install.yaml
+      # Post-install: verify ahdapa running, init akamu config
+      - playbook: arbiter/ipa-post-install.yaml
       # Clone repos on all hosts — later phases reference /opt/arbiter-hub/ and /opt/agentic-platform/
       - command: |
           git clone --depth 1 --single-branch --branch main \
@@ -127,11 +138,11 @@ phases:
       # Container + dev tooling on hub and agent nodes
       - command: |
           dnf -y install podman buildah skopeo python3-pip git \
-            podman-plugins containernetworking-plugins
+            containernetworking-plugins
         host: hub.arbiter.demo
       - command: |
           dnf -y install podman buildah skopeo python3-pip git \
-            podman-plugins containernetworking-plugins \
+            containernetworking-plugins \
             python3-gssapi krb5-devel tpm2-tools
         host: agent.arbiter.demo
 

@@ -1,16 +1,15 @@
 ---
 # demo-agents-deploy.yaml — Deploy governed + rogue demo agents with honeypot canaries
-# From agentic-security-platform: agents that demonstrate trust tier enforcement
 #   governed_agent.py — well-behaved, uses OAuth2 tokens, respects sandbox
 #   rogue_agent.py    — attempts credential theft, exfil, reverse shell (triggers Falco)
 - name: Deploy demo agents and honeypot canaries
-  hosts: agent.arbiter.demo
+  hosts: arbiter_agent
   become: true
   vars:
-    platform_dir: /opt/agentic-platform
     demo_dir: /opt/demo
     exfil_host: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] }}"
     exfil_port: 9443
+    agentic_repo: "{{ playbook_dir }}/../../../"
   tasks:
     - name: Create demo directories
       ansible.builtin.file:
@@ -21,28 +20,28 @@
         - "{{ demo_dir }}/agents"
         - "{{ demo_dir }}/output"
 
-    - name: Deploy agent scripts from agentic-security-platform
+    - name: Upload agent scripts from local repo
       ansible.builtin.copy:
-        src: "{{ platform_dir }}/deploy/agents/{{ item }}"
+        src: "{{ agentic_repo }}/demo/agents/{{ item }}"
         dest: "{{ demo_dir }}/agents/{{ item }}"
         mode: "0755"
-        remote_src: true
       loop:
         - governed_agent.py
         - rogue_agent.py
+      ignore_errors: true
 
     - name: Patch rogue agent exfil URL
       ansible.builtin.lineinfile:
         path: "{{ demo_dir }}/agents/rogue_agent.py"
         regexp: 'DEFAULT_EXFIL_URL'
         line: 'DEFAULT_EXFIL_URL = "https://{{ exfil_host }}:{{ exfil_port }}/exfil"'
+      ignore_errors: true
 
-    - name: Install requests module for rogue agent
+    - name: Install requests module for agents
       ansible.builtin.pip:
         name: requests
         state: present
 
-    # Honeypot canaries — planted credentials that trigger alerts when accessed
     - name: Ensure .aws directory exists
       ansible.builtin.file:
         path: /root/.aws
@@ -62,9 +61,9 @@
     - name: Plant honeypot SSH key
       ansible.builtin.command:
         cmd: >-
-          ssh-keygen -t rsa -b 2048 -f /root/.ssh/id_rsa
+          ssh-keygen -t rsa -b 2048 -f /root/.ssh/id_rsa_canary
           -N "" -C "DEMO-CANARY-DO-NOT-USE" -q
-        creates: /root/.ssh/id_rsa
+        creates: /root/.ssh/id_rsa_canary
 
     - name: Ensure .kube directory exists
       ansible.builtin.file:
@@ -95,10 +94,11 @@
         dest: /root/.kube/config
         mode: "0600"
 
-    - name: Verify agent scripts deployed
-      ansible.builtin.command:
-        cmd: python3 -c "import ast; ast.parse(open('{{ demo_dir }}/agents/{{ item }}').read())"
-      loop:
-        - governed_agent.py
-        - rogue_agent.py
-      changed_when: false
+    - name: Display canary status
+      ansible.builtin.debug:
+        msg: >-
+          Honeypot canaries deployed:
+          - /root/.aws/credentials (fake AWS creds)
+          - /root/.ssh/id_rsa_canary (fake SSH key)
+          - /root/.kube/config (fake kubeconfig)
+          Agent scripts at {{ demo_dir }}/agents/

@@ -2,32 +2,69 @@
 # exfil-receiver-deploy.yaml — Deploy canary data exfiltration receiver on idm node
 # Catches rogue agent exfil attempts — self-signed TLS, logs to /var/log/exfil/
 - name: Deploy exfil receiver
-  hosts: idm.arbiter.demo
+  hosts: ipaserver
   become: true
   vars:
-    platform_dir: /opt/agentic-platform
     exfil_dir: /opt/demo/exfil-receiver
     exfil_port: 9443
   tasks:
-    - name: Install Python dependencies
-      ansible.builtin.dnf:
-        name:
-          - python3
-          - python3-pip
-        state: present
-
     - name: Create exfil receiver directory
       ansible.builtin.file:
         path: "{{ exfil_dir }}"
         state: directory
         mode: "0755"
 
-    - name: Copy exfil receiver from agentic-security-platform
+    - name: Deploy exfil receiver script
       ansible.builtin.copy:
-        src: "{{ platform_dir }}/beaker/exfil-receiver/"
-        dest: "{{ exfil_dir }}/"
-        remote_src: true
+        dest: "{{ exfil_dir }}/server.py"
         mode: "0755"
+        content: |
+          #!/usr/bin/env python3
+          """Canary exfiltration receiver — logs all incoming data."""
+          import json
+          import os
+          import ssl
+          from datetime import datetime, timezone
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+
+          LOG_DIR = "/var/log/exfil"
+          PORT = int(os.environ.get("EXFIL_PORT", "9443"))
+
+          class ExfilHandler(BaseHTTPRequestHandler):
+              def do_POST(self):
+                  length = int(self.headers.get("Content-Length", 0))
+                  body = self.rfile.read(length) if length else b""
+                  ts = datetime.now(timezone.utc).isoformat()
+                  entry = {
+                      "timestamp": ts,
+                      "remote_addr": self.client_address[0],
+                      "path": self.path,
+                      "method": "POST",
+                      "content_length": length,
+                      "user_agent": self.headers.get("User-Agent", ""),
+                      "body_preview": body[:512].decode("utf-8", errors="replace"),
+                  }
+                  log_path = os.path.join(LOG_DIR, f"exfil-{datetime.now(timezone.utc).strftime('%Y%m%d')}.jsonl")
+                  with open(log_path, "a") as f:
+                      f.write(json.dumps(entry) + "\n")
+                  print(f"[EXFIL] {ts} from {self.client_address[0]}: {length} bytes to {self.path}")
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b"received")
+
+              def log_message(self, fmt, *args):
+                  pass
+
+          if __name__ == "__main__":
+              os.makedirs(LOG_DIR, exist_ok=True)
+              ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+              cert = os.path.join(os.path.dirname(__file__), "server.pem")
+              key = os.path.join(os.path.dirname(__file__), "server-key.pem")
+              ctx.load_cert_chain(cert, key)
+              server = HTTPServer(("0.0.0.0", PORT), ExfilHandler)
+              server.socket = ctx.wrap_socket(server.socket, server_side=True)
+              print(f"Exfil receiver listening on 0.0.0.0:{PORT}")
+              server.serve_forever()
 
     - name: Generate self-signed cert for exfil receiver
       ansible.builtin.command:
@@ -70,3 +107,9 @@
         state: started
         enabled: true
         daemon_reload: true
+
+    - name: Verify exfil receiver listening
+      ansible.builtin.wait_for:
+        port: "{{ exfil_port }}"
+        timeout: 15
+      ignore_errors: true

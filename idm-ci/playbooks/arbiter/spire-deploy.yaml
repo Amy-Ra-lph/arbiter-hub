@@ -11,7 +11,7 @@
     spire_data_dir: /var/lib/spire/server
     spire_conf_dir: /etc/spire/server
     trust_domain: "arbiter.demo"
-    ahdapa_issuer: "https://{{ ansible_fqdn }}/ahdapa"
+    ahdapa_issuer: "https://{{ ansible_fqdn }}/idp"
   tasks:
     - name: Create spire user
       ansible.builtin.user:
@@ -85,18 +85,6 @@
                   }
               }
           }
-
-          # Federation with ahdapa for JWT-SVID → OIDC bridging
-          federation {
-              bundle_endpoint {
-                  address = "0.0.0.0"
-                  port = 8443
-              }
-              federates_with "{{ trust_domain }}" {
-                  bundle_endpoint_url = "{{ ahdapa_issuer }}/.well-known/openid-configuration"
-                  bundle_endpoint_profile "https_web" {}
-              }
-          }
       notify: restart spire-server
 
     - name: Deploy SPIRE server systemd unit
@@ -128,7 +116,7 @@
 
     - name: Wait for SPIRE server health
       ansible.builtin.command:
-        cmd: spire-server healthcheck -socketPath {{ spire_data_dir }}/api.sock
+        cmd: spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock
       register: spire_health
       retries: 15
       delay: 5
@@ -140,7 +128,7 @@
         cmd: >-
           spire-server token generate
           -spiffeID spiffe://{{ trust_domain }}/agent/arbiter-agent
-          -socketPath {{ spire_data_dir }}/api.sock
+          -socketPath /tmp/spire-server/private/api.sock
           -ttl 600
       register: join_token_result
       changed_when: true
@@ -156,7 +144,7 @@
         state: restarted
 
 - name: Deploy SPIRE agent
-  hosts: ipaclient[1]
+  hosts: arbiter_agent
   become: true
   vars:
     spire_version: "1.11.1"
@@ -232,14 +220,24 @@
                   }
               }
           }
-      notify: restart spire-agent
-
     - name: Fetch SPIRE server bundle
-      ansible.builtin.command:
-        cmd: >-
-          curl -sk https://{{ spire_server_host }}:8443
-          -o {{ spire_data_dir }}/bootstrap.crt
+      ansible.builtin.uri:
+        url: "https://{{ spire_server_host }}:8081"
+        validate_certs: false
+        return_content: true
+        dest: "{{ spire_data_dir }}/bootstrap.crt"
         creates: "{{ spire_data_dir }}/bootstrap.crt"
+      ignore_errors: true
+
+    - name: Copy IPA CA as bootstrap cert (fallback)
+      ansible.builtin.copy:
+        src: /etc/ipa/ca.crt
+        dest: "{{ spire_data_dir }}/bootstrap.crt"
+        remote_src: true
+        force: false
+        owner: spire
+        group: spire
+        mode: "0640"
 
     - name: Deploy SPIRE agent systemd unit
       ansible.builtin.copy:
@@ -270,7 +268,7 @@
 
     - name: Wait for agent attestation
       ansible.builtin.command:
-        cmd: spire-agent healthcheck -socketPath {{ spire_data_dir }}/api.sock
+        cmd: spire-agent healthcheck -socketPath /tmp/spire-agent/public/api.sock
       register: agent_health
       retries: 15
       delay: 5
@@ -285,7 +283,7 @@
   tasks:
     - name: List registered agents
       ansible.builtin.command:
-        cmd: spire-server agent list -socketPath {{ spire_data_dir }}/api.sock
+        cmd: spire-server agent list -socketPath /tmp/spire-server/private/api.sock
       register: agent_list
       changed_when: false
 

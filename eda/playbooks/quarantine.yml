@@ -8,11 +8,11 @@
 
   tasks:
     - name: Disconnect container from network
-      containers.podman.podman_container:
-        name: "{{ workload_id }}"
-        network_mode: none
-        state: started
-      ignore_errors: true
+      ansible.builtin.command:
+        cmd: podman network disconnect podman {{ workload_id }}
+      register: disconnect_result
+      changed_when: disconnect_result.rc == 0
+      failed_when: false
 
     - name: Notify Arbiter Hub of remediation
       ansible.builtin.uri:

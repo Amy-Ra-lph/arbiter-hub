@@ -1,16 +1,14 @@
 ---
-# oauth2-plugin-deploy.yaml — Configure IPA OAuth2 server plugin
-# Sets up LDAP schema, OIDC clients, and scopes for arbiter-hub
-- name: Configure IPA OAuth2 plugin
+# oauth2-plugin-deploy.yaml — Configure ahdapa OAuth2 clients and scopes
+# Uses ahdapactl CLI (not ahdapa-client-register which doesn't exist).
+# Issuer is https://<fqdn>/idp (not /ahdapa).
+- name: Configure ahdapa OAuth2 for arbiter-hub
   hosts: ipaserver
   become: true
   vars:
-    ipa_admin_password: "{{ ipaserver_admin_password }}"
-    hub_host: "{{ groups['ipaclient'][0] }}"
-    hub_fqdn: "{{ hostvars[hub_host]['ansible_fqdn'] | default('hub.arbiter.demo') }}"
-    ahdapa_issuer: "https://{{ ansible_fqdn }}/ahdapa"
-    arbiter_hub_redirect_uri: "https://{{ hub_fqdn }}:8400/auth/callback"
-    eda_redirect_uri: "https://{{ hub_fqdn }}:5001/auth/callback"
+    ipa_admin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
+    hub_fqdn: "{{ hostvars[groups['arbiter_hub'][0]]['ansible_fqdn'] | default('hub.arbiter.demo') }}"
+    ahdapa_url: "https://{{ ansible_fqdn }}/idp"
   tasks:
     - name: Obtain admin Kerberos ticket
       ansible.builtin.command:
@@ -18,83 +16,58 @@
         stdin: "{{ ipa_admin_password }}"
       changed_when: false
 
-    - name: Install OAuth2 schema extensions
+    - name: Login to ahdapa
       ansible.builtin.command:
-        cmd: ahdapa-schema-install --ldap-modify
-      register: schema_result
-      changed_when: "'already installed' not in schema_result.stdout"
-      failed_when: schema_result.rc != 0 and 'already installed' not in schema_result.stdout
+        cmd: ahdapactl login {{ ahdapa_url }} --kerberos --insecure
+      register: ahdapa_login
+      changed_when: "'logged in' in ahdapa_login.stdout"
+      failed_when: ahdapa_login.rc != 0 and 'already logged in' not in ahdapa_login.stderr
 
-    - name: Register arbiter-hub OIDC client
+    - name: List existing clients
       ansible.builtin.command:
-        cmd: >-
-          ahdapa-client-register
-          --client-id arbiter-hub
-          --client-name "Arbiter Hub"
-          --redirect-uri {{ arbiter_hub_redirect_uri }}
-          --grant-types authorization_code,client_credentials
-          --response-types code
-          --token-endpoint-auth-method client_secret_basic
-      register: hub_client
-      changed_when: "'registered' in hub_client.stdout"
-      failed_when: hub_client.rc != 0 and 'already exists' not in hub_client.stderr
+        cmd: ahdapactl clients list
+      register: existing_clients
+      changed_when: false
 
-    - name: Save arbiter-hub client secret
-      ansible.builtin.copy:
-        content: "{{ hub_client.stdout | regex_search('client_secret: (.+)', '\\1') | first | default('') }}"
-        dest: /etc/arbiter/oidc-client-secret
-        mode: "0600"
-      when: "'client_secret' in hub_client.stdout"
-
-    - name: Register EDA controller OIDC client
+    - name: Create EDA controller client (if missing)
       ansible.builtin.command:
         cmd: >-
-          ahdapa-client-register
-          --client-id eda-controller
-          --client-name "EDA Controller"
-          --redirect-uri {{ eda_redirect_uri }}
-          --grant-types client_credentials
-          --token-endpoint-auth-method client_secret_basic
+          ahdapactl clients create
+          --name "EDA Controller"
+          --redirect-uris "https://{{ hub_fqdn }}:5001/auth/callback"
+          --grant-types "client_credentials"
+          --generate-credentials client_secret
+          --scopes "arbiter:attest,arbiter:enroll"
       register: eda_client
-      changed_when: "'registered' in eda_client.stdout"
-      failed_when: eda_client.rc != 0 and 'already exists' not in eda_client.stderr
+      when: "'EDA Controller' not in existing_clients.stdout"
 
-    - name: Create OAuth2 scopes
+    - name: Save EDA client credentials
+      ansible.builtin.copy:
+        content: "{{ eda_client.stdout }}"
+        dest: /etc/arbiter/eda-client-credentials
+        mode: "0600"
+      when: eda_client is changed
+
+    - name: Create arbiter scopes (idempotent via update)
       ansible.builtin.command:
         cmd: >-
-          ahdapa-scope-create
-          --scope {{ item.name }}
+          ahdapactl scopes update
           --description "{{ item.desc }}"
+          {{ item.name }}
       loop:
         - { name: "arbiter:attest", desc: "Request and view attestation results" }
         - { name: "arbiter:enroll", desc: "Register and manage workloads" }
         - { name: "arbiter:admin", desc: "Full administrative access" }
         - { name: "arbiter:view", desc: "Read-only access to workloads and attestation" }
       register: scope_result
-      changed_when: "'created' in scope_result.stdout"
-      failed_when: scope_result.rc != 0 and 'already exists' not in scope_result.stderr
+      changed_when: scope_result.rc == 0
 
-    - name: Assign scopes to arbiter-hub client
+    - name: Verify clients registered
       ansible.builtin.command:
-        cmd: >-
-          ahdapa-client-update --client-id arbiter-hub
-          --add-scope arbiter:attest,arbiter:enroll,arbiter:admin,arbiter:view
-      register: assign_result
-      changed_when: "'updated' in assign_result.stdout"
-      failed_when: assign_result.rc != 0 and 'already assigned' not in assign_result.stderr
-
-    - name: Assign scopes to EDA client
-      ansible.builtin.command:
-        cmd: >-
-          ahdapa-client-update --client-id eda-controller
-          --add-scope arbiter:attest,arbiter:enroll
-      register: eda_assign
-      changed_when: "'updated' in eda_assign.stdout"
-      failed_when: eda_assign.rc != 0 and 'already assigned' not in eda_assign.stderr
-
-    - name: Verify OIDC client registration
-      ansible.builtin.command:
-        cmd: ahdapa-client-list --format json
-      register: client_list
+        cmd: ahdapactl clients list
+      register: final_clients
       changed_when: false
-      failed_when: "'arbiter-hub' not in client_list.stdout"
+
+    - name: Display registered clients
+      ansible.builtin.debug:
+        var: final_clients.stdout_lines

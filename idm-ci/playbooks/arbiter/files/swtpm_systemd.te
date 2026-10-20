@@ -1,0 +1,37 @@
+module swtpm_systemd 1.3;
+
+require {
+    type init_t;
+    type swtpm_t;
+    type swtpm_exec_t;
+    type var_lib_t;
+    type unreserved_port_t;
+    type node_t;
+    type keylime_agent_t;
+    class file { create read write open getattr setattr lock append map rename unlink entrypoint execute ioctl };
+    class dir { create read write open getattr setattr search add_name remove_name };
+    class process { transition };
+    class tcp_socket { accept listen name_bind name_connect node_bind };
+    class lnk_file { read getattr };
+}
+
+# Systemd (init_t) -> swtpm_t domain transition.
+# Stock policy only transitions from svirt_t/virtqemud_t (libvirt).
+# This adds the transition for standalone systemd-managed swtpm.
+type_transition init_t swtpm_exec_t:process swtpm_t;
+allow init_t swtpm_exec_t:file { execute open read getattr map };
+allow init_t swtpm_t:process transition;
+allow swtpm_t swtpm_exec_t:file entrypoint;
+
+# State files in /var/lib/swtpm (labeled var_lib_t)
+allow swtpm_t var_lib_t:dir { create read write open getattr setattr search add_name remove_name };
+allow swtpm_t var_lib_t:file { create read write open getattr setattr lock append map rename unlink ioctl };
+allow swtpm_t var_lib_t:lnk_file { read getattr };
+
+# TCP socket mode (ports 2321/2322) for VMs without vtpm-proxy kernel support
+allow swtpm_t self:tcp_socket { accept listen };
+allow swtpm_t unreserved_port_t:tcp_socket name_bind;
+allow swtpm_t node_t:tcp_socket node_bind;
+
+# keylime_agent_t -> swtpm TCP socket connection (socket mode)
+allow keylime_agent_t unreserved_port_t:tcp_socket name_connect;

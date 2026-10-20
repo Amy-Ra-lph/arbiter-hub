@@ -1,0 +1,76 @@
+---
+# ipa-post-install.yaml — Post-install initialization for modrnizer-darc services
+# Runs once after ipa-server-install + ipa-client-install.
+# Ensures ahdapa and akamu are initialized and serving before client registration.
+- name: Post-install initialization (ahdapa + akamu)
+  hosts: ipaserver
+  become: true
+  vars:
+    admin_password: "Secret123"
+  tasks:
+    - name: Verify all IPA services running
+      ansible.builtin.command:
+        cmd: ipactl status
+      changed_when: false
+      register: ipa_status
+      failed_when: >-
+        'ahdapa Service: RUNNING' not in ipa_status.stdout or
+        'akamu Service: RUNNING' not in ipa_status.stdout
+
+    - name: Obtain admin Kerberos ticket
+      ansible.builtin.shell:
+        cmd: echo "{{ admin_password }}" | kinit admin
+      changed_when: false
+      no_log: true
+
+    - name: Verify ahdapa OIDC discovery
+      ansible.builtin.uri:
+        url: "https://{{ ansible_fqdn }}/idp/.well-known/openid-configuration"
+        validate_certs: false
+        return_content: true
+      register: oidc_discovery
+      retries: 10
+      delay: 5
+      until: oidc_discovery.status == 200
+
+    - name: Initialize akamu system config
+      ansible.builtin.command:
+        cmd: >-
+          akamu init
+          --system
+          --base-url https://{{ ansible_fqdn }}/akamu
+          --force
+      args:
+        creates: /etc/akamu/config.toml
+
+    - name: Ensure akamu data directory permissions
+      ansible.builtin.file:
+        path: /var/lib/akamu
+        state: directory
+        owner: akamu
+        group: akamu
+        mode: "0750"
+        recurse: true
+
+    - name: Restart akamu with new config
+      ansible.builtin.systemd:
+        name: akamu
+        state: restarted
+        enabled: true
+
+    - name: Wait for akamu ACME directory
+      ansible.builtin.uri:
+        url: "https://{{ ansible_fqdn }}/akamu/acme/directory"
+        validate_certs: false
+        return_content: true
+      register: acme_directory
+      retries: 15
+      delay: 5
+      until: acme_directory.status == 200
+      ignore_errors: true
+
+    - name: Report initialization status
+      ansible.builtin.debug:
+        msg: |
+          ahdapa: {{ 'OK' if oidc_discovery.status == 200 else 'FAILED' }}
+          akamu:  {{ 'OK' if acme_directory.status | default(0) == 200 else 'needs httpd proxy config' }}

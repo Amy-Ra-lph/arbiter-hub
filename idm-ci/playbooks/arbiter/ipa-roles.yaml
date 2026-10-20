@@ -20,6 +20,18 @@
 
     - name: Run IPA role setup
       ansible.builtin.command:
-        cmd: bash /tmp/setup-ipa-roles.sh {{ ipa_realm | default('ARBITER.TEST') }}
+        cmd: bash /tmp/setup-ipa-roles.sh {{ ipa_realm | default('ARBITER.DEMO') }}
       register: role_result
       changed_when: "'complete' in role_result.stdout"
+
+    - name: Ensure marker directory exists
+      ansible.builtin.file:
+        path: /etc/arbiter
+        state: directory
+        mode: "0755"
+
+    - name: Mark IPA roles as configured
+      ansible.builtin.file:
+        path: /etc/arbiter/.ipa-roles-configured
+        state: touch
+        mode: "0644"

@@ -1,28 +1,30 @@
 ---
 # eda-deploy.yaml — Deploy EDA controller (ansible-rulebook) on hub node
-# Runs attestation rulebook with custom arbiter_hub event source plugin
+# Runs attestation rulebook with custom arbiter_hub event source plugin.
+# EDA files uploaded from controller (repo not cloned on remote).
 - name: Deploy EDA controller
-  hosts: hub.arbiter.demo
+  hosts: arbiter_hub
   become: true
   vars:
     eda_dir: "/opt/arbiter-eda"
     eda_port: 5001
-    arbiter_repo_dir: "/opt/arbiter-hub"
     arbiter_api_url: "http://localhost:8400"
     arbiter_webhook_secret: "{{ vault_arbiter_webhook_secret | default(lookup('password', '/dev/null chars=ascii_letters,digits length=32')) }}"
+    agent_host: "{{ hostvars[groups['arbiter_agent'][0]]['ansible_default_ipv4']['address'] | default('agent.arbiter.demo') }}"
   tasks:
     - name: Install EDA dependencies
       ansible.builtin.dnf:
         name:
           - python3-pip
           - python3-devel
-          - java-17-openjdk-headless
+          - java-25-openjdk-headless
           - gcc
         state: present
 
     - name: Install ansible-rulebook and dependencies
       ansible.builtin.pip:
         name:
+          - ansible-core
           - ansible-rulebook
           - aiohttp
           - ansible-runner
@@ -41,14 +43,13 @@
         - "{{ eda_dir }}/playbooks"
         - "{{ eda_dir }}/inventory"
 
-    - name: Copy EDA event source plugin
+    - name: Upload EDA event source plugin
       ansible.builtin.copy:
-        src: "{{ arbiter_repo_dir }}/eda/plugins/event_source/arbiter_hub.py"
+        src: "{{ playbook_dir }}/../../../eda/plugins/event_source/arbiter_hub.py"
         dest: "{{ eda_dir }}/plugins/event_source/arbiter_hub.py"
         mode: "0644"
-        remote_src: true
 
-    - name: Copy plugin __init__ files
+    - name: Create plugin __init__ files
       ansible.builtin.copy:
         content: ""
         dest: "{{ item }}"
@@ -57,28 +58,29 @@
         - "{{ eda_dir }}/plugins/__init__.py"
         - "{{ eda_dir }}/plugins/event_source/__init__.py"
 
-    - name: Copy rulebooks
+    - name: Upload attestation rulebook
       ansible.builtin.copy:
-        src: "{{ arbiter_repo_dir }}/eda/rulebooks/{{ item }}"
-        dest: "{{ eda_dir }}/rulebooks/{{ item }}"
+        src: "{{ playbook_dir }}/../../../eda/rulebooks/attestation.yml"
+        dest: "{{ eda_dir }}/rulebooks/attestation.yml"
         mode: "0644"
-        remote_src: true
-      loop:
-        - attestation.yml
-        - demo.yml
 
-    - name: Copy remediation playbooks
+    - name: Upload demo rulebook
       ansible.builtin.copy:
-        src: "{{ arbiter_repo_dir }}/eda/playbooks/{{ item }}"
+        src: "{{ playbook_dir }}/../../../eda/rulebooks/demo.yml"
+        dest: "{{ eda_dir }}/rulebooks/demo.yml"
+        mode: "0644"
+
+    - name: Upload remediation playbooks
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../eda/playbooks/{{ item }}"
         dest: "{{ eda_dir }}/playbooks/{{ item }}"
         mode: "0644"
-        remote_src: true
       loop:
         - quarantine.yml
         - re_attest.yml
         - forensic_collect.yml
 
-    - name: Template EDA inventory
+    - name: Create EDA inventory
       ansible.builtin.copy:
         dest: "{{ eda_dir }}/inventory/hosts.yml"
         mode: "0644"
@@ -87,7 +89,6 @@
           all:
             vars:
               arbiter_api_url: {{ arbiter_api_url }}
-              arbiter_bearer_token: "{{ '{{' }} lookup('env', 'ARBITER_TOKEN') {{ '}}' }}"
               arbiter_webhook_secret: {{ arbiter_webhook_secret }}
             children:
               server:
@@ -97,9 +98,15 @@
               client:
                 hosts:
                   agent.arbiter.demo:
-                    ansible_host: {{ hostvars['agent.arbiter.demo']['ansible_default_ipv4']['address'] | default('agent.arbiter.demo') }}
+                    ansible_host: {{ agent_host }}
 
-    - name: Store webhook secret for other playbooks
+    - name: Create /etc/arbiter directory
+      ansible.builtin.file:
+        path: /etc/arbiter
+        state: directory
+        mode: "0755"
+
+    - name: Store webhook secret
       ansible.builtin.copy:
         content: "{{ arbiter_webhook_secret }}"
         dest: /etc/arbiter/webhook-secret
@@ -112,7 +119,7 @@
         content: |
           [Unit]
           Description=Arbiter Hub EDA Controller (ansible-rulebook)
-          After=network-online.target arbiter-hub-api.service
+          After=network-online.target
           Wants=network-online.target
 
           [Service]
@@ -120,7 +127,7 @@
           ExecStart=/usr/local/bin/ansible-rulebook \
             --rulebook {{ eda_dir }}/rulebooks/attestation.yml \
             --inventory {{ eda_dir }}/inventory/hosts.yml \
-            --source-dir {{ eda_dir }}/plugins
+            --source-dir {{ eda_dir }}/plugins/event_source
           WorkingDirectory={{ eda_dir }}
           Environment=ARBITER_WEBHOOK_SECRET={{ arbiter_webhook_secret }}
           Restart=on-failure
@@ -142,3 +149,18 @@
         host: 0.0.0.0
         timeout: 60
         state: started
+      ignore_errors: true
+
+    - name: Verify EDA process running
+      ansible.builtin.command:
+        cmd: systemctl is-active arbiter-eda
+      register: eda_status
+      changed_when: false
+      failed_when: false
+
+    - name: Display EDA status
+      ansible.builtin.debug:
+        msg: >-
+          EDA controller: {{ eda_status.stdout }}.
+          Webhook listener: port {{ eda_port }}.
+          Secret stored at /etc/arbiter/webhook-secret.

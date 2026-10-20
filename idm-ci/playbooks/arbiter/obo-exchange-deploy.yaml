@@ -1,64 +1,49 @@
 ---
-# obo-exchange-deploy.yaml — Deploy OBO token exchange service (RFC 8693)
-# Configures on-behalf-of token exchange for delegated attestation workflows
-- name: Deploy OBO token exchange service
+# obo-exchange-deploy.yaml — Configure federation token exchange policies
+# Uses ahdapactl federation-policies (not ahdapa-exchange-register which doesn't exist).
+# Token exchange endpoint is /idp/token with grant_type=urn:ietf:params:oauth:grant-type:token-exchange.
+- name: Configure OBO token exchange
   hosts: ipaserver
   become: true
   vars:
-    ahdapa_conf_dir: /etc/ahdapa
-    obo_conf_file: /etc/ahdapa/obo-exchange.conf
+    ipa_admin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
+    ahdapa_url: "https://{{ ansible_fqdn }}/idp"
   tasks:
-    - name: Deploy OBO exchange configuration
-      ansible.builtin.copy:
-        dest: "{{ obo_conf_file }}"
-        owner: apache
-        group: apache
-        mode: "0640"
-        content: |
-          [exchange]
-          enabled = true
-          grant_type = urn:ietf:params:oauth:grant-type:token-exchange
-          token_type = urn:ietf:params:oauth:token-type:jwt
+    - name: Obtain admin Kerberos ticket
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipa_admin_password }}"
+      changed_when: false
 
-          [policy]
-          # Allow arbiter-hub to exchange tokens on behalf of workloads
-          allowed_actors = arbiter-hub
-          # Scopes the exchange can mint
-          allowed_scopes = arbiter:attest,arbiter:enroll,arbiter:view
-          # Maximum delegation depth
-          max_delegation_depth = 2
-          # Token lifetime for exchanged tokens (seconds)
-          exchanged_token_lifetime = 3600
+    - name: Login to ahdapa
+      ansible.builtin.command:
+        cmd: ahdapactl login {{ ahdapa_url }} --kerberos --insecure
+      register: ahdapa_login
+      changed_when: "'logged in' in ahdapa_login.stdout"
+      failed_when: ahdapa_login.rc != 0 and 'already logged in' not in ahdapa_login.stderr
 
-          [audit]
-          log_exchanges = true
-          log_file = /var/log/ahdapa/obo-exchange.log
-      notify: restart httpd
+    - name: List existing federation policies
+      ansible.builtin.command:
+        cmd: ahdapactl federation-policies list
+      register: existing_policies
+      changed_when: false
 
-    - name: Create audit log directory
-      ansible.builtin.file:
-        path: /var/log/ahdapa
-        state: directory
-        owner: apache
-        group: apache
-        mode: "0750"
-
-    - name: Register OBO exchange with ahdapa
+    - name: Create federation policy for arbiter-hub workload exchange
       ansible.builtin.command:
         cmd: >-
-          ahdapa-exchange-register
-          --config {{ obo_conf_file }}
-          --issuer https://{{ ansible_fqdn }}/ahdapa
-      register: exchange_result
-      changed_when: "'registered' in exchange_result.stdout"
-      failed_when: exchange_result.rc != 0 and 'already registered' not in exchange_result.stderr
+          ahdapactl federation-policies create
+          --issuer {{ ahdapa_url }}
+          --subject-pattern "arbiter-hub-*"
+          --local-sub "arbiter-hub-api"
+          --scopes "arbiter:attest,arbiter:enroll,arbiter:view"
+          --priority 10
+      register: fed_policy
+      when: "'arbiter-hub' not in existing_policies.stdout"
+      changed_when: fed_policy.rc == 0
 
-    - name: Flush handlers
-      ansible.builtin.meta: flush_handlers
-
-    - name: Verify token exchange endpoint
+    - name: Verify token endpoint responds
       ansible.builtin.uri:
-        url: "https://{{ ansible_fqdn }}/ahdapa/token"
+        url: "{{ ahdapa_url }}/token"
         method: POST
         validate_certs: false
         body_format: form-urlencoded
@@ -73,10 +58,14 @@
       ansible.builtin.assert:
         that:
           - exchange_test.status in [400, 401]
-        fail_msg: "OBO exchange endpoint not responding"
+        fail_msg: "Token exchange endpoint not responding at {{ ahdapa_url }}/token"
 
-  handlers:
-    - name: restart httpd
-      ansible.builtin.systemd:
-        name: httpd
-        state: restarted
+    - name: Display federation policies
+      ansible.builtin.command:
+        cmd: ahdapactl federation-policies list
+      register: final_policies
+      changed_when: false
+
+    - name: Show policies
+      ansible.builtin.debug:
+        var: final_policies.stdout_lines
