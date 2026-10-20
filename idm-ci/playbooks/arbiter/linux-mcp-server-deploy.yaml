@@ -127,3 +127,35 @@
         that:
           - tools_list.json | length >= 19
         fail_msg: "Expected at least 19 tools, got {{ tools_list.json | length }}"
+
+    - name: Register linux-mcp-server as attested workload
+      ansible.builtin.uri:
+        url: "{{ arbiter_hub_api }}/workloads"
+        method: POST
+        body_format: json
+        body:
+          ipa_principal: "mcp/linux-mcp-server@ARBITER.DEMO"
+          display_name: "Linux MCP Server"
+          workload_type: service
+          backend_types:
+            - cosign
+            - falco
+          metadata:
+            artifact_ref: "quay.io/rhel-security/sandbox-linux-mcp:latest"
+            service_type: mcp-server
+            tool_count: 19
+            capabilities:
+              - diagnostics
+              - monitoring
+              - selinux
+              - audit
+            managed_by: linux-mcp-server-deploy
+        status_code:
+          - 200
+          - 201
+          - 409
+      register: lmcp_workload
+
+    - name: Display linux-mcp-server attestation status
+      ansible.builtin.debug:
+        msg: "linux-mcp-server registered: HTTP {{ lmcp_workload.status }}"

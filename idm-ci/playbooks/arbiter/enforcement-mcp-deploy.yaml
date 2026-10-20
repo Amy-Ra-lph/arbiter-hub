@@ -94,3 +94,35 @@
       retries: 15
       delay: 3
       until: emcp_health.status == 200
+
+    - name: Register enforcement-mcp as attested workload
+      ansible.builtin.uri:
+        url: "{{ arbiter_api_url }}/workloads"
+        method: POST
+        body_format: json
+        body:
+          ipa_principal: "mcp/enforcement-mcp@ARBITER.DEMO"
+          display_name: "Enforcement MCP Server"
+          workload_type: service
+          backend_types:
+            - cosign
+            - falco
+          metadata:
+            artifact_ref: "quay.io/rhel-security/enforcement-mcp:latest"
+            service_type: mcp-server
+            tool_count: 30
+            capabilities:
+              - selinux
+              - fapolicyd
+              - aide
+              - mls
+            managed_by: enforcement-mcp-deploy
+        status_code:
+          - 200
+          - 201
+          - 409
+      register: emcp_workload
+
+    - name: Display enforcement-mcp attestation status
+      ansible.builtin.debug:
+        msg: "enforcement-mcp registered: HTTP {{ emcp_workload.status }}"
