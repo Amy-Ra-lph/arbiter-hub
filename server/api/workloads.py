@@ -324,6 +324,8 @@ async def register_workload(
         workload_type=body.workload_type,
         backend_types=[bt.value for bt in body.backend_types],
         stale_ttl_seconds=body.stale_ttl_seconds,
+        artifact_ref=body.artifact_ref,
+        artifact_digest=body.artifact_digest,
         metadata_=body.metadata,
     )
     session.add(workload)

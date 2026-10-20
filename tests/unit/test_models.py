@@ -7,14 +7,15 @@ from server.models.db import (
 from server.models.schemas import PaginatedResponse, WorkloadCreate, WorkloadRead
 
 
-def test_workload_state_enum_has_seven_states():
-    assert len(WorkloadState) == 7
+def test_workload_state_enum_has_eight_states():
+    assert len(WorkloadState) == 8
     assert WorkloadState.REGISTERED.value == "registered"
     assert WorkloadState.ATTESTING.value == "attesting"
     assert WorkloadState.HEALTHY.value == "healthy"
     assert WorkloadState.STALE.value == "stale"
     assert WorkloadState.FAILED.value == "failed"
     assert WorkloadState.UNDER_REMEDIATION.value == "under_remediation"
+    assert WorkloadState.ROTATING.value == "rotating"
     assert WorkloadState.REVOKED.value == "revoked"
 
 

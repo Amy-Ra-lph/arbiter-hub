@@ -13,6 +13,7 @@ from server.api import (
     auth_config,
     health,
     kbs,
+    rotation,
     signing,
     webhooks,
     workloads,
@@ -114,5 +115,6 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, tags=["alerts"])
     app.include_router(webhooks.router, tags=["webhooks"])
     app.include_router(signing.router, tags=["signing"])
+    app.include_router(rotation.router, tags=["rotation"])
     app.include_router(kbs.router, tags=["kbs"])
     return app

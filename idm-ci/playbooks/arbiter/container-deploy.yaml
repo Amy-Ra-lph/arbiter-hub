@@ -155,6 +155,13 @@
         - arbiter-hub-mcp.container
       notify: reload systemd
 
+    - name: Copy seed policy data for API container
+      ansible.builtin.copy:
+        src: /opt/arbiter-hub/deploy/seed/policies.json
+        dest: /etc/arbiter/seed-policies.json
+        remote_src: true
+        mode: "0644"
+
     - name: Template API container with verifier hostname resolution
       ansible.builtin.copy:
         dest: "{{ quadlet_dir }}/arbiter-hub-api.container"
@@ -175,6 +182,7 @@
           Volume={{ arbiter_cert_dir }}:/etc/arbiter/keylime:ro,Z
           Volume=/etc/arbiter/cosign:/etc/arbiter/cosign:ro,Z
           Volume=/usr/local/bin/cosign:/usr/local/bin/cosign:ro,Z
+          Volume=/etc/arbiter/seed-policies.json:/etc/arbiter/seed-policies.json:ro,Z
           Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
           Environment=ARBITER_KEYLIME_VERIFIER_URL={{ arbiter_keylime_verifier_url }}
           Environment=ARBITER_KEYLIME_CA_CERT=/etc/arbiter/keylime/ca.crt
@@ -241,6 +249,25 @@
       delay: 3
       until: health.rc == 0
       changed_when: false
+
+    - name: Seed attestation policies (idempotent)
+      ansible.builtin.command:
+        cmd: >-
+          podman exec arbiter-hub-api
+          python3.12 -c "
+          import json, urllib.request;
+          policies = json.load(open('/etc/arbiter/seed-policies.json'));
+          existing = json.loads(urllib.request.urlopen('http://127.0.0.1:8400/policies').read())['items'];
+          names = {p['name'] for p in existing};
+          created = 0;
+          [created := created + 1 or urllib.request.urlopen(
+              urllib.request.Request('http://127.0.0.1:8400/policies',
+              data=json.dumps(p).encode(), headers={'Content-Type': 'application/json'}, method='POST'))
+           for p in policies if p['name'] not in names];
+          print(f'Seeded {created} new policies ({len(names)} already existed)')
+          "
+      register: seed_result
+      changed_when: "'Seeded 0' not in seed_result.stdout"
 
     - name: Start MCP
       ansible.builtin.systemd:

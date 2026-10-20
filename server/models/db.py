@@ -37,6 +37,7 @@ class WorkloadState(enum.StrEnum):
     STALE = "stale"
     FAILED = "failed"
     UNDER_REMEDIATION = "under_remediation"
+    ROTATING = "rotating"
     REVOKED = "revoked"
 
 
@@ -77,6 +78,9 @@ class Workload(Base):
     last_attested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    artifact_ref: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    artifact_digest: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    previous_artifact_digest: Mapped[str | None] = mapped_column(String(128), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
     attestation_records: Mapped[list["AttestationRecord"]] = relationship(back_populates="workload")
