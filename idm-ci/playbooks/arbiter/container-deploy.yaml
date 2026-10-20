@@ -318,6 +318,45 @@
         status_code: 200
       register: proxy_check
 
+    - name: Deploy UI→API health-check script
+      ansible.builtin.copy:
+        src: "{{ arbiter_repo_dir }}/scripts/ui-api-healthcheck.sh"
+        dest: /opt/arbiter-hub/scripts/ui-api-healthcheck.sh
+        remote_src: true
+        mode: "0755"
+
+    - name: Create health-check systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/arbiter-ui-healthcheck.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Arbiter Hub UI→API health check and auto-remediation
+          [Service]
+          Type=oneshot
+          ExecStart=/opt/arbiter-hub/scripts/ui-api-healthcheck.sh
+
+    - name: Create health-check systemd timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/arbiter-ui-healthcheck.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Run Arbiter Hub UI health check every 30 seconds
+          [Timer]
+          OnBootSec=60s
+          OnUnitActiveSec=30s
+          AccuracySec=5s
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable health-check timer
+      ansible.builtin.systemd:
+        name: arbiter-ui-healthcheck.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
     - name: Display UI status
       ansible.builtin.debug:
-        msg: "UI: http://{{ ansible_fqdn }}:8443 — API proxy: {{ proxy_check.status }}"
+        msg: "UI: http://{{ ansible_fqdn }}:8443 — API proxy: {{ proxy_check.status }} — healthcheck timer: active"
