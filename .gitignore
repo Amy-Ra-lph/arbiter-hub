@@ -10,3 +10,5 @@ node_modules/
 ui/dist/
 docs/demo-walkthrough-beaker.md
 .superpowers/
+*.tsbuildinfo
+*.d.ts
