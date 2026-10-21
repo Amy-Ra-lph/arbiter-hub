@@ -44,7 +44,6 @@ class KeylimeBackend:
             import ssl
 
             ctx = ssl.create_default_context(cafile=self._ca_cert)
-            ctx.check_hostname = False
             ctx.load_cert_chain(self._client_cert, self._client_key)
             kwargs["verify"] = ctx
         return httpx.AsyncClient(**kwargs)
