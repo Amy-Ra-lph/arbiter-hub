@@ -25,19 +25,31 @@ ACTIONABLE_PRIORITIES = {"Emergency", "Alert", "Critical", "Error", "Warning"}
 
 
 async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
-    container_id = alert.get("output_fields", {}).get("container.id", "")
+    output_fields = alert.get("output_fields", {})
+    container_id = output_fields.get("container.id", "")
+    container_name = output_fields.get("container.name", "")
     priority = alert.get("priority", "")
 
-    if not container_id:
+    if not container_id or container_id == "host":
         return {"transitioned": False, "detail": "no container.id in alert"}
 
-    stmt = select(Workload).where(Workload.metadata_["container_id"].astext == container_id)
+    # Falco sends 12-char short container IDs; metadata stores full 64-char IDs.
+    stmt = select(Workload).where(
+        Workload.metadata_["container_id"].astext.startswith(container_id)
+    )
     result = await session.execute(stmt)
     workloads = result.scalars().all()
 
+    if not workloads and container_name:
+        stmt = select(Workload).where(
+            Workload.metadata_["container_name"].astext == container_name
+        )
+        result = await session.execute(stmt)
+        workloads = result.scalars().all()
+
     if not workloads:
-        log.warning("falco alert for unknown container_id=%s", container_id)
-        return {"transitioned": False, "detail": f"no workload for container_id={container_id}"}
+        log.warning("falco alert for unknown container=%s/%s", container_id, container_name)
+        return {"transitioned": False, "detail": f"no workload for container={container_id}"}
 
     if priority not in ACTIONABLE_PRIORITIES:
         log.info("falco alert priority=%s below threshold, skipping", priority)
