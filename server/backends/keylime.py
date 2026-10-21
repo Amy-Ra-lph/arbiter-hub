@@ -146,10 +146,12 @@ class KeylimeBackend:
             tpm_policy = json.dumps(tpm_policy)
 
         payload = {
-            "v": policy.get("api_version", "2.1"),
+            "v": policy.get("v", ""),
             "agent_id": agent_id,
             "ip": agent_ip,
             "port": agent_port,
+            "cloudagent_ip": agent_ip,
+            "cloudagent_port": agent_port,
             "tpm_policy": tpm_policy,
             "runtime_policy": policy.get("runtime_policy", ""),
             "runtime_policy_name": policy.get("runtime_policy_name", ""),
