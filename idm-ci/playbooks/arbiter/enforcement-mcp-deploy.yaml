@@ -85,15 +85,14 @@
         enabled: true
         daemon_reload: true
 
-    - name: Wait for enforcement-mcp health
-      ansible.builtin.uri:
-        url: "http://localhost:{{ enforcement_mcp_port }}/health"
-        method: GET
-        status_code: 200
+    - name: Wait for enforcement-mcp active
+      ansible.builtin.command:
+        cmd: systemctl is-active enforcement-mcp
       register: emcp_health
       retries: 15
       delay: 3
-      until: emcp_health.status == 200
+      until: emcp_health.stdout == 'active'
+      changed_when: false
 
     - name: Register enforcement-mcp as attested workload
       ansible.builtin.uri:

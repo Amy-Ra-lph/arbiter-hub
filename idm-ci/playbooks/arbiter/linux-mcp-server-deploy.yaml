@@ -79,13 +79,19 @@
 
           [Service]
           Type=simple
-          ExecStart=/usr/local/bin/linux-mcp-server --config {{ openshell_config_dir }}/linux-mcp-server.yaml
+          ExecStart=/usr/local/bin/linux-mcp-server --transport http --host 127.0.0.1 --port {{ mcp_server_port }} --host-mode LOCAL_ONLY --log-level info
           Restart=on-failure
           RestartSec=5
           Environment=KRB5_KTNAME=/etc/krb5.keytab
 
           [Install]
           WantedBy=multi-user.target
+
+    - name: Create mcp-servers.d directory
+      ansible.builtin.file:
+        path: "{{ openshell_config_dir }}/mcp-servers.d"
+        state: directory
+        mode: "0755"
 
     - name: Register linux-mcp-server with OpenShell
       ansible.builtin.copy:
@@ -97,12 +103,6 @@
           endpoint: "http://127.0.0.1:{{ mcp_server_port }}"
           auth: gssapi
           tools: 19
-
-    - name: Create mcp-servers.d directory
-      ansible.builtin.file:
-        path: "{{ openshell_config_dir }}/mcp-servers.d"
-        state: directory
-        mode: "0755"
 
     - name: Start linux-mcp-server
       ansible.builtin.systemd:

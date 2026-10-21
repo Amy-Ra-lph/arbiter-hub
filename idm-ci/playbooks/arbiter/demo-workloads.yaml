@@ -52,8 +52,9 @@
           ipa_principal: "host/{{ ansible_fqdn }}@ARBITER.DEMO"
           display_name: "Demo Good Workload"
           workload_type: service
-          backend_type: keylime
-          owner: admin
+          backend_types:
+            - keylime
+            - falco
           metadata:
             container_id: demo-good-workload
             description: "Healthy demo workload — passes attestation"
@@ -70,8 +71,9 @@
           ipa_principal: "service/demo-bad-workload@ARBITER.DEMO"
           display_name: "Demo Bad Workload"
           workload_type: service
-          backend_type: keylime
-          owner: admin
+          backend_types:
+            - keylime
+            - falco
           metadata:
             container_id: demo-bad-workload
             description: "Demo workload for remediation scenarios — triggers Falco alerts"

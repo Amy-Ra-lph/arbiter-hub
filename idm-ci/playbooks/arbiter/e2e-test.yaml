@@ -32,8 +32,8 @@
           ipa_principal: "service/test-e2e@ARBITER.DEMO"
           display_name: "E2E Test Workload"
           workload_type: "service"
-          backend_type: "keylime"
-          owner: "admin"
+          backend_types:
+            - keylime
         status_code: [200, 201, 409]
       register: t3
 

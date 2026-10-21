@@ -100,7 +100,7 @@
 
           http_output:
             enabled: true
-            url: {{ arbiter_hub_api }}/api/v1/falco/alerts
+            url: "{{ arbiter_hub_api }}/api/alerts/falco"
             user_agent: falco/arbiter-demo
 
           json_output: true
@@ -151,4 +151,4 @@
         msg: >-
           Falco {{ falco_version.stdout }} running with eBPF driver.
           Arbiter rules loaded from {{ falco_rules_dir }}/arbiter-rules.yaml.
-          HTTP output → {{ arbiter_hub_api }}/api/v1/falco/alerts
+          HTTP output → {{ arbiter_hub_api }}/api/alerts/falco

@@ -21,7 +21,7 @@
 
     - name: Register webhook for state transitions
       ansible.builtin.uri:
-        url: "{{ arbiter_api_url }}/api/v1/webhooks"
+        url: "{{ arbiter_api_url }}/api/webhooks"
         method: POST
         body_format: json
         body:
@@ -34,7 +34,7 @@
 
     - name: Verify webhook registered
       ansible.builtin.uri:
-        url: "{{ arbiter_api_url }}/api/v1/webhooks"
+        url: "{{ arbiter_api_url }}/api/webhooks"
         method: GET
         status_code: 200
         return_content: true

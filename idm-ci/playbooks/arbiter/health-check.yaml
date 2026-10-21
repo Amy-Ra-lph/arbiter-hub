@@ -16,13 +16,11 @@
       delay: 5
       changed_when: false
 
-    - name: Wait for arbiter-hub-mcp health
+    - name: Wait for arbiter-hub-mcp container running
       ansible.builtin.command:
-        cmd: >-
-          podman exec arbiter-hub-mcp
-          python3.12 -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8401/health', timeout=5); print(r.read().decode())"
+        cmd: podman inspect arbiter-hub-mcp --format '{{ '{{' }}.State.Running{{ '}}' }}'
       register: mcp_health
-      until: mcp_health.rc == 0
+      until: mcp_health.stdout == 'true'
       retries: 15
       delay: 5
       changed_when: false

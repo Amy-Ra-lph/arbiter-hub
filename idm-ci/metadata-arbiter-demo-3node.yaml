@@ -104,59 +104,15 @@ phases:
           ipaserver_forwarders:
             - 8.8.8.8
           ipaserver_no_reverse: true
-      # Point clients at IPA DNS before enrollment — system resolver must serve SRV records
-      - command: |
-          IPA_IP=$(getent hosts idm.arbiter.demo | awk '{print $1}')
-          if [ -z "$IPA_IP" ]; then
-            echo "ERROR: cannot resolve idm.arbiter.demo"
-            exit 1
-          fi
-          # Prepend IPA server as primary nameserver
-          cp /etc/resolv.conf /etc/resolv.conf.bak
-          sed -i "1i nameserver $IPA_IP" /etc/resolv.conf
-          echo "Added $IPA_IP as primary nameserver"
-          # Wait for SRV records to be resolvable
-          for i in $(seq 1 30); do
-            dig _ldap._tcp.arbiter.demo SRV +short 2>/dev/null | grep -q 389 && {
-              echo "IPA DNS ready"; exit 0
-            }
-            echo "Waiting for IPA DNS... attempt $i/30"
-            sleep 5
-          done
-          echo "WARNING: IPA DNS not responding after 150s, proceeding anyway"
-        hosts: ipaclient
+      # Point clients at IPA DNS before enrollment
+      - playbook: arbiter/dns-client-setup.yaml
       - playbook: prep/ipa-client-install.yaml
       # Post-install: verify ahdapa running, init akamu config
       - playbook: arbiter/ipa-post-install.yaml
       # Clone repos on all hosts — later phases reference /opt/arbiter-hub/ and /opt/agentic-platform/
-      - command: |
-          git clone --depth 1 --single-branch --branch main \
-            https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
-          git clone --depth 1 --single-branch --branch main \
-            https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
-        host: idm.arbiter.demo
-      - command: |
-          git clone --depth 1 --single-branch --branch main \
-            https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
-          git clone --depth 1 --single-branch --branch main \
-            https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
-        host: hub.arbiter.demo
-      - command: |
-          git clone --depth 1 --single-branch --branch main \
-            https://github.com/Amy-Ra-lph/arbiter-hub.git /opt/arbiter-hub &&
-          git clone --depth 1 --single-branch --branch main \
-            https://github.com/Amy-Ra-lph/agentic-security-platform.git /opt/agentic-platform
-        host: agent.arbiter.demo
+      - playbook: arbiter/clone-repos.yaml
       # Container + dev tooling on hub and agent nodes
-      - command: |
-          dnf -y install podman buildah skopeo python3-pip git \
-            containernetworking-plugins
-        host: hub.arbiter.demo
-      - command: |
-          dnf -y install podman buildah skopeo python3-pip git \
-            containernetworking-plugins \
-            python3-gssapi krb5-devel tpm2-tools
-        host: agent.arbiter.demo
+      - playbook: arbiter/install-packages.yaml
 
   - name: identity
     steps:

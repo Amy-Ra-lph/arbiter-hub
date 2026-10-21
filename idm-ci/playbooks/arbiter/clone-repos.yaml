@@ -1,0 +1,26 @@
+---
+# clone-repos.yaml — Clone arbiter-hub and agentic-security-platform on all nodes
+- name: Clone project repos
+  hosts: all
+  become: true
+  vars:
+    arbiter_hub_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
+    agentic_platform_repo: "https://github.com/Amy-Ra-lph/agentic-security-platform.git"
+  tasks:
+    - name: Clone arbiter-hub
+      ansible.builtin.git:
+        repo: "{{ arbiter_hub_repo }}"
+        dest: /opt/arbiter-hub
+        version: main
+        depth: 1
+        single_branch: true
+        force: true
+
+    - name: Clone agentic-security-platform
+      ansible.builtin.git:
+        repo: "{{ agentic_platform_repo }}"
+        dest: /opt/agentic-platform
+        version: main
+        depth: 1
+        single_branch: true
+        force: true

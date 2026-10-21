@@ -13,6 +13,11 @@
 #   - registry.redhat.io requires podman login (terms-based service account)
 #   - Network Internal=false needed for verifier connectivity across hosts
 #   - Keylime verifier TLS cert uses hostname, not IP — AddHost required
+- name: Gather facts from all hosts (needed for cross-host hostvars)
+  hosts: ipaserver:arbiter_agent
+  gather_facts: true
+  tasks: []
+
 - name: Deploy arbiter-hub containers
   hosts: arbiter_hub
   become: true
@@ -250,22 +255,23 @@
       until: health.rc == 0
       changed_when: false
 
-    - name: Seed attestation policies (idempotent)
-      ansible.builtin.command:
-        cmd: >-
-          podman exec arbiter-hub-api
-          python3.12 -c "
-          import json, urllib.request;
-          policies = json.load(open('/etc/arbiter/seed-policies.json'));
-          existing = json.loads(urllib.request.urlopen('http://127.0.0.1:8400/policies').read())['items'];
-          names = {p['name'] for p in existing};
-          created = 0;
-          [created := created + 1 or urllib.request.urlopen(
-              urllib.request.Request('http://127.0.0.1:8400/policies',
-              data=json.dumps(p).encode(), headers={'Content-Type': 'application/json'}, method='POST'))
-           for p in policies if p['name'] not in names];
-          print(f'Seeded {created} new policies ({len(names)} already existed)')
-          "
+    - name: Write seed script to container
+      ansible.builtin.shell:
+        cmd: |
+          podman exec arbiter-hub-api bash -c 'cat > /tmp/seed.py << "PYEOF"
+          import json, urllib.request
+          policies = json.load(open("/etc/arbiter/seed-policies.json"))
+          existing = json.loads(urllib.request.urlopen("http://127.0.0.1:8400/policies").read())["items"]
+          names = {p["name"] for p in existing}
+          created = 0
+          for p in policies:
+              if p["name"] not in names:
+                  req = urllib.request.Request("http://127.0.0.1:8400/policies", data=json.dumps(p).encode(), headers={"Content-Type": "application/json"}, method="POST")
+                  urllib.request.urlopen(req)
+                  created += 1
+          print(f"Seeded {created} new policies ({len(names)} already existed)")
+          PYEOF
+          python3.12 /tmp/seed.py'
       register: seed_result
       changed_when: "'Seeded 0' not in seed_result.stdout"
 
@@ -383,7 +389,7 @@
           --name arbiter-hub-ui
           --network systemd-arbiter-hub
           -p 8443:8080
-          -v {{ arbiter_repo_dir }}/ui/dist:/opt/app-root/src:ro,Z
+          -v {{ arbiter_repo_dir }}/ui:/opt/app-root/src:ro,Z
           -v {{ arbiter_repo_dir }}/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
           {{ arbiter_ui_image }}
       register: ui_start
