@@ -193,10 +193,10 @@ class GateCheckResult(BaseModel):
 
 class EnrollRequest(BaseModel):
     tpm_policy: dict = Field(default_factory=lambda: {"mask": "0x0"})
-    runtime_policy: str = ""
-    runtime_policy_name: str = ""
-    ak_tpm: str = ""
-    mtls_cert: str = ""
+    runtime_policy: Annotated[str, StringConstraints(max_length=1048576)] = ""
+    runtime_policy_name: ConstrainedName = ""
+    ak_tpm: Annotated[str, StringConstraints(max_length=16384)] = ""
+    mtls_cert: Annotated[str, StringConstraints(max_length=16384)] = ""
     auto_attest: bool = True
 
 
