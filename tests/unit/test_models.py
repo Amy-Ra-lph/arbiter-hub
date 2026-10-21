@@ -20,7 +20,7 @@ def test_workload_state_enum_has_eight_states():
 
 
 def test_workload_type_enum():
-    assert set(w.value for w in WorkloadType) == {"agentic", "cvm", "service"}
+    assert set(w.value for w in WorkloadType) == {"agentic", "cvm", "service", "bootc"}
 
 
 def test_attestation_verdict_enum():
@@ -28,7 +28,7 @@ def test_attestation_verdict_enum():
 
 
 def test_backend_type_enum():
-    assert set(b.value for b in BackendType) == {"keylime", "trustee", "cosign", "rekor", "falco"}
+    assert set(b.value for b in BackendType) == {"keylime", "trustee", "cosign", "rekor", "falco", "measured_boot"}
 
 
 def test_workload_create_schema():

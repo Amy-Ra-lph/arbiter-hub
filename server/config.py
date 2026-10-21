@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     cosign_public_key: str = ""
     cosign_insecure_ignore_tlog: bool = False
     falco_healthz_url: str = ""
+    measured_boot_enabled: bool = False
     rekor_url: str = ""
     rhtas_fulcio_url: str = ""
     rhtas_tuf_root: str = ""
@@ -35,6 +36,8 @@ class Settings(BaseSettings):
     oidc_jwks_cache_ttl: int = 3600
     oidc_actor_type_claim: str = ""
     oidc_scopes: str = "openid profile"
+    oidc_ui_client_id: str = ""
+    oidc_ui_scopes: str = ""
 
     kbs_encryption_key_file: str = "/etc/arbiter/kbs.key"
     policy_file: str = "/etc/arbiter/policies.yaml"

@@ -28,6 +28,7 @@ class WorkloadType(enum.StrEnum):
     AGENTIC = "agentic"
     CVM = "cvm"
     SERVICE = "service"
+    BOOTC = "bootc"
 
 
 class WorkloadState(enum.StrEnum):
@@ -54,6 +55,7 @@ class BackendType(enum.StrEnum):
     COSIGN = "cosign"
     REKOR = "rekor"
     FALCO = "falco"
+    MEASURED_BOOT = "measured_boot"
 
 
 class Base(DeclarativeBase):

@@ -49,6 +49,18 @@ async def lifespan(app: FastAPI):
             "falco",
             FalcoBackend(healthz_url=settings.falco_healthz_url),
         )
+    if settings.measured_boot_enabled and settings.keylime_verifier_url:
+        from server.backends.measured_boot import MeasuredBootBackend
+
+        registry.register(
+            "measured_boot",
+            MeasuredBootBackend(
+                keylime_verifier_url=settings.keylime_verifier_url,
+                ca_cert=settings.keylime_ca_cert,
+                client_cert=settings.keylime_client_cert,
+                client_key=settings.keylime_client_key,
+            ),
+        )
     if settings.cosign_public_key:
         from server.backends.cosign import CosignBackend
 

@@ -12,8 +12,8 @@ async def get_auth_config():
     return {
         "auth_mode": settings.auth_mode,
         "issuer": settings.oidc_issuer,
-        "client_id": settings.oidc_client_id,
-        "scopes": settings.oidc_scopes,
+        "client_id": settings.oidc_ui_client_id or settings.oidc_client_id,
+        "scopes": settings.oidc_ui_scopes or settings.oidc_scopes,
     }
 
 
