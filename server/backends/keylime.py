@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import logging
@@ -175,9 +176,15 @@ class KeylimeBackend:
 
         try:
             async with self._build_client() as client:
-                resp = await client.post(
-                    f"{self._verifier_url}/v2.5/agents/{agent_id}", json=payload
-                )
+                url = f"{self._verifier_url}/v2.5/agents/{agent_id}"
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 409:
+                    # Agent exists (e.g. verifier PULL mode auto-enrolled
+                    # with ip=None). Delete and re-add with correct fields.
+                    del_resp = await client.delete(url)
+                    if del_resp.status_code in (200, 202):
+                        await asyncio.sleep(1)
+                        resp = await client.post(url, json=payload)
                 resp.raise_for_status()
                 return EnrollResult(
                     success=True,
