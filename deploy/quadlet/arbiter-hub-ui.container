@@ -3,21 +3,16 @@ Description=Arbiter Hub UI (nginx + React SPA)
 After=arbiter-hub-api.container
 
 [Container]
-Image=docker.io/library/nginx:alpine
+Image=localhost/arbiter-hub-ui:http-only
 ContainerName=arbiter-hub-ui
 Network=arbiter-hub.network
 PublishPort=8080:8080
-PublishPort=8443:8443
-Volume=./ui:/opt/app-root/src:ro
-Volume=./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-Volume=./deploy/nginx/certs:/etc/nginx/certs:ro
+Volume=/opt/arbiter-hub/ui:/opt/app-root/src:ro,z
 SecurityLabelDisable=true
-ReadOnly=true
 
 [Service]
 Restart=on-failure
 RestartSec=5
-TimeoutStartSec=30
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target default.target

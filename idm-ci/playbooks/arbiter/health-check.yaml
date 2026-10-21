@@ -1,6 +1,7 @@
 ---
-# health-check.yaml — wait for all arbiter-hub containers to be healthy
+# health-check.yaml — wait for all arbiter-hub services to be healthy
 # API serves /health (not /healthz). KBS routes served by API (no separate container).
+# UI served via Quadlet on port 8080, TLS on port 443 via host nginx.
 - name: Wait for arbiter-hub services
   hosts: arbiter_hub
   become: true
@@ -25,6 +26,29 @@
       delay: 5
       changed_when: false
 
+    - name: Wait for UI container on port 8080
+      ansible.builtin.wait_for:
+        port: 8080
+        timeout: 30
+
+    - name: Verify UI serves content
+      ansible.builtin.uri:
+        url: http://localhost:8080/
+        status_code: 200
+
+    - name: Verify API proxy through UI container
+      ansible.builtin.uri:
+        url: http://localhost:8080/api/health
+        status_code: 200
+
+    - name: Check host nginx TLS on port 443
+      ansible.builtin.uri:
+        url: "https://{{ ansible_fqdn }}/api/health"
+        validate_certs: false
+        status_code: 200
+      register: tls_check
+      failed_when: false
+
     - name: Report container status
       ansible.builtin.command:
         cmd: podman ps --format "{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}"
@@ -33,4 +57,8 @@
 
     - name: Display status
       ansible.builtin.debug:
-        var: container_status.stdout_lines
+        msg: >-
+          Containers: {{ container_status.stdout_lines | join(', ') }}.
+          API: {{ api_health.rc == 0 }}.
+          UI HTTP:8080: OK.
+          TLS:443: {{ tls_check.status | default('not configured') }}.
