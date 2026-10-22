@@ -13,6 +13,8 @@
 - name: Configure IPA roles and HBAC for Arbiter Hub
   hosts: ipaserver
   become: true
+  collections:
+    - freeipa.ansible_freeipa
   vars:
     ipaadmin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
     demo_password: "redhat123"
@@ -89,7 +91,6 @@
         ipaadmin_password: "{{ ipaadmin_password }}"
         name: "{{ item.name }}"
         description: "{{ item.desc }}"
-        nonposix: true
         state: present
       loop: "{{ attestation_groups }}"
       loop_control:
@@ -101,7 +102,6 @@
         ipaadmin_password: "{{ ipaadmin_password }}"
         name: "{{ item.name }}"
         description: "{{ item.desc }}"
-        nonposix: true
         state: present
       loop: "{{ delegation_groups }}"
       loop_control:

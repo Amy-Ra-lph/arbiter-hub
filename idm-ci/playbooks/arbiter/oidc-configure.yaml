@@ -16,6 +16,8 @@
 - name: Configure OIDC on IPA server
   hosts: ipaserver
   become: true
+  collections:
+    - freeipa.ansible_freeipa
   vars:
     ipaadmin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
     arbiter_hub_fqdn: "hub.arbiter.demo"
@@ -51,7 +53,6 @@
         ipaadmin_password: "{{ ipaadmin_password }}"
         name: "{{ item.name }}"
         description: "{{ item.desc }}"
-        nonposix: true
         state: present
       loop:
         - { name: attestation-admin, desc: "Arbiter Hub administrators" }
@@ -74,7 +75,6 @@
         ipaadmin_password: "{{ ipaadmin_password }}"
         name: "{{ item.name }}"
         description: "{{ item.desc }}"
-        nonposix: true
         state: present
       loop:
         - { name: arbiter-hub-delegation, desc: "Arbiter Hub OBO delegation" }
