@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     rhtas_tuf_root: str = ""
 
     auth_mode: str = "dev"
+    local_admin_enabled: bool = False
+    local_admin_password: str = ""
+    local_signing_key: str = ""
 
     oidc_issuer: str = ""
     oidc_client_id: str = "arbiter-hub"

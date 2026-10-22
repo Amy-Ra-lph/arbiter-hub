@@ -23,9 +23,11 @@ client_id                  = "{{ arbiter_oidc_ui_client_id }}"
 client_name                = "Arbiter Hub UI"
 token_endpoint_auth_method = "none"
 scopes                     = {{ arbiter_oidc_ui_scopes | to_json }}
-grant_types                = ["authorization_code"]
+grant_types                = ["authorization_code", "refresh_token"]
 redirect_uris              = [
     "https://{{ arbiter_hub_fqdn }}/",
     "https://{{ arbiter_hub_fqdn }}/auth/callback",
 ]
 skip_consent               = false
+access_token_ttl           = 3600
+refresh_token_ttl          = 28800

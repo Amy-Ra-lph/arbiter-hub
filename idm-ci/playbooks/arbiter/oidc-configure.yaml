@@ -36,6 +36,7 @@
     arbiter_oidc_ui_scopes:
       - openid
       - profile
+      - offline_access
       - attestation-admin
       - attestation-operator
       - attestation-viewer
@@ -180,6 +181,7 @@
     arbiter_oidc_ui_scopes:
       - openid
       - profile
+      - offline_access
       - attestation-admin
       - attestation-operator
       - attestation-viewer
