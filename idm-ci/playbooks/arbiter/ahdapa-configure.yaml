@@ -1,14 +1,43 @@
 ---
 # ahdapa-configure.yaml — Register OAuth2 clients in ahdapa for Arbiter Hub
-# ahdapa itself is installed and configured by the IPA installer (modrnizer-darc COPR).
-# This playbook only registers the OAuth2 clients needed by the demo.
+#
+# ahdapa itself is installed by the IPA installer (modrnizer-darc COPR).
+# This playbook registers OAuth2 clients via static TOML config and sets
+# up CORS for browser-based OIDC token exchange.
+#
+# For full OIDC setup (groups, delegation rules, quadlet drop-ins), use
+# oidc-configure.yaml which includes this playbook's functionality plus
+# hub-side configuration.
 - name: Register ahdapa OAuth2 clients for Arbiter Hub
   hosts: ipaserver
   become: true
   vars:
-    ahdapa_url: "https://{{ ansible_fqdn }}/idp"
-    admin_password: "Secret123"
+    arbiter_hub_fqdn: "hub.arbiter.demo"
+    arbiter_oidc_client_id: "arbiter-hub"
+    arbiter_oidc_client_secret: ""
+    arbiter_oidc_ui_client_id: "arbiter-hub-ui"
+    arbiter_oidc_api_scopes:
+      - openid
+      - profile
+      - attestation-admin
+      - attestation-operator
+      - attestation-viewer
+      - attestation-agent
+      - attestation-pipeline
+    arbiter_oidc_ui_scopes:
+      - openid
+      - profile
+      - attestation-admin
+      - attestation-operator
+      - attestation-viewer
+
   tasks:
+    - name: Validate client secret is set
+      ansible.builtin.assert:
+        that:
+          - arbiter_oidc_client_secret | length > 0
+        fail_msg: "arbiter_oidc_client_secret must be set via -e or inventory"
+
     - name: Verify ahdapa is running
       ansible.builtin.command:
         cmd: ipactl status
@@ -16,57 +45,48 @@
       register: ipa_status
       failed_when: "'ahdapa Service: RUNNING' not in ipa_status.stdout"
 
-    - name: Obtain admin Kerberos ticket
-      ansible.builtin.shell:
-        cmd: echo "{{ admin_password }}" | kinit admin
-      changed_when: false
-      no_log: true
+    - name: Register Arbiter Hub clients in ahdapa clients.toml
+      ansible.builtin.blockinfile:
+        path: /etc/ahdapa/clients.toml
+        marker: "# {mark} ANSIBLE MANAGED — Arbiter Hub OAuth2 clients"
+        block: "{{ lookup('template', 'templates/ahdapa-arbiter-clients.toml.j2') }}"
+      notify: Restart ahdapa
 
-    - name: Check existing clients
-      ansible.builtin.command:
-        cmd: >-
-          ahdapactl --url {{ ahdapa_url }} --kerberos --insecure
-          clients list
-      register: existing_clients
-      changed_when: false
+    - name: Deploy CORS config for browser OIDC token exchange
+      ansible.builtin.template:
+        src: templates/ipa-idp-cors.conf.j2
+        dest: /etc/httpd/conf.d/ipa-idp-cors.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart httpd
 
-    - name: Register arbiter-hub API client
-      ansible.builtin.command:
-        cmd: >-
-          ahdapactl --url {{ ahdapa_url }} --kerberos --insecure
-          clients create
-          --name arbiter-hub-api
-          --redirect-uris "https://hub.arbiter.demo:8443/callback"
-          --scopes "openid,profile,arbiter:admin"
-          --grant-types "authorization_code,client_credentials"
-          --generate-credentials client_secret
-      register: arbiter_client
-      when: "'arbiter-hub-api' not in existing_clients.stdout"
-
-    - name: Save arbiter-hub client credentials
-      ansible.builtin.copy:
-        dest: /etc/ahdapa/arbiter-hub-client.env
-        mode: "0600"
-        content: |
-          {{ arbiter_client.stdout | default('# client already registered') }}
-      when: arbiter_client is changed
-
-    - name: Register arbiter-hub UI client (public PKCE)
-      ansible.builtin.command:
-        cmd: >-
-          ahdapactl --url {{ ahdapa_url }} --kerberos --insecure
-          clients create
-          --name arbiter-hub-ui
-          --redirect-uris "https://hub.arbiter.demo:8443/,https://hub.arbiter.demo:8443/callback"
-          --scopes "openid,profile"
-          --grant-types "authorization_code"
-          --auth-method none
-      when: "'arbiter-hub-ui' not in existing_clients.stdout"
+    - name: Ensure OPTIONS preflight returns 204 in idp proxy
+      ansible.builtin.blockinfile:
+        path: /etc/httpd/conf.d/ipa-idp-proxy.conf
+        insertafter: 'Require all granted'
+        marker: "# {mark} ANSIBLE MANAGED — CORS OPTIONS preflight"
+        block: |
+          RewriteEngine On
+          RewriteCond %{REQUEST_METHOD} =OPTIONS
+          RewriteRule .* - [R=204,L]
+      notify: Restart httpd
 
     - name: Verify OIDC discovery
       ansible.builtin.uri:
-        url: "{{ ahdapa_url }}/.well-known/openid-configuration"
+        url: "https://{{ ansible_fqdn }}/idp/.well-known/openid-configuration"
         validate_certs: false
         return_content: true
       register: oidc_discovery
       failed_when: "'token_endpoint' not in oidc_discovery.content"
+
+  handlers:
+    - name: Restart ahdapa
+      ansible.builtin.systemd:
+        name: ahdapa
+        state: restarted
+
+    - name: Restart httpd
+      ansible.builtin.systemd:
+        name: httpd
+        state: restarted
