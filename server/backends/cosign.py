@@ -23,6 +23,7 @@ class CosignBackend:
         tuf_root: str = "",
         public_key: str = "",
         insecure_ignore_tlog: bool = False,
+        allow_http_registry: bool = False,
     ):
         self._binary = cosign_binary
         self._rekor_url = rekor_url
@@ -30,6 +31,7 @@ class CosignBackend:
         self._tuf_root = tuf_root
         self._public_key = public_key
         self._insecure_ignore_tlog = insecure_ignore_tlog
+        self._allow_http_registry = allow_http_registry
 
     async def verify(self, workload: Workload) -> AttestationResult:
         artifact_ref = workload.artifact_ref or workload.metadata_.get("artifact_ref", "")
@@ -46,6 +48,8 @@ class CosignBackend:
                 cmd.extend(["--key", self._public_key])
             if self._insecure_ignore_tlog:
                 cmd.append("--insecure-ignore-tlog")
+            if self._allow_http_registry:
+                cmd.append("--allow-http-registry")
             cmd.append(artifact_ref)
             if self._rekor_url:
                 cmd.extend(["--rekor-url", self._rekor_url])

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     cosign_binary: str = "cosign"
     cosign_public_key: str = ""
     cosign_insecure_ignore_tlog: bool = False
+    cosign_allow_http_registry: bool = False
     falco_healthz_url: str = ""
     measured_boot_enabled: bool = False
     rekor_url: str = ""

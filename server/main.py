@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI):
                 tuf_root=settings.rhtas_tuf_root,
                 public_key=settings.cosign_public_key,
                 insecure_ignore_tlog=settings.cosign_insecure_ignore_tlog,
+                allow_http_registry=settings.cosign_allow_http_registry,
             ),
         )
     app.state.backend_registry = registry
