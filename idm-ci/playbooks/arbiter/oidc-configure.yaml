@@ -217,7 +217,7 @@
       ansible.builtin.lineinfile:
         path: /etc/hosts
         regexp: '.*{{ arbiter_idm_fqdn }}$'
-        line: "{{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] | default('10.0.198.156') }} {{ arbiter_idm_fqdn }}"
+        line: "{{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }} {{ arbiter_idm_fqdn }}"
         state: present
 
   handlers:
