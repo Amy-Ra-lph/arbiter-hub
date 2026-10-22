@@ -11,6 +11,7 @@ from server.api import (
     attestation,
     audit,
     auth_config,
+    ci_enrollment,
     enrollment,
     health,
     kbs,
@@ -132,5 +133,6 @@ def create_app() -> FastAPI:
     app.include_router(signing.router, tags=["signing"])
     app.include_router(rotation.router, tags=["rotation"])
     app.include_router(enrollment.router, tags=["enrollment"])
+    app.include_router(ci_enrollment.router, tags=["ci"])
     app.include_router(kbs.router, tags=["kbs"])
     return app

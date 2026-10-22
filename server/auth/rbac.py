@@ -6,6 +6,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "register_workload",
         "trigger_attestation",
         "enroll_workload",
+        "ci_enroll",
         "rotate_image",
         "revoke_workload",
         "remediate_workload",
@@ -35,6 +36,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     Role.PIPELINE.value: {
         "read_workload",
         "trigger_attestation",
+        "ci_enroll",
         "rotate_image",
         "sign_artifact",
         "verify_artifact",

@@ -1,81 +1,228 @@
 ---
-# ipa-roles.yaml — create IPA groups, roles, and HBAC services for arbiter-hub
-# Runs on master (IPA server) after server install
-- name: Configure IPA roles for arbiter-hub
+# ipa-roles.yaml — Create IPA groups, users, HBAC services, and HBAC rules
+#
+# Demo personas: alice (admin), bob (operator), carol (pipeline),
+#                dave (viewer), eve (agent)
+#
+# Requires: ansible-freeipa collection (ipagroup, ipauser, ipahbacsvc,
+#           ipahbacrule modules)
+#
+# Usage:
+#   ansible-playbook -i inventory ipa-roles.yaml \
+#     -e ipaserver_admin_password=Secret123
+- name: Configure IPA roles and HBAC for Arbiter Hub
   hosts: ipaserver
   become: true
+  vars:
+    ipaadmin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
+    demo_password: "redhat123"
+    demo_password_expiry: "2027-12-31 23:59:59"
+
+    attestation_groups:
+      - { name: attestation-admin, desc: "Arbiter Hub administrators — full access" }
+      - { name: attestation-operator, desc: "Arbiter Hub operators — enroll, attest, remediate" }
+      - { name: attestation-viewer, desc: "Arbiter Hub viewers — read-only" }
+      - { name: attestation-agent, desc: "Arbiter Hub agent workloads — request re-attestation" }
+      - { name: attestation-pipeline, desc: "Arbiter Hub CI/CD pipelines — attest, sign, verify" }
+
+    delegation_groups:
+      - { name: arbiter-hub-delegation, desc: "Arbiter Hub OBO delegation" }
+      - { name: eda-delegation, desc: "EDA controller OBO delegation" }
+      - { name: agent-delegation, desc: "Agent workload OBO delegation" }
+
+    demo_users:
+      - { name: alice, first: Alice, last: Admin }
+      - { name: bob, first: Bob, last: Operator }
+      - { name: carol, first: Carol, last: Pipeline }
+      - { name: dave, first: Dave, last: Viewer }
+      - { name: eve, first: Eve, last: Agent }
+
+    hbac_services:
+      - { name: arbiter-api, desc: "Arbiter Hub REST API" }
+      - { name: arbiter-kbs, desc: "Arbiter Hub Key Broker Service" }
+      - { name: arbiter-mcp, desc: "Arbiter Hub MCP tools server" }
+      - { name: arbiter-attest, desc: "Arbiter Hub attestation service" }
+      - { name: arbiter-sign, desc: "Arbiter Hub artifact signing" }
+      - { name: arbiter-enroll, desc: "Arbiter Hub workload enrollment" }
+
+    hbac_rules:
+      - name: arbiter-admin-full
+        desc: "Full Arbiter Hub access for admins"
+        group: attestation-admin
+        services:
+          - arbiter-api
+          - arbiter-kbs
+          - arbiter-mcp
+          - arbiter-attest
+          - arbiter-sign
+          - arbiter-enroll
+      - name: arbiter-operator-ops
+        desc: "Operational Arbiter Hub access for operators"
+        group: attestation-operator
+        services:
+          - arbiter-api
+          - arbiter-mcp
+          - arbiter-attest
+          - arbiter-enroll
+      - name: arbiter-pipeline-ci
+        desc: "CI/CD Arbiter Hub access for pipelines"
+        group: attestation-pipeline
+        services:
+          - arbiter-api
+          - arbiter-attest
+          - arbiter-sign
+      - name: arbiter-viewer-read
+        desc: "Read-only Arbiter Hub access for viewers"
+        group: attestation-viewer
+        services:
+          - arbiter-api
+      - name: arbiter-agent-attest
+        desc: "Attestation-only Arbiter Hub access for agents"
+        group: attestation-agent
+        services:
+          - arbiter-attest
+
   tasks:
-    - name: Copy IPA role setup script
-      ansible.builtin.copy:
-        src: /opt/arbiter-hub/scripts/setup-ipa-roles.sh
-        dest: /tmp/setup-ipa-roles.sh
-        mode: "0755"
-        remote_src: true
+    # --- Attestation RBAC groups ---
+    - name: Create attestation RBAC groups
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.desc }}"
+        nonposix: true
+        state: present
+      loop: "{{ attestation_groups }}"
+      loop_control:
+        label: "{{ item.name }}"
 
-    - name: Obtain admin Kerberos ticket
-      ansible.builtin.command:
-        cmd: kinit admin
-        stdin: "{{ ipaserver_admin_password }}"  # REQUIRED — set via ansible-vault or extra-vars
-      changed_when: false
+    # --- OBO delegation groups ---
+    - name: Create OBO delegation groups
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.desc }}"
+        nonposix: true
+        state: present
+      loop: "{{ delegation_groups }}"
+      loop_control:
+        label: "{{ item.name }}"
 
-    - name: Run IPA role setup
-      ansible.builtin.command:
-        cmd: bash /tmp/setup-ipa-roles.sh {{ ipa_realm | default('ARBITER.DEMO') }}
-      register: role_result
-      changed_when: "'complete' in role_result.stdout"
+    # --- Demo persona users ---
+    - name: Create demo persona users
+      ipauser:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        first: "{{ item.first }}"
+        last: "{{ item.last }}"
+        password: "{{ demo_password }}"
+        passwordexpiration: "{{ demo_password_expiry }}"
+        update_password: on_create
+        state: present
+      loop: "{{ demo_users }}"
+      loop_control:
+        label: "{{ item.name }}"
 
+    # --- Group membership: attestation roles ---
+    - name: Add alice to attestation-admin
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: attestation-admin
+        user:
+          - alice
+          - admin
+        action: member
+
+    - name: Add bob to attestation-operator and arbiter-hub-delegation
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item }}"
+        user:
+          - bob
+        action: member
+      loop:
+        - attestation-operator
+        - arbiter-hub-delegation
+
+    - name: Add carol to attestation-pipeline and eda-delegation
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item }}"
+        user:
+          - carol
+        action: member
+      loop:
+        - attestation-pipeline
+        - eda-delegation
+
+    - name: Add dave to attestation-viewer
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: attestation-viewer
+        user:
+          - dave
+        action: member
+
+    - name: Add eve to attestation-agent and agent-delegation
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item }}"
+        user:
+          - eve
+        action: member
+      loop:
+        - attestation-agent
+        - agent-delegation
+
+    # --- HBAC services ---
+    - name: Create HBAC services
+      ipahbacsvc:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.desc }}"
+        state: present
+      loop: "{{ hbac_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # --- HBAC rules ---
+    - name: Create HBAC rules
+      ipahbacrule:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.desc }}"
+        hostcategory: all
+        state: present
+      loop: "{{ hbac_rules }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Bind user groups to HBAC rules
+      ipahbacrule:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        group:
+          - "{{ item.group }}"
+        action: member
+      loop: "{{ hbac_rules }}"
+      loop_control:
+        label: "{{ item.name }} ← {{ item.group }}"
+
+    - name: Bind services to HBAC rules
+      ipahbacrule:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        hbacsvc: "{{ item.services }}"
+        action: member
+      loop: "{{ hbac_rules }}"
+      loop_control:
+        label: "{{ item.name }} ← {{ item.services | join(', ') }}"
+
+    # --- Marker file ---
     - name: Ensure marker directory exists
       ansible.builtin.file:
         path: /etc/arbiter
         state: directory
         mode: "0755"
-
-    - name: Create demo user
-      ansible.builtin.command:
-        cmd: >-
-          ipa user-add demo
-          --first=Demo --last=User
-          --password
-        stdin: "redhat123\nredhat123"
-      register: demo_user
-      failed_when: false
-      changed_when: "'Added user' in demo_user.stdout"
-
-    - name: Create engineer user
-      ansible.builtin.command:
-        cmd: >-
-          ipa user-add engineer
-          --first=Security --last=Engineer
-          --password
-        stdin: "redhat123\nredhat123"
-      register: engineer_user
-      failed_when: false
-      changed_when: "'Added user' in engineer_user.stdout"
-
-    - name: Add demo user to arbiter-hub-delegation
-      ansible.builtin.command:
-        cmd: ipa group-add-member arbiter-hub-delegation --users=demo
-      failed_when: false
-      changed_when: true
-
-    - name: Add engineer to all delegation groups
-      ansible.builtin.command:
-        cmd: "ipa group-add-member {{ item }} --users=engineer"
-      loop:
-        - arbiter-hub-delegation
-        - eda-delegation
-        - agent-delegation
-      failed_when: false
-      changed_when: true
-
-    - name: Extend password expiry for demo users
-      ansible.builtin.command:
-        cmd: "ipa user-mod {{ item }} --setattr=krbPasswordExpiration=20271231000000Z"
-      loop:
-        - demo
-        - engineer
-      failed_when: false
-      changed_when: true
 
     - name: Mark IPA roles as configured
       ansible.builtin.file:
