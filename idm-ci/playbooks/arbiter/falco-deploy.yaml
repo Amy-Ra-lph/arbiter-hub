@@ -4,10 +4,10 @@
 # Installs Falco with eBPF driver (not kernel module), loads arbiter-specific
 # rules, configures HTTP output to forward alerts to Arbiter Hub API.
 - name: Deploy Falco runtime monitoring
-  hosts: agent.arbiter.demo
+  hosts: arbiter_agent
   become: true
   vars:
-    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+    arbiter_hub_api: "http://{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}:8400"
     arbiter_repo_dir: "/opt/arbiter-hub"
     falco_rules_dir: "/etc/falco/rules.d"
   tasks:

@@ -1,0 +1,87 @@
+---
+# metadata-arbiter-rebuild-test.yaml — CI test of full rebuild automation
+#
+# 3-node topology with domain arbiter-rebuild.demo (distinct from
+# arbiter.demo used on current Beaker lab).
+#
+# Tests the rebuild.yaml orchestration playbook end-to-end on
+# IdM-CI provisioned systems.
+#
+# Lifetime: 360 hours (15 days, through Fri 2026-11-06)
+#
+# OS: Fedora 44 — COPR abbra/modrnizer-darc (includes synta/ahdapa/akamu).
+#
+# Usage (local):
+#   IDMCI_SUT_LIFETIME=1296000 te metadata-arbiter-rebuild-test.yaml
+#
+# Usage (Jenkins):
+#   IDMCI_METADATA_URL=<raw-github-url>
+#   IDMCI_SUT_LIFETIME=360
+#   IDMCI_HAS_RANDOM_DOMAIN=disable
+#   IDMCI_SKIP_TEARDOWN=true
+
+domains:
+  - name: arbiter-rebuild.demo
+    type: ipa
+    hosts:
+      - name: idm.arbiter-rebuild.demo
+        role: master
+        group: ipaserver
+        os: fedora-44
+      - name: hub.arbiter-rebuild.demo
+        role: client
+        group: ipaclient
+        os: fedora-44
+      - name: agent.arbiter-rebuild.demo
+        role: client
+        group: ipaclient
+        os: fedora-44
+
+phases:
+  - name: init
+    steps:
+      - playbook: init/testrunner-dir.yaml
+
+  - name: provision
+    steps:
+      - playbook: provision/mrack-up.yaml
+      - playbook: provision/wait.yaml
+
+  - name: prep
+    steps:
+      - playbook: prep/redhat-base.yaml
+      - playbook: prep/copr.yaml
+        extra_vars:
+          enable_copr:
+            - abbra/modrnizer-darc
+      - playbook: prep/repos.yaml
+      - playbook: prep/install-ipa-packages.yaml
+        extra_vars:
+          IPA_VERSION: '4.14'
+      - playbook: prep/firewall.yaml
+      - playbook: prep/ipa-network.yaml
+      - playbook: prep/ipa-server-install.yaml
+        extra_vars:
+          ipaserver_setup_dns: true
+          ipaserver_forwarders:
+            - 8.8.8.8
+          ipaserver_no_reverse: true
+      - playbook: arbiter/dns-client-setup.yaml
+      - playbook: prep/ipa-client-install.yaml
+      - playbook: arbiter/ipa-post-install.yaml
+      - playbook: arbiter/clone-repos.yaml
+      - playbook: arbiter/install-packages.yaml
+
+  # After prep, run the full rebuild.yaml orchestration to test automation
+  - name: rebuild
+    steps:
+      - playbook: arbiter/rebuild.yaml
+
+  - name: test
+    steps:
+      - playbook: arbiter/e2e-test.yaml
+
+  # No teardown — persistent demo environment
+  - name: teardown
+    steps:
+      - command: echo "Rebuild test environment ready — no teardown"

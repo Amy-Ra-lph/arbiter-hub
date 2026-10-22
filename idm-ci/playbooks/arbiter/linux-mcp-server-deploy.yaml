@@ -4,12 +4,12 @@
 # Installs linux-mcp-server (19 RHEL diagnostic tools) on agent node,
 # registers with OpenShell gateway, configures GSSAPI auth.
 - name: Deploy linux-mcp-server
-  hosts: agent.arbiter.demo
+  hosts: arbiter_agent
   become: true
   vars:
     openshell_config_dir: "/etc/openshell"
     mcp_server_port: 8402
-    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+    arbiter_hub_api: "http://{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}:8400"
   tasks:
     - name: Install linux-mcp-server dependencies
       ansible.builtin.dnf:

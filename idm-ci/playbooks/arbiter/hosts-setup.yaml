@@ -1,0 +1,46 @@
+---
+- name: Gather facts for /etc/hosts
+  hosts: all
+  gather_facts: true
+  tasks: []
+
+- name: Configure /etc/hosts on all nodes
+  hosts: all
+  become: true
+  vars:
+    idm_host: "{{ groups['ipaserver'][0] }}"
+    hub_host: "{{ groups['arbiter_hub'][0] }}"
+    agent_host: "{{ groups['arbiter_agent'][0] }}"
+    idm_ip: "{{ hostvars[idm_host]['ansible_default_ipv4']['address'] }}"
+    hub_ip: "{{ hostvars[hub_host]['ansible_default_ipv4']['address'] }}"
+    agent_ip: "{{ hostvars[agent_host]['ansible_default_ipv4']['address'] }}"
+  tasks:
+    - name: Add idm.arbiter.demo
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*idm\.arbiter\.demo$'
+        line: "{{ idm_ip }} idm.arbiter.demo"
+        state: present
+
+    - name: Add hub.arbiter.demo
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*hub\.arbiter\.demo$'
+        line: "{{ hub_ip }} hub.arbiter.demo"
+        state: present
+
+    - name: Add agent.arbiter.demo
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*agent\.arbiter\.demo$'
+        line: "{{ agent_ip }} agent.arbiter.demo"
+        state: present
+
+    - name: Verify cross-node resolution
+      ansible.builtin.command:
+        cmd: "getent hosts {{ item }}"
+      loop:
+        - idm.arbiter.demo
+        - hub.arbiter.demo
+        - agent.arbiter.demo
+      changed_when: false

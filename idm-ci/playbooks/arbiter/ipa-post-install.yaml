@@ -6,7 +6,7 @@
   hosts: ipaserver
   become: true
   vars:
-    admin_password: "Secret123"
+    admin_password: "{{ ipaserver_admin_password }}"
   tasks:
     - name: Verify all IPA services running
       ansible.builtin.command:

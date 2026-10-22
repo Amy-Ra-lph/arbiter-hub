@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "enforcement-mcp.fullname" . }}
+  labels:
+    {{- include "enforcement-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "enforcement-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "enforcement-mcp.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: enforcement-mcp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8100
+              protocol: TCP
+          env:
+            - name: ENFORCEMENT_MCP_MODE
+              value: {{ .Values.mode | quote }}
+          {{- if .Values.privileged.enabled }}
+          securityContext:
+            privileged: true
+            seLinuxOptions: {}
+          {{- else }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.privileged.enabled }}
+            - name: selinux
+              mountPath: /sys/fs/selinux
+            - name: etc-selinux
+              mountPath: /etc/selinux
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.privileged.enabled }}
+        - name: selinux
+          hostPath:
+            path: /sys/fs/selinux
+        - name: etc-selinux
+          hostPath:
+            path: /etc/selinux
+        {{- end }}

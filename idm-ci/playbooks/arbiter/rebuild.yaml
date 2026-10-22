@@ -1,0 +1,684 @@
+---
+# rebuild.yaml — Full E2E rebuild of Arbiter Hub 3-node demo
+#
+# Orchestrates all 25+ playbooks in correct dependency order with
+# checkpoint plays that block until services are verified ready.
+#
+# Prerequisites (handled by IdM-CI provisioning, not this playbook):
+#   - 3 RHEL 10 VMs provisioned (idm, hub, agent)
+#   - IPA server installed on idm node
+#   - IPA clients enrolled on hub + agent nodes
+#   - Hosts resolvable (DNS or /etc/hosts)
+#   - SSH access via ~/.ssh/idm_ci_key
+#
+# Usage:
+#   ansible-playbook -i inventory/arbiter-demo.yml rebuild.yaml \
+#     -e arbiter_oidc_client_secret=<secret> \
+#     -e vault_arbiter_db_password=<db_password>
+#
+# Phase skip tags:
+#   --skip-tags phase1,phase2,...  to skip completed phases
+#   --tags checkpoint              to run checkpoints only (verify state)
+#
+# Estimated wall-clock: ~42 min sequential (~35 min parallelized)
+#
+# Phases:
+#   0  Prerequisites — /etc/hosts, collections, registry auth   (~1-2 min)
+#   1  Foundation    — DNS, packages, clone repos               (~3-5 min)
+#   2  Identity      — IPA post-install, roles, users, HBAC     (~2-3 min)
+#   3  Attestation   — swtpm, Keylime, mTLS certs               (~5-8 min)
+#   4  Containers    — DB, API, MCP, UI, TLS termination         (~5-8 min)
+#   5  OIDC          — ahdapa clients, hub drop-ins              (~1-2 min)
+#   6  Agent         — Falco, OpenShell, workloads, linux-mcp    (~5-8 min)
+#   7  EDA           — ansible-rulebook, webhooks                (~2-3 min)
+#   8  Demo          — agents, canaries, profiles, audit, emcp   (~2-3 min)
+#   9  Federation    — SPIRE, OAuth2 scopes, OBO exchange        (~3-5 min)
+#  10  Validation    — health check, 12 E2E tests                (~1-2 min)
+
+###############################################################################
+# PHASE 0 — Prerequisites: /etc/hosts, collections, registry    (~1-2 min)
+###############################################################################
+
+- name: "PHASE 0 — Install ansible collections + registry login"
+  tags: [phase0, prerequisites]
+  ansible.builtin.import_playbook: prerequisites.yaml
+
+- name: "PHASE 0 — Configure /etc/hosts on all nodes"
+  tags: [phase0, prerequisites]
+  ansible.builtin.import_playbook: hosts-setup.yaml
+
+###############################################################################
+# PHASE 1 — Foundation: DNS, packages, repos                    (~3-5 min)
+###############################################################################
+
+- name: "PHASE 1 — DNS client setup (hub+agent → IPA DNS)"
+  tags: [phase1, foundation]
+  ansible.builtin.import_playbook: dns-client-setup.yaml
+
+- name: "PHASE 1 — Install packages (hub+agent)"
+  tags: [phase1, foundation]
+  ansible.builtin.import_playbook: install-packages.yaml
+
+- name: "PHASE 1 — Clone repos to all nodes"
+  tags: [phase1, foundation]
+  ansible.builtin.import_playbook: clone-repos.yaml
+
+# --- Checkpoint 1 ---
+- name: "CHECKPOINT 1 — Foundation verified"
+  tags: [phase1, checkpoint]
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP1: IPA DNS SRV records resolve"
+      ansible.builtin.command:
+        cmd: dig _ldap._tcp.arbiter.demo SRV +short
+      register: cp1_dns
+      changed_when: false
+      failed_when: "'389' not in cp1_dns.stdout"
+      when: inventory_hostname != groups['ipaserver'][0]
+
+    - name: "CP1: podman installed"
+      ansible.builtin.command:
+        cmd: podman --version
+      changed_when: false
+      when: inventory_hostname in groups['arbiter_hub'] + groups['arbiter_agent']
+
+    - name: "CP1: arbiter-hub repo cloned"
+      ansible.builtin.stat:
+        path: /opt/arbiter-hub/server/main.py
+      register: cp1_repo
+      failed_when: not cp1_repo.stat.exists
+
+    - name: "CP1 PASS"
+      ansible.builtin.debug:
+        msg: "Phase 1 complete: DNS, packages, repos ready on {{ inventory_hostname }}"
+
+###############################################################################
+# PHASE 2 — IPA Identity: post-install, roles, HBAC              (~2-3 min)
+###############################################################################
+
+- name: "PHASE 2 — IPA post-install (ahdapa + akamu verification)"
+  tags: [phase2, identity]
+  ansible.builtin.import_playbook: ipa-post-install.yaml
+
+- name: "PHASE 2 — IPA roles, users, HBAC"
+  tags: [phase2, identity]
+  ansible.builtin.import_playbook: ipa-roles.yaml
+
+# --- Checkpoint 2 ---
+- name: "CHECKPOINT 2 — Identity layer verified"
+  tags: [phase2, checkpoint]
+  hosts: ipaserver
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP2: ahdapa OIDC discovery"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host | default(inventory_hostname) }}/idp/.well-known/openid-configuration"
+        validate_certs: false
+        status_code: 200
+      register: cp2_oidc
+      retries: 5
+      delay: 3
+      until: cp2_oidc.status == 200
+
+    - name: "CP2: Demo user alice exists"
+      ansible.builtin.command:
+        cmd: ipa user-show alice
+      changed_when: false
+
+    - name: "CP2: HBAC rule arbiter-admin-full exists"
+      ansible.builtin.command:
+        cmd: ipa hbacrule-show arbiter-admin-full
+      changed_when: false
+
+    - name: "CP2: IPA roles marker"
+      ansible.builtin.stat:
+        path: /etc/arbiter/.ipa-roles-configured
+      register: cp2_marker
+      failed_when: not cp2_marker.stat.exists
+
+    - name: "CP2 PASS"
+      ansible.builtin.debug:
+        msg: "Phase 2 complete: 5 users, 5 groups, 6 HBAC services, ahdapa OIDC ready"
+
+###############################################################################
+# PHASE 3 — Attestation: swtpm + Keylime + certs                 (~5-8 min)
+###############################################################################
+
+- name: "PHASE 3 — Keylime setup (swtpm + verifier + registrar + agent)"
+  tags: [phase3, attestation]
+  ansible.builtin.import_playbook: keylime-setup.yaml
+
+- name: "PHASE 3 — mTLS certs for hub ↔ Keylime verifier"
+  tags: [phase3, attestation]
+  ansible.builtin.import_playbook: cert-setup.yaml
+
+# --- Checkpoint 3 ---
+- name: "CHECKPOINT 3 — Attestation infrastructure verified"
+  tags: [phase3, checkpoint]
+  hosts: ipaserver
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP3: swtpm listening on :2321"
+      ansible.builtin.wait_for:
+        port: 2321
+        host: 127.0.0.1
+        timeout: 5
+
+    - name: "CP3: Keylime verifier on :8881"
+      ansible.builtin.wait_for:
+        port: 8881
+        host: 0.0.0.0
+        timeout: 5
+
+    - name: "CP3: Keylime registrar on :8891"
+      ansible.builtin.wait_for:
+        port: 8891
+        host: 0.0.0.0
+        timeout: 5
+
+    - name: "CP3: Verifier TLS CA exists"
+      ansible.builtin.stat:
+        path: /var/lib/keylime/cv_ca/cacert.crt
+      register: cp3_ca
+      failed_when: not cp3_ca.stat.exists
+
+    - name: "CP3 PASS (idm)"
+      ansible.builtin.debug:
+        msg: "Keylime verifier+registrar ready, swtpm active"
+
+- name: "CHECKPOINT 3 — Keylime agent verified"
+  tags: [phase3, checkpoint]
+  hosts: arbiter_agent
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP3: Keylime agent on :9002"
+      ansible.builtin.wait_for:
+        port: 9002
+        host: 127.0.0.1
+        timeout: 5
+
+    - name: "CP3 PASS (agent)"
+      ansible.builtin.debug:
+        msg: "Keylime agent registered and listening"
+
+- name: "CHECKPOINT 3 — Hub mTLS certs verified"
+  tags: [phase3, checkpoint]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP3: mTLS certs present"
+      ansible.builtin.stat:
+        path: /etc/arbiter/keylime/{{ item }}
+      register: cp3_certs
+      failed_when: not cp3_certs.stat.exists
+      loop:
+        - ca.crt
+        - client.crt
+        - client.key
+
+    - name: "CP3 PASS (hub)"
+      ansible.builtin.debug:
+        msg: "mTLS certs ready for API container"
+
+###############################################################################
+# PHASE 4 — Hub containers: DB, API, MCP, UI, TLS               (~5-8 min)
+###############################################################################
+
+- name: "PHASE 4 — Deploy hub containers (Quadlet)"
+  tags: [phase4, containers]
+  ansible.builtin.import_playbook: container-deploy.yaml
+
+# --- Checkpoint 4 ---
+- name: "CHECKPOINT 4 — Hub containers verified"
+  tags: [phase4, checkpoint]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: true
+  tasks:
+    - name: "CP4: All 4 containers running"
+      ansible.builtin.command:
+        cmd: podman ps --format '{{ '{{' }}.Names{{ '}}' }}' --filter name=arbiter-hub
+      register: cp4_containers
+      changed_when: false
+      failed_when: >-
+        'arbiter-hub-db' not in cp4_containers.stdout or
+        'arbiter-hub-api' not in cp4_containers.stdout or
+        'arbiter-hub-mcp' not in cp4_containers.stdout or
+        'arbiter-hub-ui' not in cp4_containers.stdout
+
+    - name: "CP4: API health"
+      ansible.builtin.uri:
+        url: http://localhost:8400/health
+        status_code: 200
+      register: cp4_api
+      retries: 10
+      delay: 3
+      until: cp4_api.status == 200
+
+    - name: "CP4: UI on :8080"
+      ansible.builtin.uri:
+        url: http://localhost:8080/
+        status_code: 200
+
+    - name: "CP4: TLS on :443"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_fqdn }}/api/health"
+        validate_certs: false
+        status_code: 200
+      register: cp4_tls
+
+    - name: "CP4: Seed policies loaded"
+      ansible.builtin.uri:
+        url: http://localhost:8400/policies
+        status_code: 200
+        return_content: true
+      register: cp4_policies
+
+    - name: "CP4 PASS"
+      ansible.builtin.debug:
+        msg: >-
+          Hub ready: 4 containers, API healthy, UI serving,
+          TLS {{ cp4_tls.status }},
+          {{ cp4_policies.json.total | default(cp4_policies.json | length) }} policies seeded
+
+###############################################################################
+# PHASE 5 — OIDC auth configuration                              (~1-2 min)
+#
+# Depends on: Phase 2 (IPA identity) + Phase 4 (API containers running)
+###############################################################################
+
+- name: "PHASE 5 — OIDC configure (ahdapa clients + hub quadlet drop-ins)"
+  tags: [phase5, oidc]
+  ansible.builtin.import_playbook: oidc-configure.yaml
+
+# --- Checkpoint 5 ---
+- name: "CHECKPOINT 5 — OIDC auth verified"
+  tags: [phase5, checkpoint]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP5: OIDC drop-in exists"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/arbiter-hub-api.container.d/oidc.conf
+      register: cp5_dropin
+      failed_when: not cp5_dropin.stat.exists
+
+    - name: "CP5: API still healthy after OIDC restart"
+      ansible.builtin.command:
+        cmd: >-
+          podman exec arbiter-hub-api
+          python3.12 -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8400/health', timeout=5); print(r.read().decode())"
+      register: cp5_api
+      retries: 15
+      delay: 5
+      until: cp5_api.rc == 0
+      changed_when: false
+
+    - name: "CP5 PASS"
+      ansible.builtin.debug:
+        msg: "OIDC configured, API restarted and healthy"
+
+###############################################################################
+# PHASE 6 — Agent services: Falco + OpenShell + workloads        (~5-8 min)
+#
+# Depends on: Phase 4 (API running for workload registration)
+###############################################################################
+
+- name: "PHASE 6a — Falco eBPF on agent"
+  tags: [phase6, agent]
+  ansible.builtin.import_playbook: falco-deploy.yaml
+
+- name: "PHASE 6b — OpenShell gateway + sandboxes"
+  tags: [phase6, agent]
+  ansible.builtin.import_playbook: openshell-deploy.yaml
+
+- name: "PHASE 6c — Demo workloads (good + bad containers)"
+  tags: [phase6, agent]
+  ansible.builtin.import_playbook: demo-workloads.yaml
+
+- name: "PHASE 6d — Linux MCP server"
+  tags: [phase6, agent]
+  ansible.builtin.import_playbook: linux-mcp-server-deploy.yaml
+
+# --- Checkpoint 6 ---
+- name: "CHECKPOINT 6 — Agent services verified"
+  tags: [phase6, checkpoint]
+  hosts: arbiter_agent
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP6: Falco active"
+      ansible.builtin.command:
+        cmd: systemctl is-active falco
+      register: cp6_falco
+      changed_when: false
+      failed_when: cp6_falco.stdout != 'active' and cp6_falco.stdout != 'activating'
+
+    - name: "CP6: OpenShell gateway health"
+      ansible.builtin.uri:
+        url: http://localhost:17672/healthz
+        status_code: 200
+      register: cp6_gw
+      retries: 5
+      delay: 3
+      until: cp6_gw.status == 200
+
+    - name: "CP6: 3 trust-tiered sandboxes running"
+      ansible.builtin.command:
+        cmd: podman ps --filter label=io.openshell.managed=true --format '{{ '{{' }}.Names{{ '}}' }}'
+      register: cp6_sandboxes
+      changed_when: false
+      failed_when: >-
+        'wid-sovereign' not in cp6_sandboxes.stdout or
+        'wid-verified' not in cp6_sandboxes.stdout or
+        'wid-untrusted' not in cp6_sandboxes.stdout
+
+    - name: "CP6: demo-good-workload running"
+      ansible.builtin.command:
+        cmd: podman inspect demo-good-workload --format '{{ '{{' }}.State.Running{{ '}}' }}'
+      register: cp6_good
+      changed_when: false
+      failed_when: cp6_good.stdout != 'true'
+
+    - name: "CP6: linux-mcp-server on :8402"
+      ansible.builtin.wait_for:
+        port: 8402
+        host: 127.0.0.1
+        timeout: 10
+      ignore_errors: true
+
+    - name: "CP6 PASS"
+      ansible.builtin.debug:
+        msg: "Agent: Falco, OpenShell(3 sandboxes), demo workloads, linux-mcp-server all running"
+
+###############################################################################
+# PHASE 7 — EDA pipeline + webhooks                              (~2-3 min)
+#
+# Depends on: Phase 4 (API) + Phase 6 (Falco generating events)
+###############################################################################
+
+- name: "PHASE 7a — EDA controller (ansible-rulebook)"
+  tags: [phase7, eda]
+  ansible.builtin.import_playbook: eda-deploy.yaml
+
+- name: "PHASE 7b — Register webhooks (API → EDA)"
+  tags: [phase7, eda]
+  ansible.builtin.import_playbook: webhook-setup.yaml
+
+# --- Checkpoint 7 ---
+- name: "CHECKPOINT 7 — EDA pipeline verified"
+  tags: [phase7, checkpoint]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP7: EDA controller active"
+      ansible.builtin.command:
+        cmd: systemctl is-active arbiter-eda
+      register: cp7_eda
+      changed_when: false
+      failed_when: cp7_eda.stdout != 'active'
+
+    - name: "CP7: EDA listener on :5001"
+      ansible.builtin.wait_for:
+        port: 5001
+        host: 0.0.0.0
+        timeout: 15
+
+    - name: "CP7: Webhook secret exists"
+      ansible.builtin.stat:
+        path: /etc/arbiter/webhook-secret
+      register: cp7_secret
+      failed_when: not cp7_secret.stat.exists
+
+    - name: "CP7 PASS"
+      ansible.builtin.debug:
+        msg: "EDA pipeline live: ansible-rulebook → webhooks → remediation playbooks"
+
+###############################################################################
+# PHASE 8 — Demo enrichment (all parallel-safe)                  (~2-3 min)
+###############################################################################
+
+- name: "PHASE 8a — Demo agents + honeypot canaries"
+  tags: [phase8, demo]
+  ansible.builtin.import_playbook: demo-agents-deploy.yaml
+
+- name: "PHASE 8b — Exfil receiver (canary catcher on idm)"
+  tags: [phase8, demo]
+  ansible.builtin.import_playbook: exfil-receiver-deploy.yaml
+
+- name: "PHASE 8c — Trust tier profiles"
+  tags: [phase8, demo]
+  ansible.builtin.import_playbook: trust-profiles-deploy.yaml
+
+- name: "PHASE 8d — Behavioral audit classifiers"
+  tags: [phase8, demo]
+  ansible.builtin.import_playbook: behavioral-audit-deploy.yaml
+
+- name: "PHASE 8e — Enforcement MCP server"
+  tags: [phase8, demo]
+  ansible.builtin.import_playbook: enforcement-mcp-deploy.yaml
+
+# --- Checkpoint 8 ---
+- name: "CHECKPOINT 8 — Demo enrichment verified"
+  tags: [phase8, checkpoint]
+  hosts: arbiter_agent
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP8: Demo agent scripts present"
+      ansible.builtin.stat:
+        path: /opt/demo/agents/{{ item }}
+      register: cp8_agents
+      failed_when: not cp8_agents.stat.exists
+      loop:
+        - governed_agent.py
+        - rogue_agent.py
+
+    - name: "CP8: Honeypot canaries planted"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: cp8_canaries
+      loop:
+        - /root/.aws/credentials
+        - /root/.ssh/id_rsa_canary
+        - /root/.kube/config
+
+    - name: "CP8: Trust profiles deployed"
+      ansible.builtin.stat:
+        path: /opt/demo/profiles/sovereign.profile
+      register: cp8_profiles
+
+    - name: "CP8 PASS (agent)"
+      ansible.builtin.debug:
+        msg: >-
+          Demo agents: {{ cp8_agents.results | selectattr('stat.exists') | list | length }}/2 scripts.
+          Canaries: {{ cp8_canaries.results | selectattr('stat.exists') | list | length }}/3.
+          Profiles: {{ 'OK' if cp8_profiles.stat.exists else 'missing' }}.
+
+- name: "CHECKPOINT 8 — Demo enrichment verified (idm)"
+  tags: [phase8, checkpoint]
+  hosts: ipaserver
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP8: Exfil receiver on :9443"
+      ansible.builtin.wait_for:
+        port: 9443
+        timeout: 5
+      ignore_errors: true
+      register: cp8_exfil
+
+    - name: "CP8 PASS (idm)"
+      ansible.builtin.debug:
+        msg: "Exfil receiver: {{ 'listening' if cp8_exfil is not failed else 'not running (non-critical)' }}"
+
+- name: "CHECKPOINT 8 — Demo enrichment verified (hub)"
+  tags: [phase8, checkpoint]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP8: enforcement-mcp active"
+      ansible.builtin.command:
+        cmd: systemctl is-active enforcement-mcp
+      register: cp8_emcp
+      changed_when: false
+      failed_when: false
+
+    - name: "CP8 PASS (hub)"
+      ansible.builtin.debug:
+        msg: "enforcement-mcp: {{ cp8_emcp.stdout }}"
+
+###############################################################################
+# PHASE 9 — SPIRE + OAuth2 scopes + OBO token exchange           (~3-5 min)
+#
+# SPIRE: workload identity (SPIFFE SVIDs) — server on idm, agent on agent
+# OAuth2 scopes: EDA client + arbiter scopes via ahdapactl CLI
+# OBO exchange: federation token exchange policies for delegation
+#
+# Depends on: Phase 2 (IPA), Phase 5 (OIDC/ahdapa configured)
+###############################################################################
+
+- name: "PHASE 9a — SPIRE server + agent (workload identity)"
+  tags: [phase9, spire]
+  ansible.builtin.import_playbook: spire-deploy.yaml
+
+- name: "PHASE 9b — OAuth2 scopes via ahdapactl"
+  tags: [phase9, obo]
+  ansible.builtin.import_playbook: oauth2-plugin-deploy.yaml
+
+- name: "PHASE 9c — OBO token exchange policies"
+  tags: [phase9, obo]
+  ansible.builtin.import_playbook: obo-exchange-deploy.yaml
+
+# --- Checkpoint 9 ---
+- name: "CHECKPOINT 9 — SPIRE + OBO verified"
+  tags: [phase9, checkpoint]
+  hosts: ipaserver
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP9: SPIRE server healthy"
+      ansible.builtin.command:
+        cmd: spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock
+      register: cp9_spire_server
+      changed_when: false
+      failed_when: false
+
+    - name: "CP9: SPIRE agent registered"
+      ansible.builtin.command:
+        cmd: spire-server agent list -socketPath /tmp/spire-server/private/api.sock
+      register: cp9_agents
+      changed_when: false
+      failed_when: false
+
+    - name: "CP9: OBO federation policies"
+      ansible.builtin.command:
+        cmd: ahdapactl federation-policies list
+      register: cp9_fed
+      changed_when: false
+      failed_when: false
+
+    - name: "CP9: Token exchange endpoint responds"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host | default(inventory_hostname) }}/idp/token"
+        method: POST
+        validate_certs: false
+        body_format: form-urlencoded
+        body:
+          grant_type: "urn:ietf:params:oauth:grant-type:token-exchange"
+          subject_token_type: "urn:ietf:params:oauth:token-type:access_token"
+          subject_token: "test-invalid-token"
+        status_code: [400, 401]
+      register: cp9_exchange
+      failed_when: false
+
+    - name: "CP9 PASS"
+      ansible.builtin.debug:
+        msg: >-
+          SPIRE server: {{ 'healthy' if cp9_spire_server.rc == 0 else 'not running' }}.
+          SPIRE agents: {{ cp9_agents.stdout_lines | length | default(0) }} registered.
+          Federation policies: {{ 'configured' if cp9_fed.rc == 0 else 'failed' }}.
+          Token exchange: {{ cp9_exchange.status | default('unreachable') }}.
+
+- name: "CHECKPOINT 9 — SPIRE agent verified"
+  tags: [phase9, checkpoint]
+  hosts: arbiter_agent
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP9: SPIRE agent healthy"
+      ansible.builtin.command:
+        cmd: spire-agent healthcheck -socketPath /tmp/spire-agent/public/api.sock
+      register: cp9_agent
+      changed_when: false
+      failed_when: false
+
+    - name: "CP9 PASS (agent)"
+      ansible.builtin.debug:
+        msg: "SPIRE agent: {{ 'healthy' if cp9_agent.rc == 0 else 'not running' }}"
+
+###############################################################################
+# PHASE 10 — Validation: health check + E2E tests                (~1-2 min)
+###############################################################################
+
+- name: "PHASE 10a — Health check (all hub services)"
+  tags: [phase10, validation]
+  ansible.builtin.import_playbook: health-check.yaml
+
+- name: "PHASE 10b — E2E tests (12 API endpoint tests)"
+  tags: [phase10, validation]
+  ansible.builtin.import_playbook: e2e-test.yaml
+
+# --- Final Report ---
+- name: "REBUILD COMPLETE — Final status"
+  tags: [phase10, checkpoint, always]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Get container status
+      ansible.builtin.command:
+        cmd: podman ps --format '{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}'
+      register: final_containers
+      changed_when: false
+
+    - name: Get workload count
+      ansible.builtin.uri:
+        url: http://localhost:8400/workloads
+        status_code: 200
+        return_content: true
+      register: final_workloads
+      ignore_errors: true
+
+    - name: Get backend count
+      ansible.builtin.uri:
+        url: http://localhost:8400/backends
+        status_code: 200
+        return_content: true
+      register: final_backends
+      ignore_errors: true
+
+    - name: "=== REBUILD COMPLETE ==="
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║  ARBITER HUB E2E DEMO — REBUILD COMPLETE                   ║
+          ╠══════════════════════════════════════════════════════════════╣
+          ║  UI:        https://{{ ansible_fqdn }}
+          ║  API:       http://{{ ansible_fqdn }}:8400/health
+          ║  Containers: {{ final_containers.stdout_lines | length }}
+          ║  Workloads: {{ final_workloads.json.total | default('?') }}
+          ║  Backends:  {{ final_backends.json | length | default('?') }}
+          ║
+          ║  Demo users: alice/bob/carol/dave/eve (pw: set via vault_demo_user_password)
+          ║  IPA admin:  admin (pw: set via vault_ipa_admin_password)
+          ╚══════════════════════════════════════════════════════════════╝

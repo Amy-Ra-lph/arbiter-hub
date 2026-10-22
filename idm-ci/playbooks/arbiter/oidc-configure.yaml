@@ -19,8 +19,8 @@
   collections:
     - freeipa.ansible_freeipa
   vars:
-    ipaadmin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
-    arbiter_hub_fqdn: "hub.arbiter.demo"
+    ipaadmin_password: "{{ ipaserver_admin_password }}"
+    arbiter_hub_fqdn: "{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}"
     arbiter_idm_fqdn: "{{ ansible_fqdn }}"
     arbiter_oidc_client_id: "arbiter-hub"
     arbiter_oidc_client_secret: ""
@@ -166,7 +166,7 @@
   become: true
   vars:
     arbiter_idm_fqdn: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] | default('idm.arbiter.demo') }}"
-    arbiter_hub_fqdn: "hub.arbiter.demo"
+    arbiter_hub_fqdn: "{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}"
     arbiter_oidc_client_id: "arbiter-hub"
     arbiter_oidc_ui_client_id: "arbiter-hub-ui"
     arbiter_oidc_api_scopes:

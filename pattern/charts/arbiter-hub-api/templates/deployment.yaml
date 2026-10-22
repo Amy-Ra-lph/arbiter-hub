@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "arbiter-hub-api.fullname" . }}
+  labels:
+    {{- include "arbiter-hub-api.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "arbiter-hub-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "arbiter-hub-api.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8400
+              protocol: TCP
+          env:
+            - name: ARBITER_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arbiter-hub-api.fullname" . }}-db
+                  key: database-url
+            - name: ARBITER_KEYLIME_VERIFIER_URL
+              value: {{ .Values.keylime.verifierUrl | quote }}
+            - name: ARBITER_KEYLIME_CA_CERT
+              value: {{ .Values.keylime.caCert | quote }}
+            - name: ARBITER_KEYLIME_CLIENT_CERT
+              value: {{ .Values.keylime.clientCert | quote }}
+            - name: ARBITER_KEYLIME_CLIENT_KEY
+              value: {{ .Values.keylime.clientKey | quote }}
+            - name: ARBITER_FALCO_HEALTHZ_URL
+              value: {{ .Values.falco.healthzUrl | quote }}
+            - name: ARBITER_COSIGN_PUBLIC_KEY
+              value: {{ .Values.cosign.publicKey | quote }}
+            - name: ARBITER_COSIGN_INSECURE_IGNORE_TLOG
+              value: {{ .Values.cosign.insecureIgnoreTlog | quote }}
+          volumeMounts:
+            - name: keylime-certs
+              mountPath: /etc/arbiter/keylime
+              readOnly: true
+            - name: cosign-keys
+              mountPath: /etc/arbiter/cosign
+              readOnly: true
+            - name: seed-policies
+              mountPath: /etc/arbiter/seed-policies.json
+              subPath: policies.json
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      volumes:
+        - name: keylime-certs
+          secret:
+            secretName: {{ include "arbiter-hub-api.fullname" . }}-keylime-certs
+        - name: cosign-keys
+          secret:
+            secretName: {{ include "arbiter-hub-api.fullname" . }}-cosign-keys
+        - name: seed-policies
+          configMap:
+            name: {{ include "arbiter-hub-api.fullname" . }}-seed-policies
+        - name: tmp
+          emptyDir: {}

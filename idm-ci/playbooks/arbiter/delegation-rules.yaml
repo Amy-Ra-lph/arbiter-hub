@@ -7,7 +7,7 @@
   hosts: ipaserver
   become: true
   vars:
-    ipaadmin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
+    ipaadmin_password: "{{ ipaserver_admin_password }}"
 
   tasks:
     # --- Attestation RBAC groups ---

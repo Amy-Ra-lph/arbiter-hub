@@ -2,7 +2,7 @@
 # enforcement-mcp-deploy.yaml — Deploy enforcement-mcp on hub node
 # SELinux/fapolicyd/MLS/AIDE policy MCP server connected to Arbiter Hub
 - name: Deploy enforcement-mcp
-  hosts: hub.arbiter.demo
+  hosts: arbiter_hub
   become: true
   vars:
     enforcement_mcp_repo: "https://github.com/Amy-Ra-lph/enforcement-mcp.git"

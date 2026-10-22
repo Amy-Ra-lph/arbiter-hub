@@ -2,7 +2,7 @@
 # webhook-setup.yaml — Register arbiter-hub → EDA webhooks
 # Connects state_transition events to the EDA controller on the same host
 - name: Register arbiter-hub webhooks
-  hosts: hub.arbiter.demo
+  hosts: arbiter_hub
   become: true
   vars:
     arbiter_api_url: "http://localhost:8400"

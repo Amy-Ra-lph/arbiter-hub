@@ -9,15 +9,15 @@
 #
 # Usage:
 #   ansible-playbook -i inventory ipa-roles.yaml \
-#     -e ipaserver_admin_password=Secret123
+#     -e ipaserver_admin_password=<password>
 - name: Configure IPA roles and HBAC for Arbiter Hub
   hosts: ipaserver
   become: true
   collections:
     - freeipa.ansible_freeipa
   vars:
-    ipaadmin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
-    demo_password: "redhat123"
+    ipaadmin_password: "{{ ipaserver_admin_password }}"
+    demo_password: "{{ demo_user_password }}"
     demo_password_expiry: "2027-12-31 23:59:59"
 
     attestation_groups:

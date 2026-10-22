@@ -12,7 +12,7 @@
   hosts: arbiter_agent
   become: true
   vars:
-    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+    arbiter_hub_api: "http://{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}:8400"
     demo_image: "registry.access.redhat.com/ubi10/ubi:latest"
     keylime_agent_uuid: ""
     keylime_agent_ip: "{{ ansible_default_ipv4.address }}"

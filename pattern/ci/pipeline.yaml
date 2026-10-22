@@ -1,0 +1,153 @@
+---
+# pipeline.yaml — CI pipeline for validated pattern testing
+#
+# Triggered on PR merge to main. Provisions ephemeral 3-node
+# environment via IdM-CI, deploys both targets, runs E2E, tears down.
+#
+# Two parallel tracks:
+#   1. OpenShift (ArgoCD) — deploys hub-plane Helm charts
+#   2. Bare-metal (AAP) — deploys full stack via rebuild.yaml
+#
+# GitLab CI syntax (adaptable to GitHub Actions or Jenkins)
+
+stages:
+  - lint
+  - provision
+  - deploy-bare-metal
+  - deploy-openshift
+  - test
+  - teardown
+
+variables:
+  IDMCI_SUT_LIFETIME: "24"
+  IDMCI_HAS_RANDOM_DOMAIN: "disable"
+  PATTERN_DOMAIN: "arbiter-ci.demo"
+  VALUES_GLOBAL: "pattern/values-global.yaml"
+  VALUES_SITE_BM: "pattern/values-bare-metal.yaml"
+  VALUES_SITE_OCP: "pattern/values-hub.yaml"
+
+# -- Lint stage --
+
+lint:helm:
+  stage: lint
+  image: alpine/helm:3.14
+  script:
+    - helm lint pattern/charts/arbiter-hub-api/
+    - helm lint pattern/charts/arbiter-hub-ui/
+    - helm lint pattern/charts/arbiter-hub-db/
+    - helm lint pattern/charts/arbiter-hub-mcp/
+    - helm lint pattern/charts/enforcement-mcp/
+  rules:
+    - changes:
+        - pattern/charts/**/*
+
+lint:ansible:
+  stage: lint
+  image: quay.io/ansible/ansible-lint:latest
+  script:
+    - ansible-lint idm-ci/playbooks/arbiter/*.yaml
+    - ansible-lint pattern/ansible/workflow-templates/*.yaml
+  rules:
+    - changes:
+        - idm-ci/playbooks/**/*
+        - pattern/ansible/**/*
+
+lint:values:
+  stage: lint
+  script:
+    - python3 -c "import yaml; yaml.safe_load(open('${VALUES_GLOBAL}'))"
+    - python3 -c "import yaml; yaml.safe_load(open('${VALUES_SITE_BM}'))"
+    - python3 -c "import yaml; yaml.safe_load(open('${VALUES_SITE_OCP}'))"
+
+# -- Provision stage (bare-metal only; OpenShift uses existing cluster) --
+
+provision:bare-metal:
+  stage: provision
+  tags:
+    - itup-alm-x86
+  script:
+    - >-
+      te idm-ci/metadata-arbiter-rebuild-test.yaml
+      --domain ${PATTERN_DOMAIN}
+  artifacts:
+    paths:
+      - .te/inventory.yaml
+    expire_in: 1 day
+  rules:
+    - changes:
+        - idm-ci/**/*
+        - pattern/ansible/**/*
+
+# -- Deploy stages (parallel) --
+
+deploy:bare-metal:
+  stage: deploy-bare-metal
+  needs: [provision:bare-metal]
+  tags:
+    - itup-alm-x86
+  script:
+    - >-
+      ansible-playbook
+      -i .te/inventory.yaml
+      idm-ci/playbooks/arbiter/rebuild.yaml
+      -e @${VALUES_GLOBAL}
+      -e @${VALUES_SITE_BM}
+  timeout: 60m
+  rules:
+    - changes:
+        - idm-ci/**/*
+        - pattern/ansible/**/*
+
+deploy:openshift:
+  stage: deploy-openshift
+  image: alpine/helm:3.14
+  needs: [lint:helm]
+  script:
+    - helm upgrade --install arbiter-hub-db pattern/charts/arbiter-hub-db/ -f ${VALUES_GLOBAL} -f ${VALUES_SITE_OCP} --wait
+    - helm upgrade --install arbiter-hub-api pattern/charts/arbiter-hub-api/ -f ${VALUES_GLOBAL} -f ${VALUES_SITE_OCP} --wait
+    - helm upgrade --install arbiter-hub-mcp pattern/charts/arbiter-hub-mcp/ -f ${VALUES_GLOBAL} -f ${VALUES_SITE_OCP} --wait
+    - helm upgrade --install arbiter-hub-ui pattern/charts/arbiter-hub-ui/ -f ${VALUES_GLOBAL} -f ${VALUES_SITE_OCP} --wait
+    - helm upgrade --install enforcement-mcp pattern/charts/enforcement-mcp/ -f ${VALUES_GLOBAL} -f ${VALUES_SITE_OCP} --wait
+  rules:
+    - changes:
+        - pattern/charts/**/*
+
+# -- Test stage --
+
+test:bare-metal:
+  stage: test
+  needs: [deploy:bare-metal]
+  tags:
+    - itup-alm-x86
+  script:
+    - >-
+      ansible-playbook
+      -i .te/inventory.yaml
+      idm-ci/playbooks/arbiter/rebuild.yaml
+      --tags checkpoint
+  timeout: 10m
+
+test:openshift:
+  stage: test
+  needs: [deploy:openshift]
+  image: quay.io/rhel-security/arbiter-hub-api:latest
+  script:
+    - python3 -m pytest tests/e2e/ -v --target=openshift
+  timeout: 10m
+  rules:
+    - changes:
+        - pattern/charts/**/*
+
+# -- Teardown (bare-metal only) --
+
+teardown:bare-metal:
+  stage: teardown
+  needs: [test:bare-metal]
+  tags:
+    - itup-alm-x86
+  script:
+    - te --teardown
+  when: always
+  rules:
+    - changes:
+        - idm-ci/**/*

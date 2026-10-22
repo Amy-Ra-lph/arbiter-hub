@@ -12,7 +12,7 @@
   hosts: ipaserver
   become: true
   vars:
-    arbiter_hub_fqdn: "hub.arbiter.demo"
+    arbiter_hub_fqdn: "{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}"
     arbiter_oidc_client_id: "arbiter-hub"
     arbiter_oidc_client_secret: ""
     arbiter_oidc_ui_client_id: "arbiter-hub-ui"
