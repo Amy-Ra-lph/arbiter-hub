@@ -1,0 +1,200 @@
+- name: Install build dependencies
+  ansible.builtin.dnf:
+    name: "{{ kuipa_build_deps }}"
+    state: present
+  when: kuipa_build_from_source
+
+- name: Clone kuipa repository
+  ansible.builtin.git:
+    repo: "{{ kuipa_repo }}"
+    dest: /root/kuipa
+    version: "{{ kuipa_version }}"
+    force: true
+  when: kuipa_build_from_source
+  register: kuipa_clone
+
+- name: Build kuipa
+  ansible.builtin.command:
+    cmd: cargo build --release
+    chdir: /root/kuipa
+  when: kuipa_build_from_source and kuipa_clone.changed
+  register: kuipa_build
+  changed_when: kuipa_build.rc == 0
+
+- name: Install kuipa binaries
+  ansible.builtin.copy:
+    src: "/root/kuipa/target/release/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: "0755"
+    remote_src: true
+  loop: "{{ kuipa_binaries }}"
+  when: kuipa_build_from_source
+
+- name: Create key directory
+  ansible.builtin.file:
+    path: "{{ kuipa_key_dir }}"
+    state: directory
+    mode: "0700"
+
+- name: Write kuipad configuration
+  ansible.builtin.template:
+    src: kuipad.json.j2
+    dest: "{{ kuipa_config_path }}"
+    mode: "0640"
+  notify: restart_kuipad
+
+- name: Create IPA service principal
+  ansible.builtin.command:
+    cmd: "ipa service-add {{ kuipa_service_name }}/{{ ansible_fqdn }}@{{ ipaserver_realm }}"
+  register: svc_add
+  changed_when: "'Added service' in svc_add.stdout"
+  failed_when: svc_add.rc != 0 and 'already exists' not in svc_add.stderr
+
+- name: Retrieve kuipad keytab
+  ansible.builtin.command:
+    cmd: >-
+      ipa-getkeytab
+      -s {{ ansible_fqdn }}
+      -p {{ kuipa_service_name }}/{{ ansible_fqdn }}@{{ ipaserver_realm }}
+      -k {{ kuipa_key_dir }}/kuipa.keytab
+    creates: "{{ kuipa_key_dir }}/kuipa.keytab"
+
+- name: Set keytab permissions
+  ansible.builtin.file:
+    path: "{{ kuipa_key_dir }}/kuipa.keytab"
+    mode: "0600"
+
+- name: Create S4U2Proxy delegation target
+  ansible.builtin.command:
+    cmd: "ipa servicedelegationtarget-add kuipa-ldap-target"
+  register: target_add
+  changed_when: "'Added' in target_add.stdout"
+  failed_when: target_add.rc != 0 and 'already exists' not in target_add.stderr
+
+- name: Add LDAP to delegation target
+  ansible.builtin.command:
+    cmd: >-
+      ipa servicedelegationtarget-add-member kuipa-ldap-target
+      --principals=ldap/{{ ansible_fqdn }}@{{ ipaserver_realm }}
+  register: target_member
+  changed_when: "'Number of members added 1' in target_member.stdout"
+  failed_when: target_member.rc != 0 and 'already a member' not in target_member.stderr
+
+- name: Create S4U2Proxy delegation rule
+  ansible.builtin.command:
+    cmd: "ipa servicedelegationrule-add kuipa-delegation"
+  register: rule_add
+  changed_when: "'Added' in rule_add.stdout"
+  failed_when: rule_add.rc != 0 and 'already exists' not in rule_add.stderr
+
+- name: Add ipa-ku to delegation rule
+  ansible.builtin.command:
+    cmd: >-
+      ipa servicedelegationrule-add-member kuipa-delegation
+      --principals={{ kuipa_service_name }}/{{ ansible_fqdn }}@{{ ipaserver_realm }}
+  register: rule_member
+  changed_when: "'Number of members added 1' in rule_member.stdout"
+  failed_when: rule_member.rc != 0 and 'already a member' not in rule_member.stderr
+
+- name: Add delegation target to rule
+  ansible.builtin.command:
+    cmd: >-
+      ipa servicedelegationrule-add-target kuipa-delegation
+      --servicedelegationtargets=kuipa-ldap-target
+  register: rule_target
+  changed_when: "'Number of members added 1' in rule_target.stdout"
+  failed_when: rule_target.rc != 0 and 'already' not in rule_target.stderr
+
+- name: Set service delegation flags
+  ansible.builtin.command:
+    cmd: >-
+      ipa service-mod {{ kuipa_service_name }}/{{ ansible_fqdn }}@{{ ipaserver_realm }}
+      --ok-to-auth-as-delegate=true --ok-as-delegate=true
+  register: svc_mod
+  changed_when: "'Modified' in svc_mod.stdout"
+  failed_when: svc_mod.rc != 0 and 'no modifications' not in svc_mod.stderr
+
+- name: Generate kuipad server keys
+  ansible.builtin.command:
+    cmd: kuipad generate-keys
+  args:
+    creates: "{{ kuipa_key_dir }}/anchor.jwk"
+  register: kuipa_anchor
+
+- name: Save anchor thumbprint
+  ansible.builtin.set_fact:
+    kuipa_anchor_thumbprint: "{{ kuipa_anchor.stdout | trim }}"
+  when: kuipa_anchor.changed
+
+- name: Read anchor thumbprint from existing keys
+  ansible.builtin.command:
+    cmd: kuipad anchor
+  register: kuipa_anchor_existing
+  changed_when: false
+  when: not kuipa_anchor.changed
+
+- name: Save existing anchor thumbprint
+  ansible.builtin.set_fact:
+    kuipa_anchor_thumbprint: "{{ kuipa_anchor_existing.stdout | trim }}"
+  when: not kuipa_anchor.changed
+
+- name: Install httpd proxy snippet
+  ansible.builtin.copy:
+    src: /root/kuipa/contrib/kuipa.conf
+    dest: /etc/httpd/conf.d/kuipa.conf
+    mode: "0644"
+    remote_src: true
+  notify: restart_httpd
+
+- name: Create SELinux policy for kuipa socket
+  ansible.builtin.shell:
+    cmd: |
+      grep "denied.*kuipad.sock" /var/log/audit/audit.log 2>/dev/null |
+        audit2allow -M kuipa-httpd && semodule -i kuipa-httpd.pp
+    creates: /root/kuipa-httpd.pp
+  ignore_errors: true
+
+- name: Create socket runtime directory
+  ansible.builtin.file:
+    path: /run/ipa
+    state: directory
+    mode: "0755"
+
+- name: Start kuipad
+  ansible.builtin.shell:
+    cmd: |
+      pkill kuipad || true
+      sleep 1
+      rm -f {{ kuipa_socket_path }}
+      nohup kuipad serve > {{ kuipa_log_path }} 2>&1 &
+      sleep 2
+      chgrp apache {{ kuipa_socket_path }}
+      chmod 660 {{ kuipa_socket_path }}
+  args:
+    creates: "{{ kuipa_socket_path }}"
+
+- name: Generate enrollment string
+  ansible.builtin.command:
+    cmd: "kuipad enrollment-string --days {{ kuipa_enrollment_string_days }}"
+  register: kuipa_enrollment_string
+  changed_when: false
+
+- name: Display enrollment string
+  ansible.builtin.debug:
+    msg: "kuipa enrollment string: {{ kuipa_enrollment_string.stdout }}"
+
+- name: Restart httpd
+  ansible.builtin.systemd:
+    name: httpd
+    state: restarted
+  listen: restart_httpd
+
+- name: Verify kuipa endpoint
+  ansible.builtin.uri:
+    url: "https://{{ ansible_fqdn }}/ipa/ku/adv"
+    validate_certs: false
+    return_content: false
+    status_code: 200
+  register: kuipa_endpoint_check
+  retries: 3
+  delay: 2
