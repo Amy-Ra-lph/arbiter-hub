@@ -177,6 +177,8 @@
       ansible.builtin.uri:
         url: "http://{{ arbiter_hub_host }}:{{ arbiter_hub_port }}/workloads"
         method: POST
+        headers:
+          Origin: "http://{{ arbiter_hub_host }}:{{ arbiter_hub_port }}"
         body_format: json
         body:
           ipa_principal: "openshell/{{ item.name }}@ARBITER.DEMO"

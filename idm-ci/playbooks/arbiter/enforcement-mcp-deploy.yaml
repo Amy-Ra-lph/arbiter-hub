@@ -98,6 +98,8 @@
       ansible.builtin.uri:
         url: "{{ arbiter_api_url }}/workloads"
         method: POST
+        headers:
+          Origin: "{{ arbiter_api_url }}"
         body_format: json
         body:
           ipa_principal: "mcp/enforcement-mcp@ARBITER.DEMO"

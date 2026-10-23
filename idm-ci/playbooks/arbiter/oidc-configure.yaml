@@ -233,3 +233,4 @@
       ansible.builtin.systemd:
         name: arbiter-hub-api
         state: restarted
+      when: inventory_hostname in groups.get('arbiter_hub', [])

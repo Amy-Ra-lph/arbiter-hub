@@ -15,7 +15,7 @@ redirect_uris              = [
     "https://{{ arbiter_hub_fqdn }}/auth/callback",
     "https://{{ arbiter_hub_fqdn }}/api/auth/callback",
 ]
-skip_consent               = false
+skip_consent               = true
 
 # Arbiter Hub UI — public client for browser OIDC login
 [[client]]
@@ -28,6 +28,6 @@ redirect_uris              = [
     "https://{{ arbiter_hub_fqdn }}/",
     "https://{{ arbiter_hub_fqdn }}/auth/callback",
 ]
-skip_consent               = false
+skip_consent               = true
 access_token_ttl           = 3600
 refresh_token_ttl          = 28800

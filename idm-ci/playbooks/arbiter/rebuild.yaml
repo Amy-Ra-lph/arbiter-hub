@@ -28,10 +28,11 @@
 #   2  Identity      — IPA post-install, roles, users, HBAC     (~2-3 min)
 #   3  Attestation   — swtpm, Keylime, mTLS certs               (~5-8 min)
 #   4  Containers    — DB, API, MCP, UI, TLS termination         (~5-8 min)
-#   5  OIDC          — ahdapa clients, hub drop-ins              (~1-2 min)
-#   6  Agent         — Falco, OpenShell, workloads, linux-mcp    (~5-8 min)
-#   7  EDA           — ansible-rulebook, webhooks                (~2-3 min)
-#   8  Demo          — agents, canaries, profiles, audit, emcp   (~2-3 min)
+#   5  Agent         — Falco, OpenShell, workloads, linux-mcp    (~5-8 min)
+#   6  EDA           — ansible-rulebook, webhooks                (~2-3 min)
+#   7  Demo          — agents, canaries, profiles, audit, emcp   (~2-3 min)
+#   8  OIDC          — ahdapa clients, hub drop-ins              (~1-2 min)
+#      (after workload registration — OIDC blocks unauthenticated POSTs)
 #   9  Federation    — SPIRE, OAuth2 scopes, OBO exchange        (~3-5 min)
 #  10  Validation    — health check, 12 E2E tests                (~1-2 min)
 
@@ -72,7 +73,7 @@
   tasks:
     - name: "CP1: IPA DNS SRV records resolve"
       ansible.builtin.command:
-        cmd: dig _ldap._tcp.arbiter.demo SRV +short
+        cmd: dig _ldap._tcp.{{ hostvars[groups['ipaserver'][0]]['ansible_domain'] | default(ansible_domain) }} SRV +short
       register: cp1_dns
       changed_when: false
       failed_when: "'389' not in cp1_dns.stdout"
@@ -288,80 +289,43 @@
           {{ cp4_policies.json.total | default(cp4_policies.json | length) }} policies seeded
 
 ###############################################################################
-# PHASE 5 — OIDC auth configuration                              (~1-2 min)
-#
-# Depends on: Phase 2 (IPA identity) + Phase 4 (API containers running)
-###############################################################################
-
-- name: "PHASE 5 — OIDC configure (ahdapa clients + hub quadlet drop-ins)"
-  tags: [phase5, oidc]
-  ansible.builtin.import_playbook: oidc-configure.yaml
-
-# --- Checkpoint 5 ---
-- name: "CHECKPOINT 5 — OIDC auth verified"
-  tags: [phase5, checkpoint]
-  hosts: arbiter_hub
-  become: true
-  gather_facts: false
-  tasks:
-    - name: "CP5: OIDC drop-in exists"
-      ansible.builtin.stat:
-        path: /etc/containers/systemd/arbiter-hub-api.container.d/oidc.conf
-      register: cp5_dropin
-      failed_when: not cp5_dropin.stat.exists
-
-    - name: "CP5: API still healthy after OIDC restart"
-      ansible.builtin.command:
-        cmd: >-
-          podman exec arbiter-hub-api
-          python3.12 -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8400/health', timeout=5); print(r.read().decode())"
-      register: cp5_api
-      retries: 15
-      delay: 5
-      until: cp5_api.rc == 0
-      changed_when: false
-
-    - name: "CP5 PASS"
-      ansible.builtin.debug:
-        msg: "OIDC configured, API restarted and healthy"
-
-###############################################################################
-# PHASE 6 — Agent services: Falco + OpenShell + workloads        (~5-8 min)
+# PHASE 5 — Agent services: Falco + OpenShell + workloads        (~5-8 min)
 #
 # Depends on: Phase 4 (API running for workload registration)
+# Runs BEFORE OIDC — workload registration needs unauthenticated POST access
 ###############################################################################
 
-- name: "PHASE 6a — Falco eBPF on agent"
-  tags: [phase6, agent]
+- name: "PHASE 5a — Falco eBPF on agent"
+  tags: [phase5, agent]
   ansible.builtin.import_playbook: falco-deploy.yaml
 
-- name: "PHASE 6b — OpenShell gateway + sandboxes"
-  tags: [phase6, agent]
+- name: "PHASE 5b — OpenShell gateway + sandboxes"
+  tags: [phase5, agent]
   ansible.builtin.import_playbook: openshell-deploy.yaml
 
-- name: "PHASE 6c — Demo workloads (good + bad containers)"
-  tags: [phase6, agent]
+- name: "PHASE 5c — Demo workloads (good + bad containers)"
+  tags: [phase5, agent]
   ansible.builtin.import_playbook: demo-workloads.yaml
 
-- name: "PHASE 6d — Linux MCP server"
-  tags: [phase6, agent]
+- name: "PHASE 5d — Linux MCP server"
+  tags: [phase5, agent]
   ansible.builtin.import_playbook: linux-mcp-server-deploy.yaml
 
-# --- Checkpoint 6 ---
-- name: "CHECKPOINT 6 — Agent services verified"
-  tags: [phase6, checkpoint]
+# --- Checkpoint 5 ---
+- name: "CHECKPOINT 5 — Agent services verified"
+  tags: [phase5, checkpoint]
   hosts: arbiter_agent
   become: true
   gather_facts: false
   tasks:
-    - name: "CP6: Falco active"
+    - name: "CP5: Falco active"
       ansible.builtin.command:
         cmd: systemctl is-active falco
       register: cp6_falco
       changed_when: false
       failed_when: cp6_falco.stdout != 'active' and cp6_falco.stdout != 'activating'
 
-    - name: "CP6: OpenShell gateway health"
+    - name: "CP5: OpenShell gateway health"
       ansible.builtin.uri:
         url: http://localhost:17672/healthz
         status_code: 200
@@ -370,7 +334,7 @@
       delay: 3
       until: cp6_gw.status == 200
 
-    - name: "CP6: 3 trust-tiered sandboxes running"
+    - name: "CP5: 3 trust-tiered sandboxes running"
       ansible.builtin.command:
         cmd: podman ps --filter label=io.openshell.managed=true --format '{{ '{{' }}.Names{{ '}}' }}'
       register: cp6_sandboxes
@@ -380,100 +344,100 @@
         'wid-verified' not in cp6_sandboxes.stdout or
         'wid-untrusted' not in cp6_sandboxes.stdout
 
-    - name: "CP6: demo-good-workload running"
+    - name: "CP5: demo-good-workload running"
       ansible.builtin.command:
         cmd: podman inspect demo-good-workload --format '{{ '{{' }}.State.Running{{ '}}' }}'
       register: cp6_good
       changed_when: false
       failed_when: cp6_good.stdout != 'true'
 
-    - name: "CP6: linux-mcp-server on :8402"
+    - name: "CP5: linux-mcp-server on :8402"
       ansible.builtin.wait_for:
         port: 8402
         host: 127.0.0.1
         timeout: 10
       ignore_errors: true
 
-    - name: "CP6 PASS"
+    - name: "CP5 PASS"
       ansible.builtin.debug:
         msg: "Agent: Falco, OpenShell(3 sandboxes), demo workloads, linux-mcp-server all running"
 
 ###############################################################################
-# PHASE 7 — EDA pipeline + webhooks                              (~2-3 min)
+# PHASE 6 — EDA pipeline + webhooks                              (~2-3 min)
 #
-# Depends on: Phase 4 (API) + Phase 6 (Falco generating events)
+# Depends on: Phase 4 (API) + Phase 5 (Falco generating events)
 ###############################################################################
 
-- name: "PHASE 7a — EDA controller (ansible-rulebook)"
-  tags: [phase7, eda]
+- name: "PHASE 6a — EDA controller (ansible-rulebook)"
+  tags: [phase6, eda]
   ansible.builtin.import_playbook: eda-deploy.yaml
 
-- name: "PHASE 7b — Register webhooks (API → EDA)"
-  tags: [phase7, eda]
+- name: "PHASE 6b — Register webhooks (API → EDA)"
+  tags: [phase6, eda]
   ansible.builtin.import_playbook: webhook-setup.yaml
 
-# --- Checkpoint 7 ---
-- name: "CHECKPOINT 7 — EDA pipeline verified"
-  tags: [phase7, checkpoint]
+# --- Checkpoint 6 ---
+- name: "CHECKPOINT 6 — EDA pipeline verified"
+  tags: [phase6, checkpoint]
   hosts: arbiter_hub
   become: true
   gather_facts: false
   tasks:
-    - name: "CP7: EDA controller active"
+    - name: "CP6: EDA controller active"
       ansible.builtin.command:
         cmd: systemctl is-active arbiter-eda
       register: cp7_eda
       changed_when: false
       failed_when: cp7_eda.stdout != 'active'
 
-    - name: "CP7: EDA listener on :5001"
+    - name: "CP6: EDA listener on :5001"
       ansible.builtin.wait_for:
         port: 5001
         host: 0.0.0.0
         timeout: 15
 
-    - name: "CP7: Webhook secret exists"
+    - name: "CP6: Webhook secret exists"
       ansible.builtin.stat:
         path: /etc/arbiter/webhook-secret
       register: cp7_secret
       failed_when: not cp7_secret.stat.exists
 
-    - name: "CP7 PASS"
+    - name: "CP6 PASS"
       ansible.builtin.debug:
         msg: "EDA pipeline live: ansible-rulebook → webhooks → remediation playbooks"
 
 ###############################################################################
-# PHASE 8 — Demo enrichment (all parallel-safe)                  (~2-3 min)
+# PHASE 7 — Demo enrichment (all parallel-safe)                  (~2-3 min)
 ###############################################################################
 
-- name: "PHASE 8a — Demo agents + honeypot canaries"
-  tags: [phase8, demo]
+- name: "PHASE 7a — Demo agents + honeypot canaries"
+  tags: [phase7, demo]
   ansible.builtin.import_playbook: demo-agents-deploy.yaml
 
-- name: "PHASE 8b — Exfil receiver (canary catcher on idm)"
-  tags: [phase8, demo]
+- name: "PHASE 7b — Exfil receiver (canary catcher on idm)"
+  tags: [phase7, demo]
   ansible.builtin.import_playbook: exfil-receiver-deploy.yaml
 
-- name: "PHASE 8c — Trust tier profiles"
-  tags: [phase8, demo]
+- name: "PHASE 7c — Trust tier profiles"
+  tags: [phase7, demo]
   ansible.builtin.import_playbook: trust-profiles-deploy.yaml
 
-- name: "PHASE 8d — Behavioral audit classifiers"
-  tags: [phase8, demo]
+- name: "PHASE 7d — Behavioral audit classifiers"
+  tags: [phase7, demo]
   ansible.builtin.import_playbook: behavioral-audit-deploy.yaml
 
-- name: "PHASE 8e — Enforcement MCP server"
-  tags: [phase8, demo]
+- name: "PHASE 7e — Enforcement MCP server"
+  tags: [phase7, demo]
   ansible.builtin.import_playbook: enforcement-mcp-deploy.yaml
 
-# --- Checkpoint 8 ---
-- name: "CHECKPOINT 8 — Demo enrichment verified"
-  tags: [phase8, checkpoint]
+# --- Checkpoint 7 ---
+- name: "CHECKPOINT 7 — Demo enrichment verified"
+  tags: [phase7, checkpoint]
   hosts: arbiter_agent
   become: true
   gather_facts: false
   tasks:
-    - name: "CP8: Demo agent scripts present"
+    - name: "CP7: Demo agent scripts present"
       ansible.builtin.stat:
         path: /opt/demo/agents/{{ item }}
       register: cp8_agents
@@ -482,7 +446,7 @@
         - governed_agent.py
         - rogue_agent.py
 
-    - name: "CP8: Honeypot canaries planted"
+    - name: "CP7: Honeypot canaries planted"
       ansible.builtin.stat:
         path: "{{ item }}"
       register: cp8_canaries
@@ -491,51 +455,90 @@
         - /root/.ssh/id_rsa_canary
         - /root/.kube/config
 
-    - name: "CP8: Trust profiles deployed"
+    - name: "CP7: Trust profiles deployed"
       ansible.builtin.stat:
         path: /opt/demo/profiles/sovereign.profile
       register: cp8_profiles
 
-    - name: "CP8 PASS (agent)"
+    - name: "CP7 PASS (agent)"
       ansible.builtin.debug:
         msg: >-
           Demo agents: {{ cp8_agents.results | selectattr('stat.exists') | list | length }}/2 scripts.
           Canaries: {{ cp8_canaries.results | selectattr('stat.exists') | list | length }}/3.
           Profiles: {{ 'OK' if cp8_profiles.stat.exists else 'missing' }}.
 
-- name: "CHECKPOINT 8 — Demo enrichment verified (idm)"
-  tags: [phase8, checkpoint]
+- name: "CHECKPOINT 7 — Demo enrichment verified (idm)"
+  tags: [phase7, checkpoint]
   hosts: ipaserver
   become: true
   gather_facts: false
   tasks:
-    - name: "CP8: Exfil receiver on :9443"
+    - name: "CP7: Exfil receiver on :9443"
       ansible.builtin.wait_for:
         port: 9443
         timeout: 5
       ignore_errors: true
       register: cp8_exfil
 
-    - name: "CP8 PASS (idm)"
+    - name: "CP7 PASS (idm)"
       ansible.builtin.debug:
         msg: "Exfil receiver: {{ 'listening' if cp8_exfil is not failed else 'not running (non-critical)' }}"
 
-- name: "CHECKPOINT 8 — Demo enrichment verified (hub)"
-  tags: [phase8, checkpoint]
+- name: "CHECKPOINT 7 — Demo enrichment verified (hub)"
+  tags: [phase7, checkpoint]
   hosts: arbiter_hub
   become: true
   gather_facts: false
   tasks:
-    - name: "CP8: enforcement-mcp active"
+    - name: "CP7: enforcement-mcp active"
       ansible.builtin.command:
         cmd: systemctl is-active enforcement-mcp
       register: cp8_emcp
       changed_when: false
       failed_when: false
 
-    - name: "CP8 PASS (hub)"
+    - name: "CP7 PASS (hub)"
       ansible.builtin.debug:
         msg: "enforcement-mcp: {{ cp8_emcp.stdout }}"
+
+###############################################################################
+# PHASE 8 — OIDC auth configuration                              (~1-2 min)
+#
+# Depends on: Phase 2 (IPA identity) + Phase 4 (API containers running)
+# Runs AFTER workload registration (Phases 5-7) — OIDC blocks unauthed POSTs
+###############################################################################
+
+- name: "PHASE 8 — OIDC configure (ahdapa clients + hub quadlet drop-ins)"
+  tags: [phase8, oidc]
+  ansible.builtin.import_playbook: oidc-configure.yaml
+
+# --- Checkpoint 8 ---
+- name: "CHECKPOINT 8 — OIDC auth verified"
+  tags: [phase8, checkpoint]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP8: OIDC drop-in exists"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/arbiter-hub-api.container.d/oidc.conf
+      register: cp8_dropin
+      failed_when: not cp8_dropin.stat.exists
+
+    - name: "CP8: API still healthy after OIDC restart"
+      ansible.builtin.command:
+        cmd: >-
+          podman exec arbiter-hub-api
+          python3.12 -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8400/health', timeout=5); print(r.read().decode())"
+      register: cp8_api
+      retries: 15
+      delay: 5
+      until: cp8_api.rc == 0
+      changed_when: false
+
+    - name: "CP8 PASS"
+      ansible.builtin.debug:
+        msg: "OIDC configured, API restarted and healthy"
 
 ###############################################################################
 # PHASE 9 — SPIRE + OAuth2 scopes + OBO token exchange           (~3-5 min)

@@ -23,6 +23,8 @@
       ansible.builtin.uri:
         url: "{{ arbiter_api_url }}/api/webhooks"
         method: POST
+        headers:
+          Origin: "{{ arbiter_api_url }}"
         body_format: json
         body:
           url: "{{ eda_listener_url }}"

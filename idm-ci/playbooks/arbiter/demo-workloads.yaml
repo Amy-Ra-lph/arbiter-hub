@@ -82,6 +82,8 @@
       ansible.builtin.uri:
         url: "{{ arbiter_hub_api }}/workloads"
         method: POST
+        headers:
+          Origin: "{{ arbiter_hub_api }}"
         body_format: json
         body:
           name: demo-good-workload
@@ -105,6 +107,8 @@
       ansible.builtin.uri:
         url: "{{ arbiter_hub_api }}/workloads"
         method: POST
+        headers:
+          Origin: "{{ arbiter_hub_api }}"
         body_format: json
         body:
           name: demo-bad-workload

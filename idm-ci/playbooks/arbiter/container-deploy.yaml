@@ -42,7 +42,7 @@
     quay_robot_user: "{{ vault_quay_robot_user | default('') }}"
     quay_robot_token: "{{ vault_quay_robot_token | default('') }}"
     arbiter_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
-    arbiter_repo_branch: "main"
+    arbiter_repo_branch: "{{ lookup('env', 'ARBITER_HUB_BRANCH') | default('openshell-podman-deploy', true) }}"
   tasks:
     - name: Install podman
       ansible.builtin.dnf:
@@ -204,6 +204,29 @@
           [Install]
           WantedBy=multi-user.target default.target
         mode: "0644"
+      notify: reload systemd
+
+    - name: Create API drop-in directory
+      ansible.builtin.file:
+        path: "{{ quadlet_dir }}/arbiter-hub-api.container.d"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy CORS allowed origins env file
+      ansible.builtin.copy:
+        dest: /etc/arbiter/cors-origins.env
+        mode: "0644"
+        content: |
+          ARBITER_CORS_ALLOWED_ORIGINS=["http://localhost:8400","http://{{ ansible_fqdn }}:8400","https://{{ ansible_fqdn }}","http://127.0.0.1:8400"]
+
+    - name: Deploy CORS drop-in for API container
+      ansible.builtin.copy:
+        dest: "{{ quadlet_dir }}/arbiter-hub-api.container.d/cors.conf"
+        mode: "0644"
+        content: |
+          # CORS/CSRF allowed origins — EnvironmentFile preserves JSON quotes
+          [Container]
+          EnvironmentFile=/etc/arbiter/cors-origins.env
       notify: reload systemd
 
     - name: Flush handlers before starting services
@@ -479,7 +502,7 @@
           ContainerName=arbiter-hub-ui
           Network=arbiter-hub.network
           PublishPort=8080:8080
-          Volume={{ arbiter_repo_dir }}/ui:/opt/app-root/src:ro,z
+          Volume={{ arbiter_repo_dir }}/ui/dist:/opt/app-root/src:ro,z
           SecurityLabelDisable=true
 
           [Service]

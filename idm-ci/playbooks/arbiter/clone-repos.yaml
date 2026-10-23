@@ -5,13 +5,14 @@
   become: true
   vars:
     arbiter_hub_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
+    arbiter_hub_branch: "{{ lookup('env', 'ARBITER_HUB_BRANCH') | default('openshell-podman-deploy', true) }}"
     agentic_platform_repo: "https://github.com/Amy-Ra-lph/agentic-security-platform.git"
   tasks:
     - name: Clone arbiter-hub
       ansible.builtin.git:
         repo: "{{ arbiter_hub_repo }}"
         dest: /opt/arbiter-hub
-        version: main
+        version: "{{ arbiter_hub_branch }}"
         depth: 1
         single_branch: true
         force: true
