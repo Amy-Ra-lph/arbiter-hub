@@ -48,9 +48,10 @@
 # F45 COPR known broken. Verify F44 COPR builds before first provision.
 #
 # Usage:
-#   te metadata-arbiter-demo-3node.yaml                        # full pipeline
-#   te metadata-arbiter-demo-3node.yaml --phase prep       # IPA + base packages
-#   te metadata-arbiter-demo-3node.yaml --phase identity   # ahdapa + akamu + SPIRE + OAuth2
+#   te metadata-arbiter-demo-3node.yaml                          # full pipeline
+#   te metadata-arbiter-demo-3node.yaml --phase prep         # IPA + base packages
+#   te metadata-arbiter-demo-3node.yaml --phase foundation   # DNS verify, post-install, repos, packages
+#   te metadata-arbiter-demo-3node.yaml --phase identity     # ahdapa + akamu + SPIRE + OAuth2
 #   te metadata-arbiter-demo-3node.yaml --phase keylime    # Keylime + swtpm
 #   te metadata-arbiter-demo-3node.yaml --phase arbiter    # Hub + enforcement-mcp
 #   te metadata-arbiter-demo-3node.yaml --phase agents     # OpenShell + linux-mcp-server + Falco
@@ -104,14 +105,20 @@ phases:
           ipaserver_forwarders:
             - 8.8.8.8
           ipaserver_no_reverse: true
-      # Point clients at IPA DNS before enrollment
-      - playbook: arbiter/dns-client-setup.yaml
+      # Custom arbiter/ playbooks (dns-client-setup, ipa-post-install,
+      # clone-repos, install-packages) removed from prep — IdM-CI
+      # resolves prep paths from /usr/local/share/idm-ci/playbooks/
+      # which lacks our arbiter/ dir. ipa-network.yaml handles DNS
+      # for client enrollment. identity phase handles the rest.
       - playbook: prep/ipa-client-install.yaml
-      # Post-install: verify ahdapa running, init akamu config
+
+  - name: foundation
+    steps:
+      # Moved from prep — arbiter/ paths only resolve in non-prep phases
+      # (IdM-CI cloned repo context, not /usr/local/share/idm-ci/playbooks/)
+      - playbook: arbiter/dns-client-setup.yaml
       - playbook: arbiter/ipa-post-install.yaml
-      # Clone repos on all hosts — later phases reference /opt/arbiter-hub/ and /opt/agentic-platform/
       - playbook: arbiter/clone-repos.yaml
-      # Container + dev tooling on hub and agent nodes
       - playbook: arbiter/install-packages.yaml
 
   - name: identity

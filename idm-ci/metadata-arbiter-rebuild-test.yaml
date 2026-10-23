@@ -66,11 +66,13 @@ phases:
           ipaserver_forwarders:
             - 8.8.8.8
           ipaserver_no_reverse: true
-      - playbook: arbiter/dns-client-setup.yaml
+      # ipa-network.yaml (above) configures client DNS pointing.
+      # Custom arbiter/ playbooks (dns-client-setup, ipa-post-install,
+      # clone-repos, install-packages) removed from prep — IdM-CI
+      # resolves prep paths from /usr/local/share/idm-ci/playbooks/
+      # which lacks our arbiter/ dir. rebuild.yaml Phase 0-2 handles
+      # all of these from the cloned repo context.
       - playbook: prep/ipa-client-install.yaml
-      - playbook: arbiter/ipa-post-install.yaml
-      - playbook: arbiter/clone-repos.yaml
-      - playbook: arbiter/install-packages.yaml
 
   # After prep, run the full rebuild.yaml orchestration to test automation
   - name: rebuild
