@@ -11,8 +11,11 @@ from server.api import (
     attestation,
     audit,
     auth_config,
+    ci_enrollment,
+    enrollment,
     health,
     kbs,
+    rotation,
     signing,
     webhooks,
     workloads,
@@ -37,6 +40,7 @@ async def lifespan(app: FastAPI):
                 ca_cert=settings.keylime_ca_cert,
                 client_cert=settings.keylime_client_cert,
                 client_key=settings.keylime_client_key,
+                registrar_url=settings.keylime_registrar_url,
             ),
         )
     if settings.falco_healthz_url:
@@ -45,6 +49,18 @@ async def lifespan(app: FastAPI):
         registry.register(
             "falco",
             FalcoBackend(healthz_url=settings.falco_healthz_url),
+        )
+    if settings.measured_boot_enabled and settings.keylime_verifier_url:
+        from server.backends.measured_boot import MeasuredBootBackend
+
+        registry.register(
+            "measured_boot",
+            MeasuredBootBackend(
+                keylime_verifier_url=settings.keylime_verifier_url,
+                ca_cert=settings.keylime_ca_cert,
+                client_cert=settings.keylime_client_cert,
+                client_key=settings.keylime_client_key,
+            ),
         )
     if settings.cosign_public_key:
         from server.backends.cosign import CosignBackend
@@ -57,6 +73,8 @@ async def lifespan(app: FastAPI):
                 fulcio_url=settings.rhtas_fulcio_url,
                 tuf_root=settings.rhtas_tuf_root,
                 public_key=settings.cosign_public_key,
+                insecure_ignore_tlog=settings.cosign_insecure_ignore_tlog,
+                allow_http_registry=settings.cosign_allow_http_registry,
             ),
         )
     app.state.backend_registry = registry
@@ -113,5 +131,8 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, tags=["alerts"])
     app.include_router(webhooks.router, tags=["webhooks"])
     app.include_router(signing.router, tags=["signing"])
+    app.include_router(rotation.router, tags=["rotation"])
+    app.include_router(enrollment.router, tags=["enrollment"])
+    app.include_router(ci_enrollment.router, tags=["ci"])
     app.include_router(kbs.router, tags=["kbs"])
     return app

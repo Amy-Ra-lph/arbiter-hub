@@ -37,6 +37,7 @@ async def test_cosign_verify_missing_artifact_ref():
     cb = CosignBackend(cosign_binary="cosign", rekor_url="")
     # Use a simple mock object instead of full ORM workload
     workload = MagicMock()
+    workload.artifact_ref = None
     workload.metadata_ = {}
     result = await cb.verify(workload)
     assert result.verdict == AttestationVerdict.ERROR

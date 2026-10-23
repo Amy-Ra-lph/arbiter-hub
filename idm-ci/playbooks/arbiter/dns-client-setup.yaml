@@ -1,0 +1,41 @@
+---
+# dns-client-setup.yaml — Point IPA clients at IPA DNS before enrollment
+# System resolver must serve SRV records for ipa-client-install to succeed.
+- name: Gather IPA server IP
+  hosts: ipaserver
+  gather_facts: true
+  tasks: []
+
+- name: Configure IPA DNS on client nodes
+  hosts: ipaclient
+  become: true
+  vars:
+    ipa_server_ip: "{{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }}"
+    ipa_domain: "{{ hostvars[groups['ipaserver'][0]]['ansible_domain'] | default('arbiter.demo') }}"
+  tasks:
+    - name: Backup resolv.conf
+      ansible.builtin.copy:
+        src: /etc/resolv.conf
+        dest: /etc/resolv.conf.bak
+        remote_src: true
+        mode: "0644"
+
+    - name: Prepend IPA server as primary nameserver
+      ansible.builtin.lineinfile:
+        path: /etc/resolv.conf
+        line: "nameserver {{ ipa_server_ip }}"
+        insertbefore: BOF
+      register: resolv_updated
+
+    - name: Wait for IPA DNS SRV records
+      ansible.builtin.command:
+        cmd: "dig _ldap._tcp.{{ ipa_domain }} SRV +short"
+      register: srv_check
+      retries: 30
+      delay: 5
+      until: "'389' in srv_check.stdout"
+      changed_when: false
+
+    - name: Report DNS status
+      ansible.builtin.debug:
+        msg: "IPA DNS ready on {{ inventory_hostname }} — SRV: {{ srv_check.stdout }}"

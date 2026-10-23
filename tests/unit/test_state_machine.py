@@ -65,5 +65,5 @@ def test_healthy_cannot_go_to_registered():
         validate_transition(WorkloadState.HEALTHY, WorkloadState.REGISTERED)
 
 
-def test_all_seven_states_have_entries():
-    assert len(VALID_TRANSITIONS) == 7
+def test_all_eight_states_have_entries():
+    assert len(VALID_TRANSITIONS) == 8

@@ -7,19 +7,20 @@ from server.models.db import (
 from server.models.schemas import PaginatedResponse, WorkloadCreate, WorkloadRead
 
 
-def test_workload_state_enum_has_seven_states():
-    assert len(WorkloadState) == 7
+def test_workload_state_enum_has_eight_states():
+    assert len(WorkloadState) == 8
     assert WorkloadState.REGISTERED.value == "registered"
     assert WorkloadState.ATTESTING.value == "attesting"
     assert WorkloadState.HEALTHY.value == "healthy"
     assert WorkloadState.STALE.value == "stale"
     assert WorkloadState.FAILED.value == "failed"
     assert WorkloadState.UNDER_REMEDIATION.value == "under_remediation"
+    assert WorkloadState.ROTATING.value == "rotating"
     assert WorkloadState.REVOKED.value == "revoked"
 
 
 def test_workload_type_enum():
-    assert set(w.value for w in WorkloadType) == {"agentic", "cvm", "service"}
+    assert set(w.value for w in WorkloadType) == {"agentic", "cvm", "service", "bootc"}
 
 
 def test_attestation_verdict_enum():
@@ -27,7 +28,7 @@ def test_attestation_verdict_enum():
 
 
 def test_backend_type_enum():
-    assert set(b.value for b in BackendType) == {"keylime", "trustee", "cosign", "rekor", "falco"}
+    assert set(b.value for b in BackendType) == {"keylime", "trustee", "cosign", "rekor", "falco", "measured_boot"}
 
 
 def test_workload_create_schema():

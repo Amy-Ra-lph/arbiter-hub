@@ -220,14 +220,24 @@
                   }
               }
           }
-    - name: Fetch SPIRE server bundle
-      ansible.builtin.uri:
-        url: "https://{{ spire_server_host }}:8081"
-        validate_certs: false
-        return_content: true
+    - name: Fetch SPIRE server bundle via CLI
+      ansible.builtin.command:
+        cmd: >-
+          spire-server bundle show
+          -socketPath /tmp/spire-server/private/api.sock
+      delegate_to: "{{ spire_server_host }}"
+      register: spire_bundle
+      changed_when: false
+      failed_when: false
+
+    - name: Write SPIRE server bundle
+      ansible.builtin.copy:
+        content: "{{ spire_bundle.stdout }}"
         dest: "{{ spire_data_dir }}/bootstrap.crt"
-        creates: "{{ spire_data_dir }}/bootstrap.crt"
-      ignore_errors: true
+        owner: spire
+        group: spire
+        mode: "0640"
+      when: spire_bundle.rc == 0
 
     - name: Copy IPA CA as bootstrap cert (fallback)
       ansible.builtin.copy:
@@ -238,6 +248,7 @@
         owner: spire
         group: spire
         mode: "0640"
+      when: spire_bundle.rc != 0
 
     - name: Deploy SPIRE agent systemd unit
       ansible.builtin.copy:

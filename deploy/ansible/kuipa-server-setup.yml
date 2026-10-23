@@ -1,0 +1,34 @@
+---
+# Deploy kuipad on an IPA server node.
+#
+# Required variables (pass via inventory or extra-vars):
+#   ipaserver_realm       - e.g. ARBITER.DEMO
+#   ipaserver_domain      - e.g. arbiter.demo
+#   ipaadmin_password     - IPA admin password (for kinit before running)
+#
+# Example:
+#   ansible-playbook kuipa-server-setup.yml \
+#     -i inventory/arbiter-demo.yml \
+#     -e ipaadmin_password=Secret123
+
+- name: Set up kuipad on IPA server
+  hosts: ipaserver
+  become: true
+  pre_tasks:
+    - name: Authenticate as IPA admin
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipaadmin_password }}"
+      changed_when: false
+      no_log: true
+  roles:
+    - kuipa_server
+  post_tasks:
+    - name: Summary
+      ansible.builtin.debug:
+        msg: |
+          kuipad deployed on {{ ansible_fqdn }}
+          Anchor: {{ kuipa_anchor_thumbprint }}
+          Enrollment string: {{ kuipa_enrollment_string.stdout }}
+          Endpoint: https://{{ ansible_fqdn }}/ipa/ku/adv
+          Tang: https://{{ ansible_fqdn }}/ipa/ku/tang/adv

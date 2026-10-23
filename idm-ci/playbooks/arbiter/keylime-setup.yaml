@@ -29,6 +29,11 @@
           - policycoreutils-python-utils
         state: present
 
+    - name: Install keylime-selinux (defines keylime_agent_t for swtpm policy)
+      ansible.builtin.dnf:
+        name: keylime-selinux
+        state: present
+
     - name: Copy swtpm systemd SELinux policy module
       ansible.builtin.copy:
         src: files/swtpm_systemd.te
@@ -179,6 +184,12 @@
         path: /etc/keylime/agent.conf
         regexp: "^uuid ="
         line: 'uuid = "{{ keylime_agent_uuid }}"'
+
+    - name: Create keylime_agent drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/keylime_agent.service.d
+        state: directory
+        mode: "0755"
 
     - name: Deploy TCTI override for swtpm socket mode
       ansible.builtin.copy:

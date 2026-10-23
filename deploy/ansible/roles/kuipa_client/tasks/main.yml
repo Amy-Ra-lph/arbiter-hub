@@ -1,0 +1,156 @@
+- name: Verify kuipa binary installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/kuipa
+  register: kuipa_binary
+
+- name: Copy kuipa binary from IPA server
+  ansible.builtin.command:
+    cmd: >-
+      scp -o StrictHostKeyChecking=no
+      root@{{ kuipa_ipa_server }}:/usr/local/bin/{{ item }}
+      /usr/local/bin/{{ item }}
+  loop:
+    - kuipa
+    - kuipa-unseal
+  when: not kuipa_binary.stat.exists
+
+- name: Set binary permissions
+  ansible.builtin.file:
+    path: "/usr/local/bin/{{ item }}"
+    mode: "0755"
+  loop:
+    - kuipa
+    - kuipa-unseal
+
+- name: Verify connectivity to kuipad
+  ansible.builtin.uri:
+    url: "https://{{ kuipa_ipa_server }}/ipa/ku/adv"
+    validate_certs: false
+    return_content: false
+    status_code: 200
+  register: kuipa_connectivity
+
+- name: Write enrollment string
+  ansible.builtin.copy:
+    content: "{{ kuipa_enrollment_string }}"
+    dest: /tmp/kuipa-enroll.txt
+    mode: "0600"
+  when: kuipa_enrollment_string | length > 0
+
+- name: Set KUIPA_ROOT for isolated enrollment
+  ansible.builtin.set_fact:
+    kuipa_env: "{{ {'KUIPA_ROOT': kuipa_root} if kuipa_use_kuipa_root else {} }}"
+
+- name: Enroll host with kuipa (OTP via LDAP)
+  ansible.builtin.command:
+    cmd: >-
+      kuipa enroll
+      --enrollment-file /tmp/kuipa-enroll.txt
+      --server {{ kuipa_ipa_server }}
+      --hostname {{ ansible_fqdn }}
+      --ldap-otp
+  environment: "{{ kuipa_env }}"
+  register: kuipa_enroll
+  changed_when: "'Enrolled' in kuipa_enroll.stdout"
+  failed_when: >-
+    kuipa_enroll.rc != 0 and
+    'already enrolled' not in kuipa_enroll.stderr | default('')
+  when: kuipa_enroll_method == 'ldap-otp'
+
+- name: Enroll host with kuipa (existing ticket)
+  ansible.builtin.command:
+    cmd: >-
+      kuipa enroll
+      --enrollment-file /tmp/kuipa-enroll.txt
+      --server {{ kuipa_ipa_server }}
+      --hostname {{ ansible_fqdn }}
+      --use-ccache
+  environment: "{{ kuipa_env }}"
+  register: kuipa_enroll_ccache
+  changed_when: "'Enrolled' in kuipa_enroll_ccache.stdout"
+  failed_when: >-
+    kuipa_enroll_ccache.rc != 0 and
+    'already enrolled' not in kuipa_enroll_ccache.stderr | default('')
+  when: kuipa_enroll_method == 'ccache'
+
+- name: Verify enrollment
+  ansible.builtin.command:
+    cmd: kuipa check --server {{ kuipa_ipa_server }}
+  environment: "{{ kuipa_env }}"
+  register: kuipa_check
+  changed_when: false
+  failed_when: "'advertisement verified' not in kuipa_check.stdout"
+
+- name: Display enrollment status
+  ansible.builtin.debug:
+    msg: "{{ kuipa_check.stdout }}"
+
+- name: Clean up enrollment string
+  ansible.builtin.file:
+    path: /tmp/kuipa-enroll.txt
+    state: absent
+
+- name: Detect attestation capabilities
+  when: kuipa_auto_register_workload
+  block:
+    - name: Check TPM
+      ansible.builtin.stat:
+        path: /dev/tpm0
+      register: tpm_check
+
+    - name: Check Keylime agent
+      ansible.builtin.systemd:
+        name: keylime_agent
+      register: keylime_check
+      ignore_errors: true
+
+    - name: Check Falco
+      ansible.builtin.systemd:
+        name: falco
+      register: falco_check
+      ignore_errors: true
+
+    - name: Build backend list
+      ansible.builtin.set_fact:
+        detected_backends: >-
+          {{
+            (['keylime'] if tpm_check.stat.exists and
+              keylime_check.status.ActiveState | default('') == 'active' else [])
+            + (['falco'] if falco_check.status.ActiveState | default('') == 'active' else [])
+          }}
+
+    - name: Get IPA principal
+      ansible.builtin.command:
+        cmd: klist -k /etc/krb5.keytab
+      register: keytab_out
+      changed_when: false
+
+    - name: Extract host principal
+      ansible.builtin.set_fact:
+        host_principal: >-
+          {{ keytab_out.stdout_lines |
+             select('match', '.*host/.*') | first |
+             regex_replace('.*\s+(host/.*)$', '\1') | trim }}
+
+    - name: Register workload with Arbiter Hub
+      ansible.builtin.uri:
+        url: "{{ kuipa_arbiter_hub_url }}/workloads"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ kuipa_arbiter_hub_token }}"
+        body_format: json
+        body:
+          ipa_principal: "{{ host_principal }}"
+          display_name: "{{ ansible_fqdn }}"
+          workload_type: "{{ kuipa_workload_type }}"
+          backend_types: "{{ detected_backends | default(['keylime']) }}"
+        status_code: [200, 201, 409]
+      register: workload_register
+      when: kuipa_arbiter_hub_url | length > 0
+
+    - name: Report registration
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Already registered' if workload_register.status | default(0) == 409
+             else 'Registered with backends: ' + (detected_backends | join('+')) }}
+      when: kuipa_arbiter_hub_url | length > 0

@@ -1,0 +1,39 @@
+---
+- name: Install ansible collections on controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Install required ansible collections
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install {{ item }} --force
+      loop:
+        - freeipa.ansible_freeipa
+        - containers.podman
+        - ansible.posix
+      register: coll_install
+      changed_when: "'was installed' in coll_install.stdout"
+
+- name: Configure container registry auth
+  hosts: arbiter_hub
+  become: true
+  vars:
+    registry_user: "{{ vault_registry_user | default('') }}"
+    registry_token: "{{ vault_registry_token | default('') }}"
+  tasks:
+    - name: Login to registry.redhat.io
+      ansible.builtin.command:
+        cmd: "podman login registry.redhat.io -u {{ registry_user }} -p {{ registry_token }}"
+      when: registry_user | length > 0
+      no_log: true
+
+    - name: Verify registry access
+      ansible.builtin.command:
+        cmd: podman pull --quiet registry.redhat.io/ubi10/ubi-minimal:latest
+      register: reg_pull
+      changed_when: false
+      failed_when: false
+
+    - name: Report registry status
+      ansible.builtin.debug:
+        msg: "registry.redhat.io: {{ 'authenticated' if reg_pull.rc == 0 else 'NOT authenticated — podman login needed' }}"

@@ -1,0 +1,35 @@
+---
+# Arbiter Hub 3-node demo inventory
+#
+# Usage:
+#   ansible-playbook -i inventory/arbiter-demo.yml rebuild.yaml
+#
+# Override IPs with:
+#   -e idm_ip=10.0.x.x -e hub_ip=10.0.x.x -e agent_ip=10.0.x.x
+all:
+  vars:
+    ansible_user: root
+    ansible_ssh_private_key_file: ~/.ssh/idm_ci_key
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # Set via -e or vault: -e ipaserver_admin_password=<password>
+    ipaserver_admin_password: "{{ vault_ipa_admin_password }}"
+    demo_user_password: "{{ vault_demo_user_password }}"
+    vault_arbiter_db_password: "{{ vault_db_password }}"
+
+  children:
+    ipaserver:
+      hosts:
+        idm.arbiter.demo:
+
+    ipaclient:
+      hosts:
+        hub.arbiter.demo:
+        agent.arbiter.demo:
+
+    arbiter_hub:
+      hosts:
+        hub.arbiter.demo:
+
+    arbiter_agent:
+      hosts:
+        agent.arbiter.demo:

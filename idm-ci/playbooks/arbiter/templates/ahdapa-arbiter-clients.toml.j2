@@ -1,0 +1,33 @@
+# Arbiter Hub OAuth2 clients for ahdapa
+# Managed by Ansible — manual edits will be overwritten on next deploy.
+# Appended to /etc/ahdapa/clients.toml after system-managed entries.
+
+# Arbiter Hub API — confidential client for server-to-server OIDC
+[[client]]
+client_id                  = "{{ arbiter_oidc_client_id }}"
+client_name                = "Arbiter Hub API"
+client_secret              = "{{ arbiter_oidc_client_secret }}"
+token_endpoint_auth_method = "client_secret_basic"
+scopes                     = {{ arbiter_oidc_api_scopes | to_json }}
+grant_types                = ["authorization_code", "client_credentials"]
+redirect_uris              = [
+    "https://{{ arbiter_hub_fqdn }}/",
+    "https://{{ arbiter_hub_fqdn }}/auth/callback",
+    "https://{{ arbiter_hub_fqdn }}/api/auth/callback",
+]
+skip_consent               = true
+
+# Arbiter Hub UI — public client for browser OIDC login
+[[client]]
+client_id                  = "{{ arbiter_oidc_ui_client_id }}"
+client_name                = "Arbiter Hub UI"
+token_endpoint_auth_method = "none"
+scopes                     = {{ arbiter_oidc_ui_scopes | to_json }}
+grant_types                = ["authorization_code", "refresh_token"]
+redirect_uris              = [
+    "https://{{ arbiter_hub_fqdn }}/",
+    "https://{{ arbiter_hub_fqdn }}/auth/callback",
+]
+skip_consent               = true
+access_token_ttl           = 3600
+refresh_token_ttl          = 28800

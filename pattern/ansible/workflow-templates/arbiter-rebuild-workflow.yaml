@@ -1,0 +1,267 @@
+---
+# AAP Workflow Template: Arbiter Hub Full Rebuild
+#
+# Maps to rebuild.yaml phases 0-10 with checkpoint gates.
+# Import: awx import < arbiter-rebuild-workflow.yaml
+# Or: awx-cli workflow create --name "Arbiter Hub - Full Rebuild" ...
+#
+# Phase 6 (Agent) and Phase 7 (EDA) run in parallel after Checkpoint 5,
+# then converge at Checkpoint 6+7 before Demo Enrichment.
+#
+# Survey prompts for secrets at launch time — no credentials in git.
+
+name: "Arbiter Hub - Full Rebuild"
+description: >-
+  Complete 11-phase rebuild of 3-node federation attestation demo.
+  Provisions IPA identity, Keylime TPM attestation, hub containers,
+  OIDC auth, agent services, EDA remediation, SPIRE/OBO federation,
+  and runs E2E validation.
+organization: "RHEL Security"
+inventory: "arbiter-hub-dynamic"
+allow_simultaneous: false
+ask_variables_on_launch: true
+extra_vars:
+  values_file: "values-global.yaml"
+  site_overlay: "values-bare-metal.yaml"
+
+survey_enabled: true
+survey_spec:
+  - question_name: "Domain"
+    question_description: "IPA domain for the demo environment"
+    variable: global_domain
+    type: text
+    default: "arbiter.demo"
+    required: true
+    min: 3
+    max: 64
+
+  - question_name: "IPA Admin Password"
+    question_description: "FreeIPA admin account password"
+    variable: identity_admin_password
+    type: password
+    required: true
+    min: 8
+    max: 128
+
+  - question_name: "Database Password"
+    question_description: "PostgreSQL password for arbiter-hub backend"
+    variable: hub_database_password
+    type: password
+    required: true
+    min: 8
+    max: 128
+
+  - question_name: "OIDC Client Secret"
+    question_description: "ahdapa OAuth2 client secret for arbiter-hub"
+    variable: identity_ahdapa_oidc_client_secret
+    type: password
+    required: true
+    min: 16
+    max: 256
+
+  - question_name: "Skip Phases"
+    question_description: "Comma-separated phase numbers to skip (e.g. 0,1,2)"
+    variable: skip_phases
+    type: text
+    default: ""
+    required: false
+    max: 32
+
+  - question_name: "Start From Phase"
+    question_description: "Resume from this phase (skips earlier phases)"
+    variable: start_from_phase
+    type: multiplechoice
+    default: "0"
+    required: false
+    choices:
+      - "0"
+      - "1"
+      - "2"
+      - "3"
+      - "4"
+      - "5"
+      - "6"
+      - "7"
+      - "8"
+      - "9"
+      - "10"
+
+webhook_service: "github"
+webhook_credential: null
+
+nodes:
+  # ─── Phase 0: Prerequisites ───────────────────────────────────
+  - identifier: phase0_prerequisites
+    unified_job_template:
+      name: "Arbiter - Phase 0 Prerequisites"
+      type: job_template
+    success_nodes:
+      - phase1_foundation
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 1: Foundation ───────────────────────────────────────
+  - identifier: phase1_foundation
+    unified_job_template:
+      name: "Arbiter - Phase 1 Foundation"
+      type: job_template
+    success_nodes:
+      - checkpoint1
+    failure_nodes:
+      - notify_failure
+
+  - identifier: checkpoint1
+    unified_job_template:
+      name: "Arbiter - Checkpoint 1 Verify"
+      type: job_template
+    success_nodes:
+      - phase2_identity
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 2: Identity ────────────────────────────────────────
+  - identifier: phase2_identity
+    unified_job_template:
+      name: "Arbiter - Phase 2 Identity"
+      type: job_template
+    success_nodes:
+      - checkpoint2
+    failure_nodes:
+      - notify_failure
+
+  - identifier: checkpoint2
+    unified_job_template:
+      name: "Arbiter - Checkpoint 2 Verify"
+      type: job_template
+    success_nodes:
+      - phase3_attestation
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 3: Attestation ─────────────────────────────────────
+  - identifier: phase3_attestation
+    unified_job_template:
+      name: "Arbiter - Phase 3 Attestation"
+      type: job_template
+    success_nodes:
+      - checkpoint3
+    failure_nodes:
+      - notify_failure
+
+  - identifier: checkpoint3
+    unified_job_template:
+      name: "Arbiter - Checkpoint 3 Verify"
+      type: job_template
+    success_nodes:
+      - phase4_containers
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 4: Containers ──────────────────────────────────────
+  - identifier: phase4_containers
+    unified_job_template:
+      name: "Arbiter - Phase 4 Containers"
+      type: job_template
+    success_nodes:
+      - checkpoint4
+    failure_nodes:
+      - notify_failure
+
+  - identifier: checkpoint4
+    unified_job_template:
+      name: "Arbiter - Checkpoint 4 Verify"
+      type: job_template
+    success_nodes:
+      - phase5_oidc
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 5: OIDC ────────────────────────────────────────────
+  - identifier: phase5_oidc
+    unified_job_template:
+      name: "Arbiter - Phase 5 OIDC"
+      type: job_template
+    success_nodes:
+      - checkpoint5
+    failure_nodes:
+      - notify_failure
+
+  - identifier: checkpoint5
+    unified_job_template:
+      name: "Arbiter - Checkpoint 5 Verify"
+      type: job_template
+    success_nodes:
+      - phase6_agent
+      - phase7_eda
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 6 + 7: Agent & EDA (PARALLEL) ──────────────────────
+  - identifier: phase6_agent
+    unified_job_template:
+      name: "Arbiter - Phase 6 Agent"
+      type: job_template
+    success_nodes:
+      - checkpoint67_join
+    failure_nodes:
+      - notify_failure
+
+  - identifier: phase7_eda
+    unified_job_template:
+      name: "Arbiter - Phase 7 EDA"
+      type: job_template
+    success_nodes:
+      - checkpoint67_join
+    failure_nodes:
+      - notify_failure
+
+  - identifier: checkpoint67_join
+    unified_job_template:
+      name: "Arbiter - Checkpoint 6+7 Verify"
+      type: job_template
+    all_parents_must_converge: true
+    success_nodes:
+      - phase8_demo
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 8: Demo Enrichment ─────────────────────────────────
+  - identifier: phase8_demo
+    unified_job_template:
+      name: "Arbiter - Phase 8 Demo Enrichment"
+      type: job_template
+    success_nodes:
+      - phase9_federation
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 9: Federation ──────────────────────────────────────
+  - identifier: phase9_federation
+    unified_job_template:
+      name: "Arbiter - Phase 9 Federation"
+      type: job_template
+    success_nodes:
+      - phase10_validation
+    failure_nodes:
+      - notify_failure
+
+  # ─── Phase 10: Validation ─────────────────────────────────────
+  - identifier: phase10_validation
+    unified_job_template:
+      name: "Arbiter - Phase 10 Validation"
+      type: job_template
+    success_nodes:
+      - notify_success
+    failure_nodes:
+      - notify_failure
+
+  # ─── Notifications ────────────────────────────────────────────
+  - identifier: notify_success
+    unified_job_template:
+      name: "Arbiter - Notify Success"
+      type: job_template
+
+  - identifier: notify_failure
+    unified_job_template:
+      name: "Arbiter - Notify Failure"
+      type: job_template

@@ -1,0 +1,236 @@
+---
+# oidc-configure.yaml — Configure OIDC authentication for Arbiter Hub
+#
+# Play 1 (ipaserver): Register ahdapa OAuth2 clients, CORS headers, attestation groups
+# Play 2 (ipaclient/hub): OIDC quadlet drop-ins, IPA CA trust
+#
+# Requires: ansible-freeipa collection (ipagroup, ipadelegation modules)
+#
+# Usage:
+#   ansible-playbook -i inventory oidc-configure.yaml \
+#     -e arbiter_oidc_client_secret=<secret>
+
+###############################################################################
+# Play 1 — IPA server: ahdapa clients, CORS, attestation groups
+###############################################################################
+- name: Configure OIDC on IPA server
+  hosts: ipaserver
+  become: true
+  collections:
+    - freeipa.ansible_freeipa
+  vars:
+    ipaadmin_password: "{{ ipaserver_admin_password }}"
+    arbiter_hub_fqdn: "{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}"
+    arbiter_idm_fqdn: "{{ ansible_fqdn }}"
+    arbiter_oidc_client_id: "arbiter-hub"
+    arbiter_oidc_client_secret: ""
+    arbiter_oidc_ui_client_id: "arbiter-hub-ui"
+    arbiter_oidc_api_scopes:
+      - openid
+      - profile
+      - attestation-admin
+      - attestation-operator
+      - attestation-viewer
+      - attestation-agent
+      - attestation-pipeline
+    arbiter_oidc_ui_scopes:
+      - openid
+      - profile
+      - offline_access
+      - attestation-admin
+      - attestation-operator
+      - attestation-viewer
+
+  tasks:
+    - name: Validate client secret is set
+      ansible.builtin.assert:
+        that:
+          - arbiter_oidc_client_secret | length > 0
+        fail_msg: "arbiter_oidc_client_secret must be set"
+
+    # --- Attestation groups (ansible-freeipa) ---
+    - name: Create attestation RBAC groups
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.desc }}"
+        state: present
+      loop:
+        - { name: attestation-admin, desc: "Arbiter Hub administrators" }
+        - { name: attestation-operator, desc: "Arbiter Hub operators" }
+        - { name: attestation-viewer, desc: "Arbiter Hub viewers" }
+        - { name: attestation-agent, desc: "Arbiter Hub agent workloads" }
+        - { name: attestation-pipeline, desc: "Arbiter Hub CI/CD pipelines" }
+
+    - name: Add admin user to attestation-admin group
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: attestation-admin
+        user:
+          - admin
+        action: member
+
+    # --- Delegation groups (ansible-freeipa) ---
+    - name: Create OBO delegation groups
+      ipagroup:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        description: "{{ item.desc }}"
+        state: present
+      loop:
+        - { name: arbiter-hub-delegation, desc: "Arbiter Hub OBO delegation" }
+        - { name: eda-delegation, desc: "EDA controller OBO delegation" }
+        - { name: agent-delegation, desc: "Agent workload OBO delegation" }
+
+    # --- Delegation rules (ansible-freeipa) ---
+    - name: Create OBO delegation rules
+      ipadelegation:
+        ipaadmin_password: "{{ ipaadmin_password }}"
+        name: "{{ item.name }}"
+        permission: read
+        attribute:
+          - uid
+          - memberof
+        group: "{{ item.group }}"
+        membergroup: "{{ item.membergroup }}"
+        state: present
+      loop:
+        - name: arbiter-hub-operator-delegation
+          group: attestation-operator
+          membergroup: arbiter-hub-delegation
+        - name: eda-pipeline-delegation
+          group: attestation-pipeline
+          membergroup: eda-delegation
+        - name: agent-service-delegation
+          group: attestation-agent
+          membergroup: agent-delegation
+
+    # --- ahdapa OAuth2 client registration ---
+    # ahdapa reads a single clients.toml; use blockinfile to add/update entries.
+    - name: Generate Arbiter Hub client block
+      ansible.builtin.template:
+        src: templates/ahdapa-arbiter-clients.toml.j2
+        dest: /tmp/arbiter-hub-clients.toml
+        mode: "0600"
+      changed_when: false
+
+    - name: Register Arbiter Hub clients in ahdapa clients.toml
+      ansible.builtin.blockinfile:
+        path: /etc/ahdapa/clients.toml
+        marker: "# {mark} ANSIBLE MANAGED — Arbiter Hub OAuth2 clients"
+        block: "{{ lookup('template', 'templates/ahdapa-arbiter-clients.toml.j2') }}"
+      notify: Restart ahdapa
+
+    - name: Clean up temp file
+      ansible.builtin.file:
+        path: /tmp/arbiter-hub-clients.toml
+        state: absent
+      changed_when: false
+
+    # --- CORS for OIDC endpoints ---
+    - name: Deploy CORS config for ahdapa endpoints
+      ansible.builtin.template:
+        src: templates/ipa-idp-cors.conf.j2
+        dest: /etc/httpd/conf.d/ipa-idp-cors.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart httpd
+
+    - name: Ensure OPTIONS preflight returns 204 in idp proxy
+      ansible.builtin.blockinfile:
+        path: /etc/httpd/conf.d/ipa-idp-proxy.conf
+        insertafter: 'Require all granted'
+        marker: "# {mark} ANSIBLE MANAGED — CORS OPTIONS preflight"
+        block: |
+          RewriteEngine On
+          RewriteCond %{REQUEST_METHOD} =OPTIONS
+          RewriteRule .* - [R=204,L]
+      notify: Restart httpd
+
+  handlers:
+    - name: Restart ahdapa
+      ansible.builtin.systemd:
+        name: ahdapa
+        state: restarted
+
+    - name: Restart httpd
+      ansible.builtin.systemd:
+        name: httpd
+        state: restarted
+
+###############################################################################
+# Play 2 — Hub node: OIDC quadlet drop-ins + IPA CA trust
+###############################################################################
+- name: Configure OIDC on Arbiter Hub node
+  hosts: ipaclient
+  become: true
+  vars:
+    arbiter_idm_fqdn: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] | default('idm.arbiter.demo') }}"
+    arbiter_hub_fqdn: "{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}"
+    arbiter_oidc_client_id: "arbiter-hub"
+    arbiter_oidc_ui_client_id: "arbiter-hub-ui"
+    arbiter_oidc_api_scopes:
+      - openid
+      - profile
+      - attestation-admin
+      - attestation-operator
+      - attestation-viewer
+      - attestation-agent
+      - attestation-pipeline
+    arbiter_oidc_ui_scopes:
+      - openid
+      - profile
+      - offline_access
+      - attestation-admin
+      - attestation-operator
+      - attestation-viewer
+    arbiter_quadlet_dir: /etc/containers/systemd
+
+  tasks:
+    - name: Create quadlet drop-in directory
+      ansible.builtin.file:
+        path: "{{ arbiter_quadlet_dir }}/arbiter-hub-api.container.d"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy OIDC configuration drop-in
+      ansible.builtin.template:
+        src: templates/arbiter-hub-oidc.conf.j2
+        dest: "{{ arbiter_quadlet_dir }}/arbiter-hub-api.container.d/oidc.conf"
+        mode: "0644"
+      notify: Restart arbiter api
+
+    - name: Copy IPA CA certificate for OIDC JWKS validation
+      ansible.builtin.copy:
+        src: /etc/ipa/ca.crt
+        dest: /etc/pki/tls/certs/ipa-ca.crt
+        remote_src: true
+        mode: "0644"
+
+    - name: Deploy IPA CA trust drop-in
+      ansible.builtin.template:
+        src: templates/arbiter-hub-ipa-ca.conf.j2
+        dest: "{{ arbiter_quadlet_dir }}/arbiter-hub-api.container.d/ipa-ca.conf"
+        mode: "0644"
+      notify: Restart arbiter api
+
+    - name: Add IDM host to /etc/hosts for container DNS
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*{{ arbiter_idm_fqdn }}$'
+        line: "{{ hostvars[groups['ipaserver'][0]]['ansible_default_ipv4']['address'] }} {{ arbiter_idm_fqdn }}"
+        state: present
+
+  handlers:
+    - name: Restart arbiter api
+      ansible.builtin.systemd:
+        daemon_reload: true
+      changed_when: true
+      notify: Start arbiter api
+
+    - name: Start arbiter api
+      ansible.builtin.systemd:
+        name: arbiter-hub-api
+        state: restarted
+      when: inventory_hostname in groups.get('arbiter_hub', [])

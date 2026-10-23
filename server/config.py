@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     mcp_port: int = 8401
 
     keylime_verifier_url: str = ""
+    keylime_registrar_url: str = ""
     keylime_ca_cert: str = ""
     keylime_client_cert: str = ""
     keylime_client_key: str = ""
@@ -16,12 +17,18 @@ class Settings(BaseSettings):
     trustee_url: str = ""
     cosign_binary: str = "cosign"
     cosign_public_key: str = ""
+    cosign_insecure_ignore_tlog: bool = False
+    cosign_allow_http_registry: bool = False
     falco_healthz_url: str = ""
+    measured_boot_enabled: bool = False
     rekor_url: str = ""
     rhtas_fulcio_url: str = ""
     rhtas_tuf_root: str = ""
 
     auth_mode: str = "dev"
+    local_admin_enabled: bool = False
+    local_admin_password: str = ""
+    local_signing_key: str = ""
 
     oidc_issuer: str = ""
     oidc_client_id: str = "arbiter-hub"
@@ -33,6 +40,8 @@ class Settings(BaseSettings):
     oidc_jwks_cache_ttl: int = 3600
     oidc_actor_type_claim: str = ""
     oidc_scopes: str = "openid profile"
+    oidc_ui_client_id: str = ""
+    oidc_ui_scopes: str = ""
 
     kbs_encryption_key_file: str = "/etc/arbiter/kbs.key"
     policy_file: str = "/etc/arbiter/policies.yaml"

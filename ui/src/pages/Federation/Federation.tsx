@@ -70,7 +70,7 @@ function TopologyContent() {
   const [selectedId] = useState<string | null>(null);
 
   const { data: workloadsData, isLoading: wlLoading } = useGetWorkloadsQuery(
-    { count: 200 },
+    { count: 100 },
     { pollingInterval: 30000 }
   );
   const { data: backendsData, isLoading: beLoading } = useGetBackendsQuery(

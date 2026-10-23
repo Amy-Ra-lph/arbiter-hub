@@ -1,0 +1,57 @@
+---
+# Revocation chain: destroy kuipa credentials on a host.
+# Called by EDA or manually after Arbiter Hub marks a workload REVOKED.
+#
+# Required variables:
+#   target_host  - the host to revoke
+#
+# Example:
+#   ansible-playbook kuipa-revoke.yml \
+#     -i inventory/arbiter-demo.yml \
+#     -e target_host=compromised.arbiter.demo \
+#     -e ipaadmin_password=Secret123
+
+- name: Revoke kuipa credentials
+  hosts: "{{ target_host }}"
+  become: true
+  tasks:
+    - name: Run kuipa leave (remove PQ state)
+      ansible.builtin.command:
+        cmd: kuipa leave
+      register: kuipa_leave
+      changed_when: kuipa_leave.rc == 0
+      failed_when: false
+
+    - name: Remove sealed keytab artifacts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/krb5.keytab.sealed
+        - /var/lib/ipa-client/ku/
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "kuipa state removed from {{ ansible_fqdn }}"
+
+- name: Disable host in IPA
+  hosts: ipaserver
+  become: true
+  tasks:
+    - name: Authenticate as admin
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipaadmin_password }}"
+      changed_when: false
+      no_log: true
+
+    - name: Disable host principal
+      ansible.builtin.command:
+        cmd: "ipa host-disable {{ target_host }}"
+      register: host_disable
+      changed_when: "'Disabled' in host_disable.stdout"
+      failed_when: host_disable.rc != 0 and 'already disabled' not in host_disable.stderr
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ target_host }} disabled in IPA — keytab invalidated, PKINIT locked out"

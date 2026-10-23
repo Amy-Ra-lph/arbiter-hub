@@ -10,9 +10,13 @@ import History from "src/pages/History/History";
 import Policies from "src/pages/Policies/Policies";
 import KBSSecrets from "src/pages/KBSSecrets/KBSSecrets";
 import AuditLog from "src/pages/AuditLog/AuditLog";
+import Events from "src/pages/Events/Events";
+import StateTransitions from "src/pages/Transitions/StateTransitions";
+import Signals from "src/pages/Signals/Signals";
 import CveOverview from "src/pages/Vulnerabilities/CveOverview";
 import AffectedWorkloads from "src/pages/Vulnerabilities/AffectedWorkloads";
 import Federation from "src/pages/Federation/Federation";
+import Remediation from "src/pages/Remediation/Remediation";
 import { PageSection, Content, ContentVariants } from "@patternfly/react-core";
 
 const Placeholder: React.FC<{ name: string }> = ({ name }) => (
@@ -38,8 +42,12 @@ const App: React.FC = () => {
           <Route path="/policies" element={<Policies />} />
           <Route path="/policies/:policyId" element={<Placeholder name="Policy Detail" />} />
           <Route path="/kbs" element={<KBSSecrets />} />
+          <Route path="/events" element={<Events />} />
+          <Route path="/transitions" element={<StateTransitions />} />
           <Route path="/audit" element={<AuditLog />} />
+          <Route path="/signals" element={<Signals />} />
           <Route path="/federation" element={<Federation />} />
+          <Route path="/remediation" element={<Remediation />} />
           </Route>
         </Route>
       </Routes>

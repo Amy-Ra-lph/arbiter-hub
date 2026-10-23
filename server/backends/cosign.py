@@ -22,26 +22,34 @@ class CosignBackend:
         fulcio_url: str = "",
         tuf_root: str = "",
         public_key: str = "",
+        insecure_ignore_tlog: bool = False,
+        allow_http_registry: bool = False,
     ):
         self._binary = cosign_binary
         self._rekor_url = rekor_url
         self._fulcio_url = fulcio_url
         self._tuf_root = tuf_root
         self._public_key = public_key
+        self._insecure_ignore_tlog = insecure_ignore_tlog
+        self._allow_http_registry = allow_http_registry
 
     async def verify(self, workload: Workload) -> AttestationResult:
-        artifact_ref = workload.metadata_.get("artifact_ref", "")
+        artifact_ref = workload.artifact_ref or workload.metadata_.get("artifact_ref", "")
         if not artifact_ref:
             return AttestationResult(
                 verdict=AttestationVerdict.ERROR,
                 backend="cosign",
                 evidence_hash="",
-                detail={"error": "no artifact_ref in workload metadata"},
+                detail={"error": "no artifact_ref on workload"},
             )
         try:
-            cmd = [self._binary, "verify", "--yes"]
+            cmd = [self._binary, "verify"]
             if self._public_key:
                 cmd.extend(["--key", self._public_key])
+            if self._insecure_ignore_tlog:
+                cmd.append("--insecure-ignore-tlog")
+            if self._allow_http_registry:
+                cmd.append("--allow-http-registry")
             cmd.append(artifact_ref)
             if self._rekor_url:
                 cmd.extend(["--rekor-url", self._rekor_url])
@@ -108,13 +116,22 @@ class CosignBackend:
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            if proc.returncode == 0:
+                lines = stdout.decode().strip().split("\n")
+                version_line = next(
+                    (l.strip() for l in lines if "GitVersion:" in l),
+                    "",
+                )
+                ver = version_line.split(":", 1)[-1].strip() if version_line else "unknown"
+                key_status = "key loaded" if self._public_key else "no key"
+                detail = f"{ver}, {key_status}"
+            else:
+                detail = "cosign unhealthy"
             return BackendHealth(
                 healthy=proc.returncode == 0,
                 backend="cosign",
                 last_check=datetime.now(UTC),
-                detail=stdout.decode().strip().split("\n")[0]
-                if proc.returncode == 0
-                else "cosign unhealthy",
+                detail=detail,
             )
         except Exception as e:
             return BackendHealth(

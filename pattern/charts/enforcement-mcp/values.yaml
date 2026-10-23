@@ -1,0 +1,26 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/rhel-security/enforcement-mcp
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8100
+
+mode: production
+
+# SELinux operations require host-level access
+privileged:
+  enabled: true
+  hostPID: false
+  hostNetwork: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
