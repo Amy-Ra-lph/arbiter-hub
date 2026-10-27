@@ -3,24 +3,26 @@
     path: /usr/local/bin/kuipa
   register: kuipa_binary
 
-- name: Copy kuipa binary from IPA server
-  ansible.builtin.command:
-    cmd: >-
-      scp -o StrictHostKeyChecking=no
-      root@{{ kuipa_ipa_server }}:/usr/local/bin/{{ item }}
-      /usr/local/bin/{{ item }}
+- name: Fetch kuipa binaries from IPA server to controller
+  ansible.builtin.fetch:
+    src: "/usr/local/bin/{{ item }}"
+    dest: "/tmp/kuipa-binaries/{{ item }}"
+    flat: true
   loop:
     - kuipa
     - kuipa-unseal
+  delegate_to: "{{ kuipa_ipa_server }}"
   when: not kuipa_binary.stat.exists
 
-- name: Set binary permissions
-  ansible.builtin.file:
-    path: "/usr/local/bin/{{ item }}"
+- name: Copy kuipa binaries to client
+  ansible.builtin.copy:
+    src: "/tmp/kuipa-binaries/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
     mode: "0755"
   loop:
     - kuipa
     - kuipa-unseal
+  when: not kuipa_binary.stat.exists
 
 - name: Verify connectivity to kuipad
   ansible.builtin.uri:
@@ -36,6 +38,28 @@
     dest: /tmp/kuipa-enroll.txt
     mode: "0600"
   when: kuipa_enrollment_string | length > 0
+
+- name: Check if host already has IPA keytab
+  ansible.builtin.stat:
+    path: /etc/krb5.keytab
+  register: existing_keytab
+
+- name: Disable host in IPA for re-enrollment
+  ansible.builtin.command:
+    cmd: "ipa host-disable {{ ansible_fqdn }}"
+  delegate_to: "{{ kuipa_ipa_server }}"
+  register: host_disable
+  changed_when: "'Disabled' in host_disable.stdout"
+  failed_when: host_disable.rc != 0 and 'already disabled' not in host_disable.stderr
+  when: existing_keytab.stat.exists and kuipa_force_reenroll | default(false)
+
+- name: Reset host OTP for re-enrollment
+  ansible.builtin.command:
+    cmd: "ipa host-mod {{ ansible_fqdn }} --random"
+  delegate_to: "{{ kuipa_ipa_server }}"
+  register: host_reset
+  changed_when: "'Modified host' in host_reset.stdout"
+  when: existing_keytab.stat.exists and kuipa_force_reenroll | default(false)
 
 - name: Set KUIPA_ROOT for isolated enrollment
   ansible.builtin.set_fact:

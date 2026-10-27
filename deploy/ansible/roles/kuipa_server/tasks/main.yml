@@ -146,32 +146,51 @@
     remote_src: true
   notify: restart_httpd
 
-- name: Create SELinux policy for kuipa socket
-  ansible.builtin.shell:
-    cmd: |
-      grep "denied.*kuipad.sock" /var/log/audit/audit.log 2>/dev/null |
-        audit2allow -M kuipa-httpd && semodule -i kuipa-httpd.pp
-    creates: /root/kuipa-httpd.pp
-  ignore_errors: true
-
 - name: Create socket runtime directory
   ansible.builtin.file:
     path: /run/ipa
     state: directory
     mode: "0755"
 
-- name: Start kuipad
-  ansible.builtin.shell:
-    cmd: |
-      pkill kuipad || true
-      sleep 1
-      rm -f {{ kuipa_socket_path }}
-      nohup kuipad serve > {{ kuipa_log_path }} 2>&1 &
-      sleep 2
-      chgrp apache {{ kuipa_socket_path }}
-      chmod 660 {{ kuipa_socket_path }}
-  args:
-    creates: "{{ kuipa_socket_path }}"
+- name: Install kuipad systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/kuipad.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=kuipa PQ credential server
+      After=ipa.service httpd.service
+      Requires=httpd.service
+
+      [Service]
+      Type=simple
+      ExecStartPre=/usr/bin/rm -f {{ kuipa_socket_path }}
+      ExecStart=/usr/local/bin/kuipad serve --config {{ kuipa_config_path }}
+      ExecStartPost=/bin/bash -c 'for i in $(seq 1 20); do [ -S {{ kuipa_socket_path }} ] && break; sleep 0.5; done; chown root:apache {{ kuipa_socket_path }}; chmod 0770 {{ kuipa_socket_path }}; chcon -t httpd_var_run_t {{ kuipa_socket_path }}'
+      Environment=KRB5_KTNAME={{ kuipa_key_dir }}/kuipa.keytab
+      Restart=on-failure
+      RestartSec=3
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart_kuipad
+
+- name: Enable and start kuipad
+  ansible.builtin.systemd:
+    name: kuipad
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Wait for socket
+  ansible.builtin.wait_for:
+    path: "{{ kuipa_socket_path }}"
+    timeout: 15
+
+- name: Ensure socket SELinux context
+  ansible.builtin.command:
+    cmd: chcon -t httpd_var_run_t {{ kuipa_socket_path }}
+  changed_when: false
 
 - name: Generate enrollment string
   ansible.builtin.command:
@@ -183,11 +202,11 @@
   ansible.builtin.debug:
     msg: "kuipa enrollment string: {{ kuipa_enrollment_string.stdout }}"
 
-- name: Restart httpd
+- name: Restart httpd for proxy config
   ansible.builtin.systemd:
     name: httpd
     state: restarted
-  listen: restart_httpd
+  changed_when: true
 
 - name: Verify kuipa endpoint
   ansible.builtin.uri:

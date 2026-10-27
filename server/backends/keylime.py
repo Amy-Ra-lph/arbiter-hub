@@ -180,11 +180,41 @@ class KeylimeBackend:
                 url = f"{self._verifier_url}/v2.5/agents/{agent_id}"
                 resp = await client.post(url, json=payload)
                 if resp.status_code == 409:
-                    # Agent exists (e.g. verifier PULL mode auto-enrolled
-                    # with ip=None). Delete and re-add with correct fields.
+                    # Agent already in verifier — check if healthy before
+                    # destructive delete/re-add (which corrupts verifier_ip
+                    # when Hub runs inside a container network).
+                    existing = await client.get(url)
+                    if existing.status_code == 200:
+                        results = existing.json().get("results", {})
+                        op_state = results.get("operational_state", -1)
+                        if op_state in (3, 4) or (
+                            isinstance(op_state, str)
+                            and op_state.lower() in ("get quote", "provide v")
+                        ):
+                            log.info(
+                                "Agent %s already enrolled and attesting (state=%s), skipping re-enrollment",
+                                agent_id,
+                                op_state,
+                            )
+                            return EnrollResult(
+                                success=True,
+                                backend="keylime",
+                                detail={
+                                    "agent_id": agent_id,
+                                    "ip": agent_ip,
+                                    "port": agent_port,
+                                    "already_enrolled": True,
+                                    "operational_state": op_state,
+                                },
+                            )
+                    # Agent exists but not healthy — delete and re-add
                     del_resp = await client.delete(url)
                     if del_resp.status_code in (200, 202):
-                        await asyncio.sleep(1)
+                        for _ in range(10):
+                            await asyncio.sleep(1)
+                            check = await client.get(url)
+                            if check.status_code == 404:
+                                break
                         resp = await client.post(url, json=payload)
                 resp.raise_for_status()
                 return EnrollResult(

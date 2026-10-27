@@ -35,6 +35,7 @@
 #      (after workload registration — OIDC blocks unauthenticated POSTs)
 #   9  Federation    — SPIRE, OAuth2 scopes, OBO exchange        (~3-5 min)
 #  10  Validation    — health check, 12 E2E tests                (~1-2 min)
+#  11  kuipa + demo  — PQ credential server, fleet enroll, demos (~3-5 min)
 
 ###############################################################################
 # PHASE 0 — Prerequisites: /etc/hosts, collections, registry    (~1-2 min)
@@ -641,6 +642,141 @@
   tags: [phase10, validation]
   ansible.builtin.import_playbook: e2e-test.yaml
 
+###############################################################################
+# PHASE 11 — kuipa + demo scripts                                (~3-5 min)
+#
+# Depends on: Phase 2 (IPA), Phase 3 (Keylime), Phase 10 (validated)
+# kuipad on idm, kuipa client on agent, demo scripts on hub
+###############################################################################
+
+- name: "PHASE 11a — kuipad server (PQ credential lifecycle)"
+  tags: [phase11, kuipa]
+  hosts: ipaserver
+  become: true
+  pre_tasks:
+    - name: Authenticate as IPA admin
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipaadmin_password | default(vault_ipa_admin_password) }}"
+      changed_when: false
+      no_log: true
+  roles:
+    - role: ../../../deploy/ansible/roles/kuipa_server
+
+- name: "PHASE 11b — kuipa client enrollment"
+  tags: [phase11, kuipa]
+  hosts: arbiter_agent
+  become: true
+  vars:
+    kuipa_enrollment_string: "{{ hostvars[groups['ipaserver'][0]]['kuipa_enrollment_string']['stdout'] }}"
+    kuipa_enroll_method: "ccache"
+    kuipa_force_reenroll: true
+    kuipa_auto_register_workload: true
+    kuipa_arbiter_hub_url: "http://{{ hostvars[groups['arbiter_hub'][0]]['ansible_host'] }}:8400"
+    kuipa_workload_type: "service"
+  pre_tasks:
+    - name: Get admin ticket for ccache enrollment
+      ansible.builtin.command:
+        cmd: kinit admin
+        stdin: "{{ ipaadmin_password | default(vault_ipa_admin_password) }}"
+      changed_when: false
+      no_log: true
+  roles:
+    - role: ../../../deploy/ansible/roles/kuipa_client
+
+- name: "PHASE 11c — Deploy demo scripts to hub"
+  tags: [phase11, demo-scripts]
+  hosts: arbiter_hub
+  become: true
+  tasks:
+    - name: Create demo directory
+      ansible.builtin.file:
+        path: /root/demo
+        state: directory
+        mode: "0755"
+
+    - name: Copy demo scenarios
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../../../../demo/scenarios/"
+        dest: /root/demo/
+        recursive: true
+      delegate_to: localhost
+
+    - name: Set demo scripts executable
+      ansible.builtin.shell:
+        cmd: chmod +x /root/demo/*.sh /root/demo/lib/*.sh
+      changed_when: true
+
+# --- Checkpoint 11 ---
+- name: "CHECKPOINT 11 — kuipa + demos verified"
+  tags: [phase11, checkpoint]
+  hosts: ipaserver
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP11: kuipad systemd active"
+      ansible.builtin.command:
+        cmd: systemctl is-active kuipad
+      register: cp11_kuipad
+      changed_when: false
+      failed_when: cp11_kuipad.stdout != 'active'
+
+    - name: "CP11: kuipa /ipa/ku/adv endpoint"
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host | default(inventory_hostname) }}/ipa/ku/adv"
+        validate_certs: false
+        status_code: 200
+
+    - name: "CP11 PASS (idm)"
+      ansible.builtin.debug:
+        msg: "kuipad active, advertisement endpoint responding"
+
+- name: "CHECKPOINT 11 — kuipa client verified"
+  tags: [phase11, checkpoint]
+  hosts: arbiter_agent
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP11: kuipa binary present"
+      ansible.builtin.stat:
+        path: /usr/local/bin/kuipa
+      register: cp11_binary
+      failed_when: not cp11_binary.stat.exists
+
+    - name: "CP11: kuipa advertisement verified"
+      ansible.builtin.command:
+        cmd: "kuipa check --server {{ groups['ipaserver'][0] }}"
+      register: cp11_check
+      changed_when: false
+      failed_when: "'advertisement verified' not in cp11_check.stdout"
+
+    - name: "CP11 PASS (agent)"
+      ansible.builtin.debug:
+        msg: "kuipa enrolled, PQ credentials active"
+
+- name: "CHECKPOINT 11 — Demo scripts verified"
+  tags: [phase11, checkpoint]
+  hosts: arbiter_hub
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "CP11: demo scripts present"
+      ansible.builtin.stat:
+        path: /root/demo/{{ item }}
+      register: cp11_demos
+      failed_when: not cp11_demos.stat.exists
+      loop:
+        - exec-demo.sh
+        - dev-demo.sh
+        - ciso-demo.sh
+        - rsac-demo.sh
+        - env/rebuild.env
+        - lib/demo-lib.sh
+
+    - name: "CP11 PASS (hub)"
+      ansible.builtin.debug:
+        msg: "4 persona demos + env + lib deployed to /root/demo/"
+
 # --- Final Report ---
 - name: "REBUILD COMPLETE — Final status"
   tags: [phase10, checkpoint, always]
@@ -684,4 +820,6 @@
           ║
           ║  Demo users: alice/bob/carol/dave/eve (pw: set via vault_demo_user_password)
           ║  IPA admin:  admin (pw: set via vault_ipa_admin_password)
+          ║  kuipad:     systemd active on idm
+          ║  Demo:       /root/demo/ on hub (exec/dev/ciso/rsac)
           ╚══════════════════════════════════════════════════════════════╝
