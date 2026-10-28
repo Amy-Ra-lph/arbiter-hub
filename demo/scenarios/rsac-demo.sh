@@ -46,9 +46,10 @@ note "No provenance — no way to prove who built what, or when"
 echo ""
 echo -e "${BOLD}This is the 2027 version of 'just run as root.'${NC}"
 echo ""
-note "Every major framework ships agents without a trust model."
-note "The implicit assumption: if you deployed it, it's trusted."
-note "That assumption doesn't survive production."
+note "The industry is starting to respond — IBM shipped Agent Identity last week."
+note "But the response so far is identity-only: OAuth tokens, secrets vaults, audit logs."
+note "No hardware root of trust. No policy enforcement below the app. No post-quantum crypto."
+note "Identity is necessary. Identity alone isn't trust."
 
 pause
 
@@ -262,6 +263,10 @@ note "    Audit trails, provenance, risk-graduated trust tiers = compliance evid
 echo ""
 echo -e "  ${GREEN}▸${NC} ${BOLD}NIST SP 800-207${NC} (Zero Trust Architecture)"
 note "    Per-workload identity, continuous attestation, least-privilege policy."
+echo ""
+echo -e "  ${GREEN}▸${NC} ${BOLD}Market validation${NC} (IBM Agent Identity, GA Oct 2026)"
+note "    IBM Verify + HashiCorp Vault + watsonx. Identity + credential brokering."
+note "    We add what they don't: hardware attestation, graduated policy enforcement, PQ signing."
 echo ""
 note "Not future work — the demo you just saw implements these patterns today."
 

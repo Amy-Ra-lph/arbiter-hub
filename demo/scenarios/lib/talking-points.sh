@@ -38,11 +38,12 @@ ciso_points() {
 rsac_points() {
     local act="$1"
     case "$act" in
-        1) talking_point "The industry is building the 2027 version of 'just run as root.'" ;;
+        1) talking_point "The industry is building the 2027 version of 'just run as root.' IBM shipped identity-only — we go deeper." ;;
         2) talking_point "Six layers, open standards at each." ;;
         3) talking_point "Hardware-rooted trust in 30 seconds." ;;
         4) talking_point "Identity-native signing. sigstore model but with Kerberos realm authority." ;;
         5) talking_point "Automated trust revocation." ;;
-        6) talking_point "The components are open. The architecture is composable. What's your trust model?" ;;
+        6) talking_point "IBM validates the category. We differentiate on attestation, policy depth, and PQ provenance." ;;
+        7) talking_point "The components are open. The architecture is composable. What's your trust model?" ;;
     esac
 }
