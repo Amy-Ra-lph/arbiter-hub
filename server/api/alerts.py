@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
@@ -22,6 +23,11 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 ACTIONABLE_PRIORITIES = {"Emergency", "Alert", "Critical", "Error", "Warning"}
+
+_ALERT_TRUSTED_IPS = {"127.0.0.1", "::1", "10.89.0.1"}
+_extra = os.environ.get("ARBITER_ALERT_TRUSTED_IPS", "")
+if _extra:
+    _ALERT_TRUSTED_IPS.update(ip.strip() for ip in _extra.split(",") if ip.strip())
 
 
 async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
@@ -114,7 +120,7 @@ async def receive_falco_alert(
 ):
     # Falco HTTP output cannot send Bearer tokens — accept from localhost
     client = request.client
-    if client and client.host not in ("127.0.0.1", "::1", "10.89.0.1"):
+    if client and client.host not in _ALERT_TRUSTED_IPS:
         caller = await get_caller(request)
         from server.auth.rbac import check_permission
 
