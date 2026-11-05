@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     local_admin_password: str = ""
     local_signing_key: str = ""
 
+    spnego_enabled: bool = False
+    spnego_keytab: str = "/etc/arbiter-hub/http.keytab"
+    spnego_principal: str = ""
+
     oidc_issuer: str = ""
     oidc_client_id: str = "arbiter-hub"
     oidc_audience: str = "arbiter-hub"

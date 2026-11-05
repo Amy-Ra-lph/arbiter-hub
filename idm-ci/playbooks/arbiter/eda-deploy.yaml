@@ -9,8 +9,11 @@
     eda_dir: "/opt/arbiter-eda"
     eda_port: 5001
     arbiter_api_url: "http://localhost:8400"
-    arbiter_webhook_secret: "{{ vault_arbiter_webhook_secret | default(lookup('password', '/dev/null chars=ascii_letters,digits length=32')) }}"
+    arbiter_webhook_secret_generated: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=32') }}"
+    arbiter_service_password: "{{ vault_arbiter_service_password | default(lookup('password', '/dev/null chars=ascii_letters,digits length=32')) }}"
     agent_host: "{{ hostvars[groups['arbiter_agent'][0]]['ansible_default_ipv4']['address'] | default('agent.arbiter.demo') }}"
+    hub_hostname: "{{ inventory_hostname }}"
+    agent_hostname: "{{ groups['arbiter_agent'][0] }}"
   tasks:
     - name: Install EDA dependencies
       ansible.builtin.dnf:
@@ -80,37 +83,67 @@
         - re_attest.yml
         - forensic_collect.yml
 
-    - name: Create EDA inventory
-      ansible.builtin.copy:
-        dest: "{{ eda_dir }}/inventory/hosts.yml"
-        mode: "0644"
-        content: |
-          ---
-          all:
-            vars:
-              arbiter_api_url: {{ arbiter_api_url }}
-              arbiter_webhook_secret: {{ arbiter_webhook_secret }}
-            children:
-              server:
-                hosts:
-                  hub.arbiter.demo:
-                    ansible_connection: local
-              client:
-                hosts:
-                  agent.arbiter.demo:
-                    ansible_host: {{ agent_host }}
-
     - name: Create /etc/arbiter directory
       ansible.builtin.file:
         path: /etc/arbiter
         state: directory
         mode: "0755"
 
+    - name: Check for existing webhook secret
+      ansible.builtin.slurp:
+        src: /etc/arbiter/webhook-secret
+      register: existing_secret
+      failed_when: false
+
+    - name: Set webhook secret (preserve existing or generate new)
+      ansible.builtin.set_fact:
+        arbiter_webhook_secret: >-
+          {{ vault_arbiter_webhook_secret
+             | default(existing_secret.content | default('') | b64decode | trim)
+             | default(arbiter_webhook_secret_generated, true) }}
+
     - name: Store webhook secret
       ansible.builtin.copy:
         content: "{{ arbiter_webhook_secret }}"
         dest: /etc/arbiter/webhook-secret
         mode: "0600"
+
+    - name: Create EDA inventory
+      ansible.builtin.copy:
+        dest: "{{ eda_dir }}/inventory/hosts.yml"
+        mode: "0600"
+        content: |
+          ---
+          all:
+            vars:
+              arbiter_api_url: {{ arbiter_api_url }}
+              arbiter_webhook_secret: {{ arbiter_webhook_secret }}
+              arbiter_service_password: {{ arbiter_service_password }}
+            children:
+              server:
+                hosts:
+                  {{ hub_hostname }}:
+                    ansible_connection: local
+              client:
+                hosts:
+                  {{ agent_hostname }}:
+                    ansible_host: {{ agent_host }}
+
+    - name: Create API local-admin drop-in directory
+      ansible.builtin.file:
+        path: /etc/containers/systemd/arbiter-hub-api.container.d
+        state: directory
+        mode: "0755"
+
+    - name: Enable local admin auth for EDA service account
+      ansible.builtin.copy:
+        dest: /etc/containers/systemd/arbiter-hub-api.container.d/local-admin.conf
+        mode: "0600"
+        content: |
+          [Container]
+          Environment=ARBITER_LOCAL_ADMIN_ENABLED=true
+          Environment=ARBITER_LOCAL_ADMIN_PASSWORD={{ arbiter_service_password }}
+      notify: restart arbiter-hub-api
 
     - name: Create EDA systemd service
       ansible.builtin.copy:
@@ -164,3 +197,10 @@
           EDA controller: {{ eda_status.stdout }}.
           Webhook listener: port {{ eda_port }}.
           Secret stored at /etc/arbiter/webhook-secret.
+
+  handlers:
+    - name: restart arbiter-hub-api
+      ansible.builtin.systemd:
+        name: arbiter-hub-api
+        state: restarted
+        daemon_reload: true
