@@ -1,0 +1,13 @@
+[Unit]
+Description=Software TPM for Arbiter Hub (lab/demo)
+Before=keylime_verifier.service keylime_registrar.service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/swtpm-setup-arbiter
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

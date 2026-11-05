@@ -1,0 +1,18 @@
+[Unit]
+Description=Arbiter Hub EDA Controller (ansible-rulebook)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ansible-rulebook \
+  --rulebook /opt/arbiter-eda/rulebooks/attestation.yml \
+  --inventory /opt/arbiter-eda/inventory/hosts.yml \
+  --source-dir /opt/arbiter-eda/plugins/event_source
+WorkingDirectory=/opt/arbiter-eda
+Environment=ARBITER_WEBHOOK_SECRET=__WEBHOOK_SECRET__
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

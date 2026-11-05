@@ -1,0 +1,87 @@
+# Arbiter Hub IdM node — bootc image
+# FreeIPA server + Keylime verifier + swtpm + ahdapa OIDC
+# Based on idm-image-mode patterns (systemd firstboot, /var persistence)
+#
+# Build:
+#   podman build -t quay.io/rhel-security/arbiter-hub-idm:latest \
+#     -f deploy/containerfiles/Containerfile.bootc-idm .
+#
+# Deploy (VM via bootc-image-builder):
+#   podman save ... | sudo podman load
+#   sudo podman run --rm -it --privileged \
+#     -v /var/lib/containers/storage:/var/lib/containers/storage \
+#     -v ./output:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --rootfs ext4 --type qcow2 \
+#     quay.io/rhel-security/arbiter-hub-idm:latest
+#
+# Config: inject /etc/arbiter-hub/config.env via cloud-init userdata
+# Firstboot installs IPA, starts Keylime verifier, configures swtpm
+FROM quay.io/fedora/fedora-bootc:44
+
+# Layer 1: FreeIPA server (from idm-image-mode)
+RUN dnf -y install \
+        freeipa-server \
+        freeipa-server-dns \
+        freeipa-server-trust-ad \
+        openssh-server \
+        cloud-init \
+        qemu-guest-agent \
+    && dnf clean all \
+    && systemctl enable sshd
+
+# Layer 2: Keylime verifier + registrar + swtpm
+RUN dnf -y install \
+        keylime-verifier \
+        keylime-registrar \
+        swtpm \
+        swtpm-tools \
+        tpm2-tss \
+        tpm2-tools \
+    && dnf clean all \
+    && systemctl enable keylime_verifier keylime_registrar
+
+# Layer 3: ahdapa build dependencies (OAuth2 IDP for OIDC)
+# ahdapa installs via firstboot after IPA is configured
+RUN dnf -y install \
+        python3-pip \
+        python3-devel \
+        openssl-devel \
+        gcc \
+    && dnf clean all
+
+# bootc /usr → /var redirect for FreeIPA (ostree makes /usr read-only)
+RUN mkdir -p /var/lib/idm-image-mode /var/lib/ipa/html \
+    && cp -a /usr/share/ipa/html/. /var/lib/ipa/html/ 2>/dev/null || true \
+    && rm -rf /usr/share/ipa/html \
+    && ln -s /var/lib/ipa/html /usr/share/ipa/html
+
+# Firstboot scripts from arbiter-hub repo
+RUN mkdir -p /usr/local/sbin /etc/arbiter-hub
+COPY deploy/bootc/idm-firstboot.sh /usr/local/sbin/arbiter-idm-firstboot
+COPY deploy/bootc/idm-firstboot.service /etc/systemd/system/arbiter-idm-firstboot.service
+RUN chmod 755 /usr/local/sbin/arbiter-idm-firstboot
+
+# swtpm setup for Keylime (virtual TPM for demo/lab)
+COPY deploy/bootc/swtpm-setup.sh /usr/local/sbin/swtpm-setup-arbiter
+COPY deploy/bootc/swtpm-setup.service /etc/systemd/system/swtpm-setup-arbiter.service
+RUN chmod 755 /usr/local/sbin/swtpm-setup-arbiter
+
+# Fedora bootc gaps (from idmci-jenkins-trigger-lessons)
+RUN mkdir -p /usr/local/sbin /etc/cloud/cloud.cfg.d \
+    && printf '%s\n' \
+       'system_info:' \
+       '  default_user:' \
+       '    name: cloud-user' \
+       '    lock_passwd: false' \
+       '    groups: [wheel]' \
+       '    sudo: ["ALL=(ALL) NOPASSWD:ALL"]' \
+       '    shell: /bin/bash' \
+       > /etc/cloud/cloud.cfg.d/10-cloud-user.cfg
+
+RUN systemctl enable arbiter-idm-firstboot.service \
+                      swtpm-setup-arbiter.service \
+                      qemu-guest-agent.service \
+                      cloud-init-local.service cloud-init.service \
+                      cloud-config.service cloud-final.service \
+    && systemctl disable firewalld.service || true

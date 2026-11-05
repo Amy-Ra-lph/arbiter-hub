@@ -1,0 +1,14 @@
+[Unit]
+Description=Arbiter Hub IdM firstboot provisioning
+After=network-online.target cloud-final.service
+Wants=network-online.target
+ConditionPathExists=!/var/lib/arbiter-hub/.idm-firstboot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/arbiter-idm-firstboot
+TimeoutStartSec=1800
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target
