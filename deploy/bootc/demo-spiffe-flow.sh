@@ -8,7 +8,8 @@
 set -euo pipefail
 
 HUB_API="${HUB_API_URL:-https://hub.arbiter.demo}"
-AHDAPA_URL="${AHDAPA_TOKEN_URL:-https://idm.arbiter.demo/idp/token}"
+AHDAPA_URL="${AHDAPA_FEDERATION_URL:-https://idm.arbiter.demo/idp/federation/token}"
+CLIENT_ID="${AHDAPA_CLIENT_ID:-arbiter-hub}"
 SPIRE_SOCKET="/tmp/spire-agent/public/api.sock"
 
 echo "╔════════════════════════════════════════════════════════════╗"
@@ -41,9 +42,9 @@ echo "  Certificate chain received (auto-rotated, ~1h TTL)"
 echo ""
 
 # 3. Fetch JWT SVID
-echo "▸ Step 3: Fetch JWT SVID for arbiter-hub audience"
+echo "▸ Step 3: Fetch JWT SVID for ahdapa audience"
 JWT_SVID=$(spire-agent api fetch jwt \
-    -audience arbiter-hub \
+    -audience https://idm.arbiter.demo/idp \
     -socketPath "$SPIRE_SOCKET" \
     -output json 2>/dev/null | python3 -c "
 import sys, json
@@ -67,20 +68,16 @@ print(f\"  Issuer:    {payload.get('iss')}\")
 " 2>/dev/null
 echo ""
 
-# 4. Token exchange via ahdapa
-echo "▸ Step 4: RFC 8693 token exchange — JWT SVID → OAuth2 token"
+# 4. Token exchange via ahdapa /federation/token
+echo "▸ Step 4: Federation token exchange — JWT SVID → OAuth2 token"
 echo "  POST $AHDAPA_URL"
-echo "  grant_type=urn:ietf:params:oauth:grant-type:token-exchange"
-echo "  subject_token=<jwt-svid>"
-echo "  subject_token_type=urn:ietf:params:oauth:token-type:jwt"
+echo "  HTTP Basic Auth: client_id=<client>, password=<jwt-svid>"
 echo ""
 
-EXCHANGE_RESP=$(curl -sk -X POST "$AHDAPA_URL" \
+EXCHANGE_RESP=$(curl -sk -u "${CLIENT_ID}:${JWT_SVID}" \
+    -X POST "$AHDAPA_URL" \
     -H "Content-Type: application/x-www-form-urlencoded" \
-    -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
-    -d "subject_token=${JWT_SVID}" \
-    -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
-    -d "audience=arbiter-hub" \
+    -d "" \
     2>/dev/null)
 
 ACCESS_TOKEN=$(echo "$EXCHANGE_RESP" | python3 -c "

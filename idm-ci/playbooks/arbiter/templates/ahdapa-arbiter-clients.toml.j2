@@ -9,13 +9,15 @@ client_name                = "Arbiter Hub API"
 client_secret              = "{{ arbiter_oidc_client_secret }}"
 token_endpoint_auth_method = "client_secret_basic"
 scopes                     = {{ arbiter_oidc_api_scopes | to_json }}
-grant_types                = ["authorization_code", "client_credentials"]
+grant_types                = ["authorization_code", "client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange"]
 redirect_uris              = [
     "https://{{ arbiter_hub_fqdn }}/",
     "https://{{ arbiter_hub_fqdn }}/auth/callback",
     "https://{{ arbiter_hub_fqdn }}/api/auth/callback",
 ]
 skip_consent               = true
+allow_token_exchange_actor  = true
+allowed_token_exchange_audiences = ["https://{{ ansible_fqdn }}/spire"]
 
 # Arbiter Hub UI — public client for browser OIDC login
 [[client]]

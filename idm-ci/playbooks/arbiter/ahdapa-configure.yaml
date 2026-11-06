@@ -72,6 +72,61 @@
           RewriteRule .* - [R=204,L]
       notify: Restart httpd
 
+    - name: Add federation section to ahdapa.toml
+      ansible.builtin.blockinfile:
+        path: /etc/ahdapa/ahdapa.toml
+        marker: "# {mark} ANSIBLE MANAGED — SPIFFE federation"
+        block: |
+          [federation]
+          trusted_issuers     = ["https://{{ ansible_fqdn }}/spire"]
+          trust_anchors       = []
+          max_clock_skew_secs = 30
+      notify: Restart ahdapa
+
+    - name: Flush handlers (ahdapa must restart before ahdapactl calls)
+      ansible.builtin.meta: flush_handlers
+
+    - name: Login to ahdapactl
+      ansible.builtin.command:
+        cmd: ahdapactl login https://{{ ansible_fqdn }}/idp --kerberos --insecure
+      changed_when: true
+
+    - name: Create federation policies for SPIFFE workloads
+      ansible.builtin.command:
+        cmd: >-
+          ahdapactl federation-policies create
+          --issuer "https://{{ ansible_fqdn }}/spire"
+          --subject-pattern "spiffe://{{ trust_domain }}/workload/{{ item.name }}"
+          --local-sub "{{ item.principal }}"
+          --scopes "openid"
+          --priority 10
+      loop:
+        - { name: enforcement-mcp, principal: "enforcement-mcp/{{ arbiter_hub_fqdn }}" }
+        - { name: linux-mcp, principal: "linux-mcp/{{ hostvars[groups['arbiter_agent'][0]]['inventory_hostname'] }}" }
+      register: policy_result
+      changed_when: "'key' in policy_result.stdout"
+      failed_when: "policy_result.rc != 0 and 'duplicate_policy' not in policy_result.stderr"
+      vars:
+        trust_domain: "arbiter.demo"
+
+    - name: Create Identity HBAC rule for federation token exchange
+      ansible.builtin.command:
+        cmd: >-
+          ahdapactl hbac create
+          --name "federation-token-exchange"
+          --description "Allow SPIFFE federation token exchange for workload identities"
+          --enabled true
+          --user-category true
+          --client-category true
+          --scope-category true
+          --network-category true
+          --device-category true
+          --mfa-bypass true
+          --delegation-target-category true
+      register: hbac_result
+      changed_when: "'created' in hbac_result.stdout"
+      failed_when: "hbac_result.rc != 0 and 'already exists' not in hbac_result.stderr"
+
     - name: Verify OIDC discovery
       ansible.builtin.uri:
         url: "https://{{ ansible_fqdn }}/idp/.well-known/openid-configuration"

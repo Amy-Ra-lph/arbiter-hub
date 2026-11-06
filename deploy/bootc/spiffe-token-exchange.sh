@@ -12,8 +12,9 @@
 #   4. Output token to stdout (pipe-friendly)
 set -euo pipefail
 
-AUDIENCE="${1:-arbiter-hub}"
-AHDAPA_URL="${AHDAPA_TOKEN_URL:-https://idm.arbiter.demo/idp/token}"
+AUDIENCE="${1:-https://idm.arbiter.demo/idp}"
+CLIENT_ID="${AHDAPA_CLIENT_ID:-arbiter-hub}"
+AHDAPA_URL="${AHDAPA_FEDERATION_URL:-https://idm.arbiter.demo/idp/federation/token}"
 SPIRE_SOCKET="${SPIRE_AGENT_SOCKET:-/tmp/spire-agent/public/api.sock}"
 
 # Step 1: Get JWT SVID from SPIRE Agent
@@ -45,13 +46,12 @@ print(payload.get('sub', 'unknown'))
 echo "SPIFFE ID: $SPIFFE_ID" >&2
 echo "Audience:  $AUDIENCE" >&2
 
-# Step 2: RFC 8693 token exchange with ahdapa
-RESPONSE=$(curl -sk -X POST "$AHDAPA_URL" \
+# Step 2: Exchange JWT SVID for OAuth2 token via ahdapa /federation/token
+# HTTP Basic Auth: username=client_id, password=JWT SVID
+RESPONSE=$(curl -sk -u "${CLIENT_ID}:${JWT_SVID}" \
+    -X POST "$AHDAPA_URL" \
     -H "Content-Type: application/x-www-form-urlencoded" \
-    -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
-    -d "subject_token=${JWT_SVID}" \
-    -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
-    -d "audience=${AUDIENCE}" \
+    -d "" \
     2>/dev/null)
 
 # Step 3: Extract access token
