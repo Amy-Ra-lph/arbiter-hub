@@ -40,22 +40,10 @@ ipa-server-install \
 
 echo "FreeIPA server installed"
 
-# swtpm for demo/lab (production would use hardware TPM)
-echo "Configuring swtpm..."
-mkdir -p /var/lib/swtpm-localca
-swtpm_setup --tpmstate /var/lib/swtpm-localca --tpm2 --createek --create-ek-cert --create-platform-cert
-systemctl start swtpm-setup-arbiter || true
-
-# Keylime verifier + registrar
-echo "Starting Keylime verifier and registrar..."
-systemctl start keylime_verifier keylime_registrar
-systemctl is-active keylime_verifier keylime_registrar
-
-# ahdapa OIDC provider (if configured)
-if [ -n "${AHDAPA_INSTALL:-}" ]; then
-    echo "Installing ahdapa OIDC provider..."
-    pip install ahdapa
-    # ahdapa post-install hooks go here
+# ahdapa OIDC provider (baked into image from COPR)
+if command -v ahdapa &>/dev/null; then
+    echo "Configuring ahdapa OIDC provider..."
+    systemctl enable --now ahdapa || true
 fi
 
 mkdir -p "$(dirname "$STAMP")"

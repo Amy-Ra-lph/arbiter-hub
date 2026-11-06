@@ -1,0 +1,51 @@
+# Containerfile.arbiter-agent — Workload Plane (bootc)
+#
+# Runs attested workloads, Keylime agent (TPM), Falco (eBPF),
+# SPIRE agent, demo containers. Minimal statefulness.
+#
+# Build (from repo root):
+#   podman build -t quay.io/rhel-security/arbiter-agent:latest \
+#     -f deploy/bootc/Containerfile.arbiter-agent .
+
+FROM quay.io/fedora/fedora-bootc:44
+
+RUN dnf install -y \
+        freeipa-client \
+        keylime-agent-rust \
+        swtpm \
+        swtpm-tools \
+        podman \
+        cloud-init \
+        qemu-guest-agent \
+    && dnf clean all
+
+# Falco from upstream RPM repo (not in Fedora repos)
+RUN rpm --import https://falco.org/repo/falcosecurity-packages.asc \
+    && curl -s -o /etc/yum.repos.d/falcosecurity.repo \
+        https://falco.org/repo/falcosecurity-rpm.repo \
+    && dnf install -y falco \
+    && dnf clean all
+
+# Falco rules for Arbiter workload monitoring
+COPY deploy/falco/arbiter-rules.yaml /etc/falco/rules.d/arbiter-rules.yaml
+
+# swtpm setup for virtual TPM (lab/demo — production uses hardware TPM)
+COPY deploy/bootc/swtpm-setup.sh /usr/local/sbin/arbiter-swtpm-setup
+COPY deploy/bootc/swtpm-setup.service /etc/systemd/system/arbiter-swtpm-setup.service
+
+# Firstboot provisioning
+COPY deploy/bootc/agent-firstboot.sh /usr/local/sbin/arbiter-agent-firstboot
+COPY deploy/bootc/agent-firstboot.service /etc/systemd/system/arbiter-agent-firstboot.service
+COPY deploy/bootc/config.env.example /etc/arbiter-hub/config.env.example
+
+# Lab access
+RUN echo 'root:Secret123!' | chpasswd \
+    && useradd -m -G wheel cloud-user \
+    && echo 'cloud-user:Secret123!' | chpasswd \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
+RUN chmod 755 /usr/local/sbin/arbiter-agent-firstboot \
+               /usr/local/sbin/arbiter-swtpm-setup \
+    && systemctl enable arbiter-agent-firstboot.service \
+                        arbiter-swtpm-setup.service \
+                        qemu-guest-agent.service

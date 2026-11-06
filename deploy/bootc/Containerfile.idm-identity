@@ -1,0 +1,57 @@
+# Containerfile.idm-identity — Identity Plane (bootc)
+#
+# FreeIPA server + ahdapa OIDC + akamu ACME + SPIRE server.
+# No Keylime verifier — that moves to arbiter-signing node.
+#
+# Build (from deploy/bootc/ directory):
+#   podman build -t quay.io/rhel-security/idm-identity:latest \
+#     -f Containerfile.idm-identity .
+#
+# Convert to qcow2:
+#   sudo podman run --rm -it --privileged --pull=newer \
+#     -v ./output:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --type qcow2 quay.io/rhel-security/idm-identity:latest
+
+FROM quay.io/fedora/fedora-bootc:44
+
+RUN dnf install -y \
+        freeipa-server \
+        freeipa-server-dns \
+        freeipa-server-trust-ad \
+        certmonger \
+        sshpass \
+        cloud-init \
+        qemu-guest-agent \
+        python3-requests-gssapi \
+    && dnf clean all
+
+# ahdapa + akamu from COPR (OAuth2/OIDC + ACME responder)
+RUN dnf copr enable -y abbra/modrnizer-darc \
+    && dnf install -y ahdapa akamu \
+    && dnf clean all
+
+# bootc /usr is read-only (ostree) — redirect FreeIPA html writes to /var
+RUN mkdir -p /var/lib/idm-image-mode /var/lib/ipa/html \
+    && cp -a /usr/share/ipa/html/. /var/lib/ipa/html/ 2>/dev/null || true \
+    && rm -rf /usr/share/ipa/html \
+    && ln -s /var/lib/ipa/html /usr/share/ipa/html
+
+# IPA OAuth2 plugins (workload identities, delegation rules)
+# Built from idm-image-mode repo — copy at build time or layer separately
+# COPY config/ipa-plugins/ /usr/lib/python3.14/site-packages/ipaserver/plugins/
+
+# Firstboot provisioning
+COPY idm-firstboot.sh /usr/local/sbin/arbiter-idm-firstboot
+COPY idm-firstboot.service /etc/systemd/system/arbiter-idm-firstboot.service
+COPY config.env.example /etc/arbiter-hub/config.env.example
+
+# Lab access
+RUN echo 'root:Secret123!' | chpasswd \
+    && useradd -m -G wheel cloud-user \
+    && echo 'cloud-user:Secret123!' | chpasswd \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
+RUN chmod 755 /usr/local/sbin/arbiter-idm-firstboot \
+    && systemctl enable arbiter-idm-firstboot.service \
+                        qemu-guest-agent.service
