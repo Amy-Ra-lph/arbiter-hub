@@ -79,7 +79,41 @@ if [ -f /etc/falco/falco.yaml ]; then
 fi
 systemctl enable --now falco-modern-bpf
 
-# Step 4: Canary SSH key (needs runtime entropy, can't bake in image)
+# Step 4: SPIRE agent setup
+echo "Configuring SPIRE agent..."
+SPIRE_SERVER="${HUB_HOST}"
+SPIRE_CONF="/etc/spire/agent/agent.conf"
+
+if [ -f "$SPIRE_CONF" ]; then
+    sed -i "s|__SPIRE_SERVER__|${SPIRE_SERVER}|" "$SPIRE_CONF"
+
+    # Fetch bootstrap cert from SPIRE server (via scp or pre-staged)
+    if [ -n "${SPIRE_JOIN_TOKEN:-}" ]; then
+        # Try to fetch bundle from attestation node
+        scp -o StrictHostKeyChecking=no "root@${SPIRE_SERVER}:/etc/arbiter/spire/bundle.crt" \
+            /var/lib/spire/agent/bootstrap.crt 2>/dev/null || {
+            echo "Could not fetch SPIRE bundle — using IPA CA as fallback"
+            cp /etc/ipa/ca.crt /var/lib/spire/agent/bootstrap.crt 2>/dev/null || true
+        }
+        chown spire:spire /var/lib/spire/agent/bootstrap.crt 2>/dev/null || true
+
+        # Write join token to agent service override
+        mkdir -p /etc/systemd/system/spire-agent.service.d
+        cat > /etc/systemd/system/spire-agent.service.d/join-token.conf <<SPIRETOK
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/spire-agent run -config /etc/spire/agent/agent.conf -joinToken ${SPIRE_JOIN_TOKEN}
+SPIRETOK
+
+        systemctl daemon-reload
+        systemctl enable --now spire-agent
+        echo "SPIRE agent started with join token"
+    else
+        echo "SPIRE_JOIN_TOKEN not set — SPIRE agent deferred to manual start"
+    fi
+fi
+
+# Step 5: Canary SSH key (needs runtime entropy, can't bake in image)
 echo "Generating canary SSH key..."
 mkdir -p /root/.ssh
 ssh-keygen -t ed25519 -f /root/.ssh/id_canary -N "" -C "DEMO-CANARY-DO-NOT-USE" 2>/dev/null || true

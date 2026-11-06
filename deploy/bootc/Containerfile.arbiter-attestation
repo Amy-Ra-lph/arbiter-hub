@@ -1,7 +1,8 @@
 # Containerfile.arbiter-attestation — Decision Plane (bootc)
 #
 # Arbiter Hub API/UI/DB/MCP containers (Quadlet), EDA controller,
-# enforcement-mcp. Holds only PUBLIC keys — no signing keys or CAs.
+# enforcement-mcp, SPIRE server. Holds only PUBLIC keys — no signing
+# keys or CAs. SPIRE server manages workload identity SVIDs.
 #
 # Build (from repo root):
 #   podman build -t quay.io/rhel-security/arbiter-attestation:latest \
@@ -22,6 +23,13 @@ RUN dnf install -y \
 # ansible-rulebook — not in Fedora 44 repos
 RUN pip install ansible-rulebook ansible
 
+# SPIRE server — not in Fedora repos, install from GitHub releases
+ARG SPIRE_VERSION=1.11.1
+RUN curl -sL "https://github.com/spiffe/spire/releases/download/v${SPIRE_VERSION}/spire-${SPIRE_VERSION}-linux-amd64-musl.tar.gz" \
+        | tar xz -C /opt \
+    && ln -s /opt/spire-${SPIRE_VERSION}/bin/spire-server /usr/local/bin/spire-server \
+    && useradd -r -s /sbin/nologin -d /var/lib/spire/server spire
+
 # Quadlet container units + volumes + network
 COPY deploy/quadlet/ /etc/containers/systemd/
 
@@ -36,8 +44,14 @@ COPY deploy/bootc/hub-firstboot.sh /usr/local/sbin/arbiter-hub-firstboot
 COPY deploy/bootc/hub-firstboot.service /etc/systemd/system/arbiter-hub-firstboot.service
 COPY deploy/bootc/config.env.example /etc/arbiter-hub/config.env.example
 
+# SPIRE server config and systemd unit
+COPY deploy/bootc/spire-server.conf /etc/spire/server/server.conf
+COPY deploy/bootc/spire-server.service /etc/systemd/system/spire-server.service
+
 # Directories for runtime config injected at firstboot
-RUN mkdir -p /etc/arbiter/keylime /etc/arbiter/cosign /etc/arbiter-hub
+RUN mkdir -p /etc/arbiter/keylime /etc/arbiter/cosign /etc/arbiter-hub \
+             /var/lib/spire/server /etc/spire/server \
+    && chown -R spire:spire /var/lib/spire/server /etc/spire/server
 
 # Lab access
 RUN echo 'root:Secret123!' | chpasswd \
@@ -47,4 +61,5 @@ RUN echo 'root:Secret123!' | chpasswd \
 
 RUN chmod 755 /usr/local/sbin/arbiter-hub-firstboot \
     && systemctl enable arbiter-hub-firstboot.service \
+                        spire-server.service \
                         qemu-guest-agent.service

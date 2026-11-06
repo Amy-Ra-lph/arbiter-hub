@@ -185,6 +185,88 @@ for i in $(seq 1 10); do
 done
 echo "Webhook registration: HTTP $HTTP"
 
+# Step 9: SPIRE server post-start
+echo "Waiting for SPIRE server..."
+for i in $(seq 1 30); do
+    spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock 2>/dev/null && break
+    sleep 2
+done
+
+if spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock 2>/dev/null; then
+    echo "SPIRE server healthy"
+
+    # Export trust bundle for agent nodes
+    mkdir -p /etc/arbiter/spire
+    spire-server bundle show -socketPath /tmp/spire-server/private/api.sock \
+        > /etc/arbiter/spire/bundle.crt 2>/dev/null
+    chmod 644 /etc/arbiter/spire/bundle.crt
+
+    # Export JWKS for ahdapa federation (JWT SVID verification)
+    spire-server bundle show -socketPath /tmp/spire-server/private/api.sock \
+        -format jwks > /etc/arbiter/spire/jwks.json 2>/dev/null
+    chmod 644 /etc/arbiter/spire/jwks.json
+
+    # Serve JWKS via nginx for ahdapa federation
+    mkdir -p /usr/share/nginx/html/.well-known
+    cp /etc/arbiter/spire/jwks.json /usr/share/nginx/html/.well-known/spire-jwks.json
+    cat > /etc/nginx/conf.d/spire-jwks.conf <<SPNGINX
+location /.well-known/spire-jwks.json {
+    root /usr/share/nginx/html;
+    default_type application/json;
+}
+SPNGINX
+    systemctl reload nginx 2>/dev/null || true
+
+    # Pre-register workload entries
+    SOCK="/tmp/spire-server/private/api.sock"
+
+    spire-server entry create -socketPath "$SOCK" \
+        -spiffeID "spiffe://arbiter.demo/workload/arbiter-hub-api" \
+        -parentID "spiffe://arbiter.demo/agent/arbiter-agent" \
+        -selector unix:user:root \
+        -dns "$HOSTNAME" 2>/dev/null || echo "Hub API entry may already exist"
+
+    spire-server entry create -socketPath "$SOCK" \
+        -spiffeID "spiffe://arbiter.demo/workload/governed-agent" \
+        -parentID "spiffe://arbiter.demo/agent/arbiter-agent" \
+        -selector unix:user:root 2>/dev/null || echo "governed-agent entry may already exist"
+
+    spire-server entry create -socketPath "$SOCK" \
+        -spiffeID "spiffe://arbiter.demo/workload/enforcement-mcp" \
+        -parentID "spiffe://arbiter.demo/agent/arbiter-agent" \
+        -selector unix:user:root 2>/dev/null || echo "enforcement-mcp entry may already exist"
+
+    echo "SPIRE workload entries registered"
+
+    # Register SPIRE as federation source in ahdapa
+    echo "Configuring ahdapa SPIFFE federation..."
+    echo "$IPA_ADMIN_PASSWORD" | kinit admin 2>/dev/null || true
+    JWKS_URL="https://${HOSTNAME}/.well-known/spire-jwks.json"
+
+    # Create ahdapa federation policy via API (after Hub API is up)
+    curl -sk -b /tmp/ahdapa-firstboot-cookies \
+        https://localhost/idp/api/auth/login \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"admin\",\"password\":\"${IPA_ADMIN_PASSWORD}\"}" \
+        -c /tmp/ahdapa-firstboot-cookies 2>/dev/null
+
+    curl -sk -b /tmp/ahdapa-firstboot-cookies \
+        https://localhost/idp/api/admin/federation/policies \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"name\": \"spire-arbiter-demo\",
+            \"issuer\": \"spiffe://arbiter.demo\",
+            \"jwks_uri\": \"${JWKS_URL}\",
+            \"subject_mapping\": \"spiffe_to_ipa\",
+            \"trust_domain\": \"arbiter.demo\",
+            \"enabled\": true
+        }" 2>/dev/null && echo "Federation policy created" || echo "Federation policy may already exist"
+
+    rm -f /tmp/ahdapa-firstboot-cookies
+else
+    echo "SPIRE server not healthy — skipping workload registration"
+fi
+
 echo "Auth modes: SPNEGO=$SPNEGO_AVAILABLE password=true"
 mkdir -p "$(dirname "$STAMP")"
 date -Iseconds > "$STAMP"
