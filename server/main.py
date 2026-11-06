@@ -77,6 +77,13 @@ async def lifespan(app: FastAPI):
                 allow_http_registry=settings.cosign_allow_http_registry,
             ),
         )
+    if settings.trustee_url:
+        from server.backends.trustee import TrusteeBackend
+
+        registry.register(
+            "trustee",
+            TrusteeBackend(trustee_url=settings.trustee_url),
+        )
     app.state.backend_registry = registry
 
     scheduler = StalenessScheduler(interval_seconds=30, registry=registry)

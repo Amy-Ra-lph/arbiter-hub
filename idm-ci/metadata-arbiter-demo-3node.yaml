@@ -105,12 +105,20 @@ phases:
           ipaserver_forwarders:
             - 8.8.8.8
           ipaserver_no_reverse: true
-      # Custom arbiter/ playbooks (dns-client-setup, ipa-post-install,
-      # clone-repos, install-packages) removed from prep — IdM-CI
-      # resolves prep paths from /usr/local/share/idm-ci/playbooks/
-      # which lacks our arbiter/ dir. ipa-network.yaml handles DNS
-      # for client enrollment. identity phase handles the rest.
-      - playbook: prep/ipa-client-install.yaml
+      # Explicit --server flag: DNS SRV discovery fails because NM can
+      # reset resolv.conf during the 15-min IPA server install window.
+      - command: >-
+          ipa-client-install
+          --domain arbiter.demo
+          --server idm.arbiter.demo
+          -p admin --password=Secret123 -U
+        host: hub.arbiter.demo
+      - command: >-
+          ipa-client-install
+          --domain arbiter.demo
+          --server idm.arbiter.demo
+          -p admin --password=Secret123 -U
+        host: agent.arbiter.demo
 
   - name: foundation
     steps:

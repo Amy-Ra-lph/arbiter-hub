@@ -15,8 +15,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.execute("ALTER TYPE workloadtype ADD VALUE IF NOT EXISTS 'bootc'")
     op.execute("ALTER TYPE workloadtype ADD VALUE IF NOT EXISTS 'BOOTC'")
+    op.execute("ALTER TYPE backendtype ADD VALUE IF NOT EXISTS 'measured_boot'")
     op.execute("ALTER TYPE backendtype ADD VALUE IF NOT EXISTS 'MEASURED_BOOT'")
+    op.execute("ALTER TYPE workloadstate ADD VALUE IF NOT EXISTS 'ROTATING'")
 
 
 def downgrade() -> None:

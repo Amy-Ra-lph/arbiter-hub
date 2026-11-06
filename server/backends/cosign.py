@@ -49,7 +49,7 @@ class CosignBackend:
             if self._insecure_ignore_tlog:
                 cmd.append("--insecure-ignore-tlog")
             if self._allow_http_registry:
-                cmd.append("--allow-http-registry")
+                cmd.append("--allow-insecure-registry")
             cmd.append(artifact_ref)
             if self._rekor_url:
                 cmd.extend(["--rekor-url", self._rekor_url])
