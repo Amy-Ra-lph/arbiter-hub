@@ -3,9 +3,9 @@
 # FreeIPA server + ahdapa OIDC + akamu ACME + SPIRE server.
 # No Keylime verifier — that moves to arbiter-signing node.
 #
-# Build (from deploy/bootc/ directory):
+# Build (from repo root):
 #   podman build -t quay.io/rhel-security/idm-identity:latest \
-#     -f Containerfile.idm-identity .
+#     -f deploy/bootc/Containerfile.idm-identity .
 #
 # Convert to qcow2:
 #   sudo podman run --rm -it --privileged --pull=newer \
@@ -24,11 +24,18 @@ RUN dnf install -y \
         cloud-init \
         qemu-guest-agent \
         python3-requests-gssapi \
+        bind-utils \
+    && dnf clean all
+
+# dbus-broker fails in containers (inotify limit); use classic dbus-daemon
+RUN dnf install -y dbus-daemon \
+    && ln -sf /usr/lib/systemd/system/dbus-daemon.service /etc/systemd/system/dbus.service \
     && dnf clean all
 
 # ahdapa + akamu from COPR (OAuth2/OIDC + ACME responder)
-RUN dnf copr enable -y abbra/modrnizer-darc \
-    && dnf install -y ahdapa akamu \
+RUN dnf install -y 'dnf5-command(copr)' \
+    && dnf copr enable -y abbra/modrnizer-darc \
+    && dnf install -y ahdapa akamu akamu-webui \
     && dnf clean all
 
 # bootc /usr is read-only (ostree) — redirect FreeIPA html writes to /var
@@ -38,13 +45,12 @@ RUN mkdir -p /var/lib/idm-image-mode /var/lib/ipa/html \
     && ln -s /var/lib/ipa/html /usr/share/ipa/html
 
 # IPA OAuth2 plugins (workload identities, delegation rules)
-# Built from idm-image-mode repo — copy at build time or layer separately
-# COPY config/ipa-plugins/ /usr/lib/python3.14/site-packages/ipaserver/plugins/
+COPY deploy/bootc/ipa-plugins/ /usr/lib/python3.14/site-packages/ipaserver/plugins/
 
 # Firstboot provisioning
-COPY idm-firstboot.sh /usr/local/sbin/arbiter-idm-firstboot
-COPY idm-firstboot.service /etc/systemd/system/arbiter-idm-firstboot.service
-COPY config.env.example /etc/arbiter-hub/config.env.example
+COPY deploy/bootc/idm-firstboot.sh /usr/local/sbin/arbiter-idm-firstboot
+COPY deploy/bootc/idm-firstboot.service /etc/systemd/system/arbiter-idm-firstboot.service
+COPY deploy/bootc/config.env.example /etc/arbiter-hub/config.env.example
 
 # Lab access
 RUN echo 'root:Secret123!' | chpasswd \
