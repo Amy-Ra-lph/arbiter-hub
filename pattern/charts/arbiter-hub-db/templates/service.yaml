@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "arbiter-hub-db.fullname" . }}
+  labels:
+    {{- include "arbiter-hub-db.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: postgresql
+      protocol: TCP
+      name: postgresql
+  selector:
+    {{- include "arbiter-hub-db.selectorLabels" . | nindent 4 }}
+  clusterIP: None

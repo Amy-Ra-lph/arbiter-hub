@@ -22,13 +22,6 @@ export const navSections: NavSection[] = [
     ],
   },
   {
-    label: "Vulnerabilities",
-    items: [
-      { label: "CVE Overview", path: "/vulnerabilities/cve" },
-      { label: "Affected Workloads", path: "/vulnerabilities/workloads" },
-    ],
-  },
-  {
     label: "Policy",
     items: [
       { label: "Policies", path: "/policies" },
@@ -36,10 +29,26 @@ export const navSections: NavSection[] = [
     ],
   },
   {
+    label: "Observability",
+    items: [
+      { label: "Events", path: "/events" },
+      { label: "State Transitions", path: "/transitions" },
+      { label: "Audit Log", path: "/audit" },
+      { label: "Signals", path: "/signals" },
+    ],
+  },
+  {
+    label: "Vulnerabilities",
+    items: [
+      { label: "CVE Overview", path: "/vulnerabilities/cve" },
+      { label: "Affected Workloads", path: "/vulnerabilities/workloads" },
+    ],
+  },
+  {
     label: "Administration",
     items: [
-      { label: "Audit Log", path: "/audit" },
       { label: "Federation", path: "/federation" },
+      { label: "Remediation", path: "/remediation" },
     ],
   },
 ];

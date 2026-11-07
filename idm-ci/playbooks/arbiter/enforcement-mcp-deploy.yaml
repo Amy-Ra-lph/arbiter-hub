@@ -2,7 +2,7 @@
 # enforcement-mcp-deploy.yaml — Deploy enforcement-mcp on hub node
 # SELinux/fapolicyd/MLS/AIDE policy MCP server connected to Arbiter Hub
 - name: Deploy enforcement-mcp
-  hosts: hub.arbiter.demo
+  hosts: arbiter_hub
   become: true
   vars:
     enforcement_mcp_repo: "https://github.com/Amy-Ra-lph/enforcement-mcp.git"
@@ -85,12 +85,45 @@
         enabled: true
         daemon_reload: true
 
-    - name: Wait for enforcement-mcp health
-      ansible.builtin.uri:
-        url: "http://localhost:{{ enforcement_mcp_port }}/health"
-        method: GET
-        status_code: 200
+    - name: Wait for enforcement-mcp active
+      ansible.builtin.command:
+        cmd: systemctl is-active enforcement-mcp
       register: emcp_health
       retries: 15
       delay: 3
-      until: emcp_health.status == 200
+      until: emcp_health.stdout == 'active'
+      changed_when: false
+
+    - name: Register enforcement-mcp as attested workload
+      ansible.builtin.uri:
+        url: "{{ arbiter_api_url }}/workloads"
+        method: POST
+        headers:
+          Origin: "{{ arbiter_api_url }}"
+        body_format: json
+        body:
+          ipa_principal: "mcp/enforcement-mcp@ARBITER.DEMO"
+          display_name: "Enforcement MCP Server"
+          workload_type: service
+          backend_types:
+            - cosign
+            - falco
+          metadata:
+            artifact_ref: "quay.io/rhel-security/enforcement-mcp:latest"
+            service_type: mcp-server
+            tool_count: 30
+            capabilities:
+              - selinux
+              - fapolicyd
+              - aide
+              - mls
+            managed_by: enforcement-mcp-deploy
+        status_code:
+          - 200
+          - 201
+          - 409
+      register: emcp_workload
+
+    - name: Display enforcement-mcp attestation status
+      ansible.builtin.debug:
+        msg: "enforcement-mcp registered: HTTP {{ emcp_workload.status }}"

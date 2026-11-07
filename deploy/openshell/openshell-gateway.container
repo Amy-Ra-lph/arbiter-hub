@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenShell Gateway (Podman driver)
+After=network-online.target
+Wants=podman.socket
+
+[Container]
+Image=quay.io/rhel-security/poc-openshell-rhhi:gateway-0.0.111
+ContainerName=openshell-gateway
+Network=host
+SecurityLabelDisable=true
+User=root
+Volume=/run/podman/podman.sock:/run/podman/podman.sock
+Volume=openshell-pki.volume:/etc/openshell/pki:ro,Z
+Environment=OPENSHELL_BIND_ADDRESS=0.0.0.0
+Environment=OPENSHELL_HEALTH_PORT=17672
+Environment=OPENSHELL_LOG_LEVEL=info
+Environment=OPENSHELL_DRIVERS=podman
+Environment=OPENSHELL_PODMAN_SOCKET=/run/podman/podman.sock
+Environment=OPENSHELL_DISABLE_TLS=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

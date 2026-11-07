@@ -1,0 +1,5 @@
+# Arbiter Hub API — IPA CA trust for OIDC JWKS validation
+# Managed by Ansible — manual edits will be overwritten on next deploy.
+[Container]
+Volume=/etc/pki/tls/certs/ipa-ca.crt:/etc/pki/tls/certs/ipa-ca.crt:ro,z
+Environment=SSL_CERT_FILE=/etc/pki/tls/certs/ipa-ca.crt

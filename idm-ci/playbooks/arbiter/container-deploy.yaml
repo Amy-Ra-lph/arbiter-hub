@@ -13,6 +13,11 @@
 #   - registry.redhat.io requires podman login (terms-based service account)
 #   - Network Internal=false needed for verifier connectivity across hosts
 #   - Keylime verifier TLS cert uses hostname, not IP — AddHost required
+- name: Gather facts from all hosts (needed for cross-host hostvars)
+  hosts: ipaserver:arbiter_agent
+  gather_facts: true
+  tasks: []
+
 - name: Deploy arbiter-hub containers
   hosts: arbiter_hub
   become: true
@@ -31,9 +36,13 @@
     arbiter_agent_ip: "{{ hostvars[groups['arbiter_agent'][0]]['ansible_default_ipv4']['address'] }}"
     arbiter_falco_healthz_url: "http://{{ arbiter_agent_host }}:8765/healthz"
     arbiter_cert_dir: "/etc/arbiter/keylime"
+    arbiter_cosign_public_key: "/etc/arbiter/cosign/cosign.pub"
+    cosign_version: "2.4.1"
     quadlet_dir: "/etc/containers/systemd"
+    quay_robot_user: "{{ vault_quay_robot_user | default('') }}"
+    quay_robot_token: "{{ vault_quay_robot_token | default('') }}"
     arbiter_repo: "https://github.com/Amy-Ra-lph/arbiter-hub.git"
-    arbiter_repo_branch: "main"
+    arbiter_repo_branch: "{{ lookup('env', 'ARBITER_HUB_BRANCH') | default('openshell-podman-deploy', true) }}"
   tasks:
     - name: Install podman
       ansible.builtin.dnf:
@@ -41,6 +50,37 @@
           - podman
           - python3-podman
         state: present
+
+    - name: Install cosign binary
+      ansible.builtin.get_url:
+        url: "https://github.com/sigstore/cosign/releases/download/v{{ cosign_version }}/cosign-linux-amd64"
+        dest: /usr/local/bin/cosign
+        mode: "0755"
+      register: cosign_install
+      retries: 3
+      delay: 5
+      until: cosign_install is not failed
+
+    - name: Create cosign key directory
+      ansible.builtin.file:
+        path: /etc/arbiter/cosign
+        state: directory
+        mode: "0750"
+
+    - name: Generate cosign keypair for image verification
+      ansible.builtin.command:
+        cmd: cosign generate-key-pair
+        chdir: /etc/arbiter/cosign
+      environment:
+        COSIGN_PASSWORD: ""
+      args:
+        creates: /etc/arbiter/cosign/cosign.pub
+
+    - name: Mount cosign keys into API container
+      ansible.builtin.file:
+        path: /etc/arbiter/cosign
+        state: directory
+        mode: "0750"
 
     - name: Pull container images
       containers.podman.podman_image:
@@ -50,6 +90,27 @@
         - "{{ arbiter_api_image }}"
         - "{{ arbiter_mcp_image }}"
         - "{{ arbiter_db_image }}"
+
+    - name: Login to Quay for cosign signature push
+      ansible.builtin.command:
+        cmd: podman login quay.io -u {{ quay_robot_user }} -p {{ quay_robot_token }}
+      when: quay_robot_user | length > 0
+      no_log: true
+
+    - name: Sign container images with cosign
+      ansible.builtin.command:
+        cmd: >-
+          cosign sign --key /etc/arbiter/cosign/cosign.key
+          --tlog-upload=false
+          {{ item }}
+      environment:
+        COSIGN_PASSWORD: ""
+      loop:
+        - "{{ arbiter_api_image }}"
+        - "{{ arbiter_mcp_image }}"
+      register: cosign_sign
+      changed_when: "'Pushing signature' in cosign_sign.stderr"
+      when: quay_robot_user | length > 0
 
     - name: Clone arbiter-hub repo
       ansible.builtin.git:
@@ -99,6 +160,13 @@
         - arbiter-hub-mcp.container
       notify: reload systemd
 
+    - name: Copy seed policy data for API container
+      ansible.builtin.copy:
+        src: /opt/arbiter-hub/deploy/seed/policies.json
+        dest: /etc/arbiter/seed-policies.json
+        remote_src: true
+        mode: "0644"
+
     - name: Template API container with verifier hostname resolution
       ansible.builtin.copy:
         dest: "{{ quadlet_dir }}/arbiter-hub-api.container"
@@ -117,13 +185,18 @@
           AddHost={{ arbiter_agent_host }}:{{ arbiter_agent_ip }}
           Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
           Volume={{ arbiter_cert_dir }}:/etc/arbiter/keylime:ro,Z
+          Volume=/etc/arbiter/cosign:/etc/arbiter/cosign:ro,Z
+          Volume=/usr/local/bin/cosign:/usr/local/bin/cosign:ro,Z
+          Volume=/etc/arbiter/seed-policies.json:/etc/arbiter/seed-policies.json:ro,Z
           Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://{{ arbiter_db_user }}:{{ arbiter_db_password }}@arbiter-hub-db:5432/{{ arbiter_db_name }}
           Environment=ARBITER_KEYLIME_VERIFIER_URL={{ arbiter_keylime_verifier_url }}
           Environment=ARBITER_KEYLIME_CA_CERT=/etc/arbiter/keylime/ca.crt
           Environment=ARBITER_KEYLIME_CLIENT_CERT=/etc/arbiter/keylime/client.crt
           Environment=ARBITER_KEYLIME_CLIENT_KEY=/etc/arbiter/keylime/client.key
           Environment=ARBITER_FALCO_HEALTHZ_URL={{ arbiter_falco_healthz_url }}
-          ReadOnly=true
+          Environment=ARBITER_COSIGN_PUBLIC_KEY={{ arbiter_cosign_public_key }}
+          Environment=ARBITER_COSIGN_INSECURE_IGNORE_TLOG=true
+          SecurityLabelDisable=true
 
           [Service]
           Restart=always
@@ -131,6 +204,29 @@
           [Install]
           WantedBy=multi-user.target default.target
         mode: "0644"
+      notify: reload systemd
+
+    - name: Create API drop-in directory
+      ansible.builtin.file:
+        path: "{{ quadlet_dir }}/arbiter-hub-api.container.d"
+        state: directory
+        mode: "0755"
+
+    - name: Deploy CORS allowed origins env file
+      ansible.builtin.copy:
+        dest: /etc/arbiter/cors-origins.env
+        mode: "0644"
+        content: |
+          ARBITER_CORS_ALLOWED_ORIGINS=["http://localhost:8400","http://{{ ansible_fqdn }}:8400","https://{{ ansible_fqdn }}","http://127.0.0.1:8400"]
+
+    - name: Deploy CORS drop-in for API container
+      ansible.builtin.copy:
+        dest: "{{ quadlet_dir }}/arbiter-hub-api.container.d/cors.conf"
+        mode: "0644"
+        content: |
+          # CORS/CSRF allowed origins — EnvironmentFile preserves JSON quotes
+          [Container]
+          EnvironmentFile=/etc/arbiter/cors-origins.env
       notify: reload systemd
 
     - name: Flush handlers before starting services
@@ -181,6 +277,26 @@
       delay: 3
       until: health.rc == 0
       changed_when: false
+
+    - name: Write seed script to container
+      ansible.builtin.shell:
+        cmd: |
+          podman exec arbiter-hub-api bash -c 'cat > /tmp/seed.py << "PYEOF"
+          import json, urllib.request
+          policies = json.load(open("/etc/arbiter/seed-policies.json"))
+          existing = json.loads(urllib.request.urlopen("http://127.0.0.1:8400/policies").read())["items"]
+          names = {p["name"] for p in existing}
+          created = 0
+          for p in policies:
+              if p["name"] not in names:
+                  req = urllib.request.Request("http://127.0.0.1:8400/policies", data=json.dumps(p).encode(), headers={"Content-Type": "application/json"}, method="POST")
+                  urllib.request.urlopen(req)
+                  created += 1
+          print(f"Seeded {created} new policies ({len(names)} already existed)")
+          PYEOF
+          python3.12 /tmp/seed.py'
+      register: seed_result
+      changed_when: "'Seeded 0' not in seed_result.stdout"
 
     - name: Start MCP
       ansible.builtin.systemd:
@@ -251,12 +367,13 @@
         name: arbiter-hub-api
         state: restarted
 
-- name: Deploy arbiter-hub UI via nginx
+- name: Deploy arbiter-hub UI via nginx + host TLS termination
   hosts: arbiter_hub
   become: true
   vars:
-    arbiter_ui_image: "docker.io/library/nginx:alpine"
+    arbiter_ui_base_image: "docker.io/library/nginx:alpine"
     arbiter_repo_dir: /opt/arbiter-hub
+    quadlet_dir: "/etc/containers/systemd"
   tasks:
     - name: Build UI (requires node/npm) or use pre-built dist
       ansible.builtin.stat:
@@ -270,54 +387,269 @@
         mode: "0644"
       when: not ui_dist.stat.exists
 
-    - name: Deploy nginx config for UI
+    # --- Remove old healthcheck timer (sabotages container with wrong image) ---
+    - name: Remove old healthcheck timer
+      ansible.builtin.systemd:
+        name: arbiter-ui-healthcheck.timer
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove old healthcheck unit files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/arbiter-ui-healthcheck.timer
+        - /etc/systemd/system/arbiter-ui-healthcheck.service
+
+    # --- Build HTTP-only nginx container image ---
+    - name: Create UI image build directory
+      ansible.builtin.file:
+        path: /tmp/arbiter-ui-build
+        state: directory
+        mode: "0755"
+
+    - name: Write HTTP-only nginx config for container
       ansible.builtin.copy:
-        src: "{{ arbiter_repo_dir }}/deploy/nginx/nginx.conf"
-        dest: "{{ arbiter_repo_dir }}/deploy/nginx/nginx.conf"
-        remote_src: true
+        dest: /tmp/arbiter-ui-build/nginx.conf
         mode: "0644"
+        content: |
+          worker_processes auto;
+          error_log /var/log/nginx/error.log warn;
+          pid /tmp/nginx.pid;
 
-    - name: Pull nginx image
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+              sendfile on;
+              keepalive_timeout 65;
+              gzip on;
+              gzip_types text/plain text/css application/json application/javascript text/xml;
+
+              resolver 10.89.0.1 valid=5s ipv6=off;
+
+              server {
+                  listen 8080;
+                  server_name _;
+                  root /opt/app-root/src;
+                  index index.html;
+
+                  add_header X-Content-Type-Options "nosniff" always;
+                  add_header X-Frame-Options "DENY" always;
+                  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+                  location /api/ {
+                      set $backend "http://arbiter-hub-api:8400";
+                      proxy_pass $backend;
+                      rewrite ^/api/(.*) /$1 break;
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto $scheme;
+                      proxy_connect_timeout 5s;
+                      proxy_read_timeout 30s;
+                      error_page 502 503 504 /api_unavailable.json;
+                  }
+
+                  location = /api_unavailable.json {
+                      internal;
+                      default_type application/json;
+                      return 503 '{"status":"unavailable","detail":"API temporarily unreachable"}';
+                  }
+
+                  location / {
+                      try_files $uri $uri/ /index.html;
+                  }
+
+                  location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+                      expires 1y;
+                      add_header Cache-Control "public, immutable";
+                  }
+              }
+          }
+
+    - name: Write Containerfile for HTTP-only UI image
+      ansible.builtin.copy:
+        dest: /tmp/arbiter-ui-build/Containerfile
+        mode: "0644"
+        content: |
+          FROM {{ arbiter_ui_base_image }}
+          COPY nginx.conf /etc/nginx/nginx.conf
+
+    - name: Build HTTP-only UI container image
       ansible.builtin.command:
-        cmd: podman pull {{ arbiter_ui_image }}
-      register: pull_result
-      changed_when: "'Pulling' in pull_result.stderr"
+        cmd: podman build -t localhost/arbiter-hub-ui:http-only -f /tmp/arbiter-ui-build/Containerfile /tmp/arbiter-ui-build/
+      register: ui_build
+      changed_when: "'COMMIT' in ui_build.stdout"
 
-    - name: Stop existing UI container
+    # --- Deploy UI container via Quadlet ---
+    - name: Deploy UI Quadlet container file
+      ansible.builtin.copy:
+        dest: "{{ quadlet_dir }}/arbiter-hub-ui.container"
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Arbiter Hub UI (nginx + React SPA)
+          After=arbiter-hub-api.container
+
+          [Container]
+          Image=localhost/arbiter-hub-ui:http-only
+          ContainerName=arbiter-hub-ui
+          Network=arbiter-hub.network
+          PublishPort=8080:8080
+          Volume={{ arbiter_repo_dir }}/ui/dist:/opt/app-root/src:ro,z
+          SecurityLabelDisable=true
+
+          [Service]
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target default.target
+      notify: reload systemd
+
+    - name: Flush handlers before starting UI
+      ansible.builtin.meta: flush_handlers
+
+    - name: Remove old UI container if exists
       ansible.builtin.command:
         cmd: podman rm -f arbiter-hub-ui
       failed_when: false
       changed_when: true
 
-    - name: Start UI container
-      ansible.builtin.command:
-        cmd: >-
-          podman run -d
-          --name arbiter-hub-ui
-          --network systemd-arbiter-hub
-          -p 8443:8080
-          -v {{ arbiter_repo_dir }}/ui/dist:/opt/app-root/src:ro,Z
-          -v {{ arbiter_repo_dir }}/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
-          {{ arbiter_ui_image }}
-      register: ui_start
+    - name: Start UI via Quadlet
+      ansible.builtin.systemd:
+        name: arbiter-hub-ui
+        state: started
+        enabled: true
+        daemon_reload: true
 
-    - name: Wait for UI
+    - name: Wait for UI on port 8080
       ansible.builtin.wait_for:
-        port: 8443
+        port: 8080
         timeout: 15
 
     - name: Verify UI serves dashboard
       ansible.builtin.uri:
-        url: http://localhost:8443/
+        url: http://localhost:8080/
         status_code: 200
-      register: ui_check
 
-    - name: Verify API proxy works through nginx
+    - name: Verify API proxy works
       ansible.builtin.uri:
-        url: http://localhost:8443/api/health
+        url: http://localhost:8080/api/health
         status_code: 200
       register: proxy_check
 
+    # --- Host nginx TLS termination with certmonger ---
+    - name: Install host nginx
+      ansible.builtin.dnf:
+        name: nginx
+        state: present
+
+    - name: Enable SELinux boolean for nginx proxy
+      ansible.posix.seboolean:
+        name: httpd_can_network_connect
+        state: true
+        persistent: true
+
+    - name: Request IPA certificate via certmonger
+      ansible.builtin.command:
+        cmd: >-
+          ipa-getcert request
+          -K HTTP/{{ ansible_fqdn }}
+          -D {{ ansible_fqdn }}
+          -f /etc/pki/tls/certs/{{ ansible_fqdn }}.crt
+          -k /etc/pki/tls/private/{{ ansible_fqdn }}.key
+          -F /etc/pki/tls/certs/ipa-ca.crt
+          -C "systemctl reload nginx"
+          -N {{ ansible_fqdn }}
+      args:
+        creates: /etc/pki/tls/certs/{{ ansible_fqdn }}.crt
+
+    - name: Wait for cert issuance
+      ansible.builtin.command:
+        cmd: ipa-getcert list
+      register: cert_status
+      retries: 12
+      delay: 5
+      until: "'MONITORING' in cert_status.stdout"
+      changed_when: false
+
+    - name: Remove default nginx server block
+      ansible.builtin.file:
+        path: /etc/nginx/conf.d/default.conf
+        state: absent
+
+    - name: Deploy TLS termination nginx config
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/arbiter-hub.conf
+        mode: "0644"
+        content: |
+          server {
+              listen 443 ssl;
+              http2 on;
+              server_name {{ ansible_fqdn }};
+
+              ssl_certificate /etc/pki/tls/certs/{{ ansible_fqdn }}.crt;
+              ssl_certificate_key /etc/pki/tls/private/{{ ansible_fqdn }}.key;
+              ssl_trusted_certificate /etc/pki/tls/certs/ipa-ca.crt;
+              ssl_protocols TLSv1.2 TLSv1.3;
+              ssl_ciphers HIGH:!aNULL:!MD5;
+              ssl_prefer_server_ciphers on;
+
+              add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              add_header X-Frame-Options "DENY" always;
+              add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+              location / {
+                  proxy_pass http://127.0.0.1:8080;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto https;
+                  proxy_connect_timeout 5s;
+                  proxy_read_timeout 30s;
+              }
+          }
+
+          server {
+              listen 80;
+              server_name {{ ansible_fqdn }};
+              return 301 https://$host$request_uri;
+          }
+      notify: reload nginx
+
+    - name: Start and enable host nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Verify HTTPS via host nginx
+      ansible.builtin.uri:
+        url: "https://{{ ansible_fqdn }}/api/health"
+        validate_certs: false
+        status_code: 200
+      register: https_check
+
     - name: Display UI status
       ansible.builtin.debug:
-        msg: "UI: http://{{ ansible_fqdn }}:8443 — API proxy: {{ proxy_check.status }}"
+        msg: >-
+          UI: https://{{ ansible_fqdn }} (TLS via certmonger, auto-renew).
+          HTTP:80 redirects to HTTPS. Container HTTP-only on 8080 via Quadlet.
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

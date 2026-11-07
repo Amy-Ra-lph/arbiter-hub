@@ -59,6 +59,7 @@
               bind_address = "0.0.0.0"
               bind_port = "8081"
               trust_domain = "{{ trust_domain }}"
+              jwt_issuer = "{{ ahdapa_issuer | regex_replace('/idp$', '/spire') }}"
               data_dir = "{{ spire_data_dir }}"
               log_level = "INFO"
 
@@ -220,14 +221,24 @@
                   }
               }
           }
-    - name: Fetch SPIRE server bundle
-      ansible.builtin.uri:
-        url: "https://{{ spire_server_host }}:8081"
-        validate_certs: false
-        return_content: true
+    - name: Fetch SPIRE server bundle via CLI
+      ansible.builtin.command:
+        cmd: >-
+          spire-server bundle show
+          -socketPath /tmp/spire-server/private/api.sock
+      delegate_to: "{{ spire_server_host }}"
+      register: spire_bundle
+      changed_when: false
+      failed_when: false
+
+    - name: Write SPIRE server bundle
+      ansible.builtin.copy:
+        content: "{{ spire_bundle.stdout }}"
         dest: "{{ spire_data_dir }}/bootstrap.crt"
-        creates: "{{ spire_data_dir }}/bootstrap.crt"
-      ignore_errors: true
+        owner: spire
+        group: spire
+        mode: "0640"
+      when: spire_bundle.rc == 0
 
     - name: Copy IPA CA as bootstrap cert (fallback)
       ansible.builtin.copy:
@@ -238,6 +249,7 @@
         owner: spire
         group: spire
         mode: "0640"
+      when: spire_bundle.rc != 0
 
     - name: Deploy SPIRE agent systemd unit
       ansible.builtin.copy:
@@ -255,6 +267,7 @@
           ExecStart=/usr/local/bin/spire-agent run -config {{ spire_conf_dir }}/agent.conf -joinToken {{ spire_join_token }}
           Restart=on-failure
           RestartSec=5
+          AmbientCapabilities=CAP_SYS_PTRACE
 
           [Install]
           WantedBy=multi-user.target
@@ -296,3 +309,97 @@
     - name: Display registered agents
       ansible.builtin.debug:
         var: agent_list.stdout_lines
+
+    - name: Register workload entries
+      ansible.builtin.command:
+        cmd: >-
+          spire-server entry create
+          -parentID spiffe://{{ trust_domain }}/agent/arbiter-agent
+          -spiffeID spiffe://{{ trust_domain }}/workload/{{ item.name }}
+          -selector unix:uid:0
+          -socketPath /tmp/spire-server/private/api.sock
+      loop:
+        - { name: enforcement-mcp }
+        - { name: linux-mcp }
+        - { name: governed-agent }
+      register: entry_result
+      changed_when: "'Entry ID' in entry_result.stdout"
+      failed_when: "entry_result.rc != 0 and 'already exists' not in entry_result.stderr"
+
+    - name: Export SPIRE JWKS for ahdapa federation
+      ansible.builtin.shell: |
+        spire-server bundle show -output json \
+          -socketPath /tmp/spire-server/private/api.sock \
+          | python3 -c "
+        import sys, json, base64
+        bundle = json.load(sys.stdin)
+        keys = []
+        for k in bundle.get('jwt_authorities', []):
+            pub = k.get('public_key', '')
+            from cryptography.hazmat.primitives.serialization import load_der_public_key
+            from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicNumbers
+            pk = load_der_public_key(base64.b64decode(pub))
+            nums = pk.public_numbers()
+            x = base64.urlsafe_b64encode(nums.x.to_bytes(32, 'big')).rstrip(b'=').decode()
+            y = base64.urlsafe_b64encode(nums.y.to_bytes(32, 'big')).rstrip(b'=').decode()
+            keys.append({'kty':'EC','crv':'P-256','x':x,'y':y,'use':'sig','alg':'ES256','kid':k.get('key_id','')})
+        print(json.dumps({'keys':keys}, indent=2))
+        "
+      register: spire_jwks
+      changed_when: false
+
+    - name: Serve SPIRE JWKS via httpd
+      ansible.builtin.copy:
+        content: "{{ spire_jwks.stdout }}"
+        dest: /var/www/html/.well-known/spire-jwks.json
+        mode: "0644"
+
+    - name: Deploy SPIRE JWKS httpd config
+      ansible.builtin.copy:
+        dest: /etc/httpd/conf.d/spire-jwks.conf
+        mode: "0644"
+        content: |
+          Alias "/.well-known/spire-jwks.json" "/var/www/html/.well-known/spire-jwks.json"
+          <Location "/.well-known/spire-jwks.json">
+              Require all granted
+              Header set Content-Type "application/json"
+              Header set Access-Control-Allow-Origin "*"
+          </Location>
+      notify: reload httpd
+
+    - name: Deploy SPIRE OIDC discovery endpoint
+      ansible.builtin.copy:
+        dest: /var/www/html/spire/.well-known/openid-configuration
+        mode: "0644"
+        content: |
+          {
+            "issuer": "{{ ahdapa_issuer | regex_replace('/idp$', '/spire') }}",
+            "jwks_uri": "https://{{ ansible_fqdn }}/.well-known/spire-jwks.json",
+            "response_types_supported": ["id_token"],
+            "subject_types_supported": ["public"],
+            "id_token_signing_alg_values_supported": ["ES256"]
+          }
+
+    - name: Create SPIRE discovery directory
+      ansible.builtin.file:
+        path: /var/www/html/spire/.well-known
+        state: directory
+        mode: "0755"
+
+    - name: Deploy SPIRE OIDC discovery httpd config
+      ansible.builtin.copy:
+        dest: /etc/httpd/conf.d/spire-oidc-discovery.conf
+        mode: "0644"
+        content: |
+          Alias "/spire/.well-known/openid-configuration" "/var/www/html/spire/.well-known/openid-configuration"
+          <Location "/spire/.well-known/openid-configuration">
+              Require all granted
+              Header set Content-Type "application/json"
+          </Location>
+      notify: reload httpd
+
+  handlers:
+    - name: reload httpd
+      ansible.builtin.systemd:
+        name: httpd
+        state: reloaded

@@ -1,0 +1,42 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/rhel-security/arbiter-hub-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8400
+
+database:
+  url: "postgresql+asyncpg://arbiter:changeme@arbiter-hub-db:5432/arbiter"
+
+keylime:
+  verifierUrl: "https://keylime-verifier:8881"
+  caCert: /etc/arbiter/keylime/ca.crt
+  clientCert: /etc/arbiter/keylime/client.crt
+  clientKey: /etc/arbiter/keylime/client.key
+
+falco:
+  healthzUrl: "http://falco-agent:8765/healthz"
+
+cosign:
+  publicKey: /etc/arbiter/cosign/cosign.pub
+  insecureIgnoreTlog: "true"
+
+seedPolicies: |
+  []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false

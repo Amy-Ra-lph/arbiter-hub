@@ -1,0 +1,52 @@
+---
+# drift-check.yaml — Scheduled drift detection for persistent demos
+#
+# Runs rebuild.yaml checkpoint plays only (--tags checkpoint) to
+# verify all services are still running and healthy.
+#
+# Schedule: every 4 hours on persistent demo environments.
+# Does NOT provision or deploy — only verifies existing state.
+#
+# GitLab CI scheduled pipeline syntax
+
+stages:
+  - drift-check
+  - notify
+
+variables:
+  DRIFT_INVENTORY: "idm-ci/playbooks/arbiter/inventory/arbiter-demo.yml"
+  DRIFT_PLAYBOOK: "idm-ci/playbooks/arbiter/rebuild.yaml"
+
+drift-check:all-phases:
+  stage: drift-check
+  tags:
+    - itup-alm-x86
+  script:
+    - >-
+      ansible-playbook
+      -i ${DRIFT_INVENTORY}
+      ${DRIFT_PLAYBOOK}
+      --tags checkpoint
+      2>&1 | tee /tmp/drift-report.txt
+    - grep -c "PASS" /tmp/drift-report.txt > /tmp/pass-count.txt
+    - echo "Checkpoints passed:" $(cat /tmp/pass-count.txt)
+  artifacts:
+    paths:
+      - /tmp/drift-report.txt
+    expire_in: 7 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+notify:drift-failure:
+  stage: notify
+  needs: [drift-check:all-phases]
+  script:
+    - echo "Drift detected — one or more checkpoints failed"
+    # Slack webhook notification (configure in CI/CD variables)
+    - >-
+      curl -X POST ${SLACK_WEBHOOK_URL}
+      -H 'Content-Type: application/json'
+      -d "{\"text\": \"Arbiter Hub drift detected on ${PATTERN_DOMAIN}. Check pipeline: ${CI_PIPELINE_URL}\"}"
+  when: on_failure
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"

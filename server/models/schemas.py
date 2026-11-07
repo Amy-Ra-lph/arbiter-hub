@@ -35,6 +35,8 @@ class WorkloadCreate(BaseModel):
     workload_type: WorkloadType
     backend_types: list[BackendType] = Field(min_length=1, max_length=10)
     stale_ttl_seconds: int = Field(default=3600, ge=60, le=604800)
+    artifact_ref: Annotated[str, StringConstraints(max_length=2048)] | None = None
+    artifact_digest: Annotated[str, StringConstraints(max_length=128)] | None = None
     metadata: dict = Field(default_factory=dict)
 
     @model_validator(mode="before")
@@ -55,6 +57,9 @@ class WorkloadRead(BaseModel):
     stale_ttl_seconds: int
     registered_at: datetime
     last_attested_at: datetime | None
+    artifact_ref: str | None = None
+    artifact_digest: str | None = None
+    previous_artifact_digest: str | None = None
     metadata: dict = Field(default_factory=dict, validation_alias="metadata_")
 
     model_config = {"from_attributes": True}
@@ -162,6 +167,21 @@ class ComplianceResult(BaseModel):
     evaluated_at: datetime
 
 
+class ImageRotateRequest(BaseModel):
+    artifact_ref: Annotated[str, StringConstraints(min_length=1, max_length=2048)]
+    artifact_digest: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    auto_attest: bool = True
+
+
+class ImageRotateResult(BaseModel):
+    workload_id: uuid.UUID
+    previous_digest: str | None
+    new_digest: str
+    new_ref: str
+    state: WorkloadState
+    attestation_triggered: bool
+
+
 class GateCheckResult(BaseModel):
     workload_id: uuid.UUID
     gate_passed: bool
@@ -169,3 +189,21 @@ class GateCheckResult(BaseModel):
     compliance: ComplianceResult
     attestation_current: bool
     detail: dict
+
+
+class EnrollRequest(BaseModel):
+    tpm_policy: dict = Field(default_factory=lambda: {"mask": "0x0"})
+    runtime_policy: Annotated[str, StringConstraints(max_length=1048576)] = ""
+    runtime_policy_name: ConstrainedName = ""
+    ak_tpm: Annotated[str, StringConstraints(max_length=16384)] = ""
+    mtls_cert: Annotated[str, StringConstraints(max_length=16384)] = ""
+    auto_attest: bool = True
+
+
+class EnrollResult(BaseModel):
+    workload_id: uuid.UUID
+    success: bool
+    backend: str
+    state: WorkloadState
+    attestation_triggered: bool = False
+    detail: dict = Field(default_factory=dict)

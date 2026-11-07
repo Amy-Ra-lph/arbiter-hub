@@ -5,7 +5,6 @@
     - arbiter_hub:
         host: 0.0.0.0
         port: 5001
-        secret: "{{ arbiter_webhook_secret }}"
   rules:
     - name: Quarantine on attestation failure
       condition: event.event_type == "state_transition" and event.to_state == "failed"

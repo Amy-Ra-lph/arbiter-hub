@@ -1,0 +1,72 @@
+# Containerfile.arbiter-agent — Workload Plane (bootc)
+#
+# Runs attested workloads, Keylime agent (TPM), Falco (eBPF),
+# SPIRE agent (workload identity SVIDs), demo containers.
+#
+# Build (from repo root):
+#   podman build -t quay.io/rhel-security/arbiter-agent:latest \
+#     -f deploy/bootc/Containerfile.arbiter-agent .
+
+FROM quay.io/fedora/fedora-bootc:44
+
+RUN dnf install -y \
+        freeipa-client \
+        keylime-agent-rust \
+        swtpm \
+        swtpm-tools \
+        podman \
+        cloud-init \
+        qemu-guest-agent \
+    && dnf clean all
+
+# Falco from upstream RPM repo (not in Fedora repos)
+RUN rpm --import https://falco.org/repo/falcosecurity-packages.asc \
+    && curl -s -o /etc/yum.repos.d/falcosecurity.repo \
+        https://falco.org/repo/falcosecurity-rpm.repo \
+    && dnf install -y falco \
+    && dnf clean all
+
+# Falco rules for Arbiter workload monitoring
+COPY deploy/falco/arbiter-rules.yaml /etc/falco/rules.d/arbiter-rules.yaml
+
+# SPIRE agent — workload identity via SVIDs
+ARG SPIRE_VERSION=1.11.1
+RUN curl -sL "https://github.com/spiffe/spire/releases/download/v${SPIRE_VERSION}/spire-${SPIRE_VERSION}-linux-amd64-musl.tar.gz" \
+        | tar xz -C /opt \
+    && ln -s /opt/spire-${SPIRE_VERSION}/bin/spire-agent /usr/local/bin/spire-agent \
+    && useradd -r -s /sbin/nologin -d /var/lib/spire/agent spire
+
+COPY deploy/bootc/spire-agent.conf /etc/spire/agent/agent.conf
+COPY deploy/bootc/spire-agent.service /etc/systemd/system/spire-agent.service
+
+RUN mkdir -p /var/lib/spire/agent/keys /etc/spire/agent \
+    && chown -R spire:spire /var/lib/spire/agent /etc/spire/agent
+
+# swtpm setup for virtual TPM (lab/demo — production uses hardware TPM)
+COPY deploy/bootc/swtpm-setup.sh /usr/local/sbin/arbiter-swtpm-setup
+COPY deploy/bootc/swtpm-setup.service /etc/systemd/system/arbiter-swtpm-setup.service
+
+# Firstboot provisioning
+COPY deploy/bootc/agent-firstboot.sh /usr/local/sbin/arbiter-agent-firstboot
+COPY deploy/bootc/agent-firstboot.service /etc/systemd/system/arbiter-agent-firstboot.service
+COPY deploy/bootc/config.env.example /etc/arbiter-hub/config.env.example
+
+# Lab access
+RUN echo 'root:Secret123!' | chpasswd \
+    && useradd -m -G wheel cloud-user \
+    && echo 'cloud-user:Secret123!' | chpasswd \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
+# SPIFFE → OAuth2 token exchange helper + demo script
+COPY deploy/bootc/spiffe-token-exchange.sh /usr/local/bin/spiffe-token-exchange
+COPY deploy/bootc/demo-spiffe-flow.sh /usr/local/bin/demo-spiffe-flow
+
+RUN chmod 755 /usr/local/sbin/arbiter-agent-firstboot \
+               /usr/local/sbin/arbiter-swtpm-setup \
+               /usr/local/bin/spiffe-token-exchange \
+               /usr/local/bin/demo-spiffe-flow \
+    && systemctl enable arbiter-agent-firstboot.service \
+                        arbiter-swtpm-setup.service \
+                        qemu-guest-agent.service
+
+# spire-agent not enabled at boot — firstboot starts it after join token is fetched

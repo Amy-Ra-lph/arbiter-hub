@@ -18,7 +18,8 @@
       ansible.builtin.file:
         path: "{{ arbiter_cert_dir }}"
         state: directory
-        mode: "0750"
+        mode: "0755"
+        setype: cert_t
 
     # --- IPA mode ---
     - name: IPA mode — request service certificate
@@ -35,6 +36,13 @@
             state: started
             enabled: true
 
+        - name: Check for existing cert tracking request
+          ansible.builtin.command:
+            cmd: ipa-getcert list -f {{ arbiter_cert_dir }}/client.crt
+          register: cert_tracking
+          changed_when: false
+          failed_when: false
+
         - name: Request certificate from IPA CA
           ansible.builtin.command:
             cmd: >-
@@ -45,7 +53,17 @@
               -D {{ ansible_fqdn }}
               -N CN={{ ansible_fqdn }}
               -w
-            creates: "{{ arbiter_cert_dir }}/client.crt"
+          when: cert_tracking.rc != 0
+
+        - name: Wait for existing cert to be issued
+          ansible.builtin.command:
+            cmd: ipa-getcert list -f {{ arbiter_cert_dir }}/client.crt
+          register: cert_status
+          until: "'MONITORING' in cert_status.stdout"
+          retries: 30
+          delay: 5
+          changed_when: false
+          when: cert_tracking.rc == 0
 
         - name: Copy IPA CA cert
           ansible.builtin.copy:
@@ -129,14 +147,8 @@
 
   handlers:
     - name: restart keylime verifier
-      listen: restart keylime verifier
       delegate_to: "{{ keylime_server }}"
-      block:
-        - name: Clean multiprocessing temp files
-          ansible.builtin.shell: rm -rf /tmp/pymp-*
-          changed_when: true
-
-        - name: Restart keylime_verifier
-          ansible.builtin.systemd:
-            name: keylime_verifier
-            state: restarted
+      ansible.builtin.shell: |
+        rm -rf /tmp/pymp-*
+        systemctl restart keylime_verifier
+      changed_when: true

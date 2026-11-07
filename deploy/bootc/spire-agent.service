@@ -1,0 +1,15 @@
+[Unit]
+Description=SPIRE Agent
+After=network-online.target arbiter-agent-firstboot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=spire
+Group=spire
+ExecStart=/usr/local/bin/spire-agent run -config /etc/spire/agent/agent.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

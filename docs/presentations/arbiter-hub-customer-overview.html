@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbiter Hub — Continuous Workload Trust</title>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:'Red Hat Display',sans-serif;color:#292929;background:#151515}
+.slide{width:100vw;height:100vh;display:none;position:relative;flex-direction:column;overflow:hidden}
+.slide.active{display:flex}
+
+/* Title slide — red bg */
+.slide-title{background:#EE0000;color:#fff;justify-content:center;padding:clamp(3rem,8vw,8rem)}
+.slide-title .logo-left{position:absolute;left:clamp(3rem,6vw,6rem);top:clamp(2.5rem,5vh,4rem);width:clamp(120px,18vw,250px)}
+.slide-title h1{font-size:clamp(2.5rem,5vw,4.5rem);font-weight:800;line-height:1.1;max-width:70%}
+.slide-title h2{font-size:clamp(1.2rem,2.2vw,2rem);font-weight:400;margin-top:.75rem;opacity:.9;max-width:60%}
+.slide-title .subtitle{font-size:clamp(.9rem,1.4vw,1.2rem);font-weight:400;margin-top:2rem;opacity:.7}
+
+/* Content slides — white bg */
+.slide-content{background:#fff;padding:clamp(3rem,5vw,5rem) clamp(3rem,6vw,7rem) clamp(2rem,4vh,4rem);justify-content:center}
+.slide-content .accent-bar{position:absolute;top:0;left:0;right:0;height:4px;background:#EE0000}
+.slide-content .conf-label{position:absolute;top:clamp(.8rem,1.5vh,1.2rem);right:clamp(1.5rem,3vw,3rem);font-size:.7rem;font-weight:700;color:#a3a3a3;letter-spacing:.08em;text-transform:uppercase}
+.slide-content h2{font-size:clamp(1.6rem,3vw,2.4rem);font-weight:800;color:#151515;margin-bottom:clamp(1rem,2vh,2rem)}
+.slide-content .slide-icon{position:absolute;right:clamp(3rem,8vw,10rem);top:clamp(3rem,12vh,10rem);width:clamp(100px,18vw,220px);opacity:.7;z-index:0}
+.slide-content .card-grid,.slide-content .pillar-grid,.slide-content h2,.slide-content p{position:relative;z-index:1}
+
+/* Closing slide — dark bg */
+.slide-closing{background:#151515;color:#fff;justify-content:center;align-items:center;text-align:center;padding:clamp(3rem,8vw,8rem)}
+.slide-closing h2{font-size:clamp(2rem,4vw,3.5rem);font-weight:800}
+.slide-closing p{font-size:clamp(1rem,1.8vw,1.4rem);margin-top:1rem;opacity:.7}
+.slide-closing .cta{margin-top:2.5rem;font-size:clamp(.95rem,1.4vw,1.1rem);color:#f9a8a8}
+
+/* Logo bottom-right */
+.logo-br{position:absolute;bottom:clamp(1.2rem,2vh,2rem);right:clamp(1.5rem,3vw,3rem);width:clamp(80px,10vw,140px)}
+
+/* Card grid */
+.card-grid{display:grid;gap:clamp(1rem,2vw,2rem);margin-top:clamp(1rem,2vh,1.5rem)}
+.card-grid.cols-3{grid-template-columns:repeat(3,1fr)}
+.card-grid.cols-4{grid-template-columns:repeat(4,1fr)}
+.card{background:#f2f2f2;border:1px solid #e0e0e0;border-radius:12px;padding:clamp(1.2rem,2vw,2rem)}
+.card h3{font-size:clamp(.95rem,1.3vw,1.15rem);font-weight:700;color:#151515;margin-bottom:.5rem}
+.card p{font-size:clamp(.8rem,1vw,.95rem);line-height:1.5;color:#4d4d4d}
+.card .num{font-size:clamp(1.8rem,3vw,2.8rem);font-weight:800;color:#EE0000;line-height:1}
+.card .label{font-size:clamp(.75rem,.9vw,.85rem);font-weight:500;color:#707070;margin-top:.3rem;text-transform:uppercase;letter-spacing:.04em}
+
+/* Pillar columns */
+.pillar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(1.5rem,2.5vw,2.5rem);margin-top:clamp(1rem,2vh,1.5rem)}
+.pillar{text-align:center;padding:clamp(1.5rem,2vw,2.5rem) clamp(1rem,1.5vw,1.5rem);background:#f2f2f2;border-radius:12px;border-top:4px solid #EE0000}
+.pillar .pillar-icon{width:clamp(48px,6vw,72px);margin:0 auto 1rem;opacity:.8}
+.pillar h3{font-size:clamp(.95rem,1.3vw,1.15rem);font-weight:700;margin-bottom:.6rem}
+.pillar p{font-size:clamp(.78rem,.95vw,.9rem);line-height:1.5;color:#4d4d4d}
+
+/* State machine */
+.state-flow{display:flex;align-items:center;gap:clamp(.5rem,1vw,1rem);flex-wrap:wrap;justify-content:center;margin-top:clamp(1rem,3vh,2rem)}
+.state-node{padding:.6rem 1.2rem;border-radius:8px;font-size:clamp(.75rem,.95vw,.9rem);font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.state-node.green{background:#e9f7df;color:#3d7317;border:2px solid #87bb62}
+.state-node.blue{background:#e0f0ff;color:#004d99;border:2px solid #4394e5}
+.state-node.yellow{background:#fff4cc;color:#b98412;border:2px solid #ffcc17}
+.state-node.orange{background:#ffe3d9;color:#b1380b;border:2px solid #f4784a}
+.state-node.red-node{background:#fce3e3;color:#a60000;border:2px solid #f56e6e}
+.state-node.dark{background:#292929;color:#fff;border:2px solid #151515}
+.state-arrow{font-size:clamp(1rem,1.5vw,1.4rem);color:#a3a3a3}
+
+/* Timeline */
+.timeline{position:relative;margin-top:clamp(1rem,2vh,1.5rem);padding-left:3rem}
+.timeline::before{content:'';position:absolute;left:1rem;top:0;bottom:0;width:3px;background:linear-gradient(to bottom,#EE0000,#63993d)}
+.timeline-item{position:relative;margin-bottom:clamp(.8rem,1.5vh,1.2rem);padding-left:1.5rem}
+.timeline-item::before{content:'';position:absolute;left:-2.15rem;top:.35rem;width:12px;height:12px;border-radius:50%;background:#EE0000;border:3px solid #fff;box-shadow:0 0 0 2px #EE0000}
+.timeline-item.done::before{background:#63993d;box-shadow:0 0 0 2px #63993d}
+.timeline-item .time{font-size:clamp(.7rem,.85vw,.8rem);font-weight:700;color:#EE0000;text-transform:uppercase;letter-spacing:.05em}
+.timeline-item .desc{font-size:clamp(.82rem,1vw,.95rem);color:#292929;margin-top:.15rem}
+.timeline-total{margin-top:1rem;padding-left:1.5rem;font-size:clamp(.9rem,1.1vw,1rem);font-weight:700;color:#3d7317}
+
+/* KBS diagram */
+.kbs-flow{display:flex;align-items:center;justify-content:center;gap:clamp(1rem,2vw,2rem);margin-top:clamp(1.5rem,3vh,2.5rem);flex-wrap:wrap}
+.kbs-box{padding:clamp(1rem,1.5vw,1.5rem) clamp(1.5rem,2vw,2rem);border-radius:12px;text-align:center;font-size:clamp(.82rem,1vw,.95rem);font-weight:500;min-width:140px}
+.kbs-box.workload{background:#e0f0ff;border:2px solid #4394e5;color:#004d99}
+.kbs-box.arbiter{background:#f2f2f2;border:2px solid #e0e0e0;color:#292929}
+.kbs-box.allow{background:#e9f7df;border:2px solid #87bb62;color:#3d7317}
+.kbs-box.deny{background:#fce3e3;border:2px solid #f56e6e;color:#a60000}
+.kbs-arrow{font-size:1.5rem;color:#a3a3a3}
+
+/* Hub spoke */
+.hub-spoke{display:flex;justify-content:center;align-items:center;gap:clamp(1.5rem,3vw,3rem);margin-top:clamp(1.5rem,3vh,2.5rem);flex-wrap:wrap}
+.spoke-item{text-align:center;padding:clamp(.8rem,1.2vw,1.2rem) clamp(1rem,1.5vw,1.5rem);background:#f2f2f2;border-radius:12px;border:1px solid #e0e0e0;min-width:130px}
+.spoke-item h4{font-size:clamp(.8rem,.95vw,.9rem);font-weight:700;color:#151515;margin-bottom:.3rem}
+.spoke-item p{font-size:clamp(.7rem,.82vw,.78rem);color:#707070}
+.hub-center{padding:clamp(1.5rem,2vw,2rem);background:#EE0000;color:#fff;border-radius:50%;width:clamp(120px,14vw,160px);height:clamp(120px,14vw,160px);display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;font-size:clamp(.9rem,1.1vw,1rem);text-align:center;flex-shrink:0}
+
+/* Deploy */
+.deploy-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(1rem,2vw,2rem);margin-top:clamp(1rem,2vh,1.5rem)}
+.deploy-item{background:#f2f2f2;border-radius:12px;padding:clamp(1.2rem,2vw,2rem);border-left:4px solid #EE0000}
+.deploy-item h3{font-size:clamp(.9rem,1.1vw,1rem);font-weight:700;margin-bottom:.4rem}
+.deploy-item p{font-size:clamp(.78rem,.95vw,.9rem);line-height:1.5;color:#4d4d4d}
+
+/* Nav dots */
+.nav-dots{position:fixed;bottom:clamp(.8rem,1.5vh,1.5rem);left:50%;transform:translateX(-50%);display:flex;gap:.5rem;z-index:100}
+.nav-dot{width:10px;height:10px;border-radius:50%;background:rgba(0,0,0,.15);cursor:pointer;transition:all .2s}
+.nav-dot.active{background:#EE0000;transform:scale(1.3)}
+.slide-closing ~ .nav-dots .nav-dot,.slide-title ~ .nav-dots .nav-dot{background:rgba(255,255,255,.3)}
+
+/* Slide number */
+.slide-num{position:absolute;bottom:clamp(1rem,2vh,1.5rem);left:clamp(1.5rem,3vw,3rem);font-size:.75rem;color:#a3a3a3;font-weight:500}
+
+/* Card grid spacing */
+/* Small screen icon hide */
+@media(max-width:768px){.slide-icon{display:none!important}.card-grid.cols-3,.card-grid.cols-4,.pillar-grid,.deploy-grid{grid-template-columns:1fr}.hub-spoke{flex-direction:column}}
+@media(max-height:600px){.slide-icon{display:none!important}}
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Title -->
+<div class="slide slide-title active" data-slide="0">
+  <img class="logo-left" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <h1>Continuous Workload Trust</h1>
+  <h2>From Boot to Runtime</h2>
+  <p class="subtitle">RHEL Security &mdash; Arbiter Hub</p>
+</div>
+
+<!-- Slide 2: The Challenge -->
+<div class="slide slide-content" data-slide="1">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <img class="slide-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0ibTI5LjEzIDYuNzMtMTEtMi4zNGEuNTcuNTcgMCAwIDAtLjI2IDBsLTExIDIuMzRhLjYxLjYxIDAgMCAwLS40OS42MVYyMGExMS42MiAxMS42MiAwIDAgMCAyMy4yNCAwVjcuMzRhLjYxLjYxIDAgMCAwLS40OS0uNjFaTTE4IDUuNjRsMTAuMzggMi4ydjUuNjFMNy42MiAxNy44NnYtMTBabTAgMjQuNzRBMTAuNCAxMC40IDAgMCAxIDcuNjIgMjB2LS44NmwyMC43Ni00LjQxVjIwQTEwLjQgMTAuNCAwIDAgMSAxOCAzMC4zOFoiLz4KPC9zdmc+Cg==" alt="">
+  <h2>The Challenge</h2>
+  <div class="card-grid cols-3">
+    <div class="card">
+      <h3>Supply Chain Risk</h3>
+      <p>Software supply chain attacks increased 742% since 2019. Manual image verification does not scale across hundreds of workloads and daily deployments.</p>
+    </div>
+    <div class="card">
+      <h3>Runtime Blind Spots</h3>
+      <p>Point-in-time attestation misses configuration drift and runtime compromise. Threats emerge after deployment, between scheduled scans.</p>
+    </div>
+    <div class="card">
+      <h3>Fragmented Trust</h3>
+      <p>TPM, container signing, and runtime monitoring each answer part of the question. No single control plane unifies these signals into one trust decision.</p>
+    </div>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">2 / 12</span>
+</div>
+
+<!-- Slide 3: What Is Arbiter Hub -->
+<div class="slide slide-content" data-slide="2">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <img class="slide-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTI3IDE4LjYyYS42Mi42MiAwIDEgMC0uNjItLjYyLjYxLjYxIDAgMCAwIC42Mi42MloiLz4KICA8cGF0aCBkPSJNMjMgMjIuMzhINS42MnYtOC43NmgyNC43NlYxOGEuNjIuNjIgMCAwIDAgMS4yNCAwdi01YS42MS42MSAwIDAgMC0uNjItLjYySDVhLjYxLjYxIDAgMCAwLS42Mi42MnYxMGEuNjEuNjEgMCAwIDAgLjYyLjYyaDE4YS42Mi42MiAwIDAgMCAwLTEuMjRaIi8+CiAgPHBhdGggZD0iTTkgMTcuMzhhLjYyLjYyIDAgMCAwIDAgMS4yNGg2YS42Mi42MiAwIDAgMCAwLTEuMjRabTIzLjEzIDMuMDEtMy0uNjRhLjU3LjU3IDAgMCAwLS4yNiAwbC0zIC42NGEuNjIuNjIgMCAwIDAtLjQ5LjYxdjMuNDVhMy42MiAzLjYyIDAgMSAwIDcuMjQgMFYyMWEuNjIuNjIgMCAwIDAtLjQ5LS42MVoiLz4KPC9zdmc+Cg==" alt="">
+  <h2>What Is Arbiter Hub?</h2>
+  <p style="font-size:clamp(1rem,1.5vw,1.3rem);line-height:1.6;max-width:55%;margin-bottom:clamp(1rem,2vh,2rem);color:#4d4d4d">
+    A federation attestation control plane that answers one question across your entire infrastructure:
+  </p>
+  <p style="font-size:clamp(1.4rem,2.5vw,2rem);font-weight:700;color:#EE0000;max-width:60%;margin-bottom:clamp(1.5rem,3vh,2.5rem)">
+    &ldquo;Should this workload be trusted right now?&rdquo;
+  </p>
+  <div class="card-grid cols-3" style="max-width:75%">
+    <div class="card">
+      <h3>Federate, Don't Replace</h3>
+      <p>Works with your existing TPM, signing, and monitoring tools. One API unifies their signals.</p>
+    </div>
+    <div class="card">
+      <h3>Pluggable Backends</h3>
+      <p>Keylime, Sigstore/cosign, Falco, and more. Add new attestation sources without changing the control plane.</p>
+    </div>
+    <div class="card">
+      <h3>Continuous, Not Periodic</h3>
+      <p>Real-time monitoring with automatic re-attestation. Trust is measured continuously, not at deployment time.</p>
+    </div>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">3 / 12</span>
+</div>
+
+<!-- Slide 4: Three Pillars of Trust -->
+<div class="slide slide-content" data-slide="3">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <h2>Three Pillars of Trust</h2>
+  <div class="pillar-grid">
+    <div class="pillar">
+      <img class="pillar-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTI3IDE4LjYyYS42Mi42MiAwIDEgMC0uNjItLjYyLjYxLjYxIDAgMCAwIC42Mi42MloiLz4KICA8cGF0aCBkPSJNMjMgMjIuMzhINS42MnYtOC43NmgyNC43NlYxOGEuNjIuNjIgMCAwIDAgMS4yNCAwdi01YS42MS42MSAwIDAgMC0uNjItLjYySDVhLjYxLjYxIDAgMCAwLS42Mi42MnYxMGEuNjEuNjEgMCAwIDAgLjYyLjYyaDE4YS42Mi42MiAwIDAgMCAwLTEuMjRaIi8+CiAgPHBhdGggZD0iTTkgMTcuMzhhLjYyLjYyIDAgMCAwIDAgMS4yNGg2YS42Mi42MiAwIDAgMCAwLTEuMjRabTIzLjEzIDMuMDEtMy0uNjRhLjU3LjU3IDAgMCAwLS4yNiAwbC0zIC42NGEuNjIuNjIgMCAwIDAtLjQ5LjYxdjMuNDVhMy42MiAzLjYyIDAgMSAwIDcuMjQgMFYyMWEuNjIuNjIgMCAwIDAtLjQ5LS42MVoiLz4KPC9zdmc+Cg==" alt="">
+      <h3>Hardware Root of Trust</h3>
+      <p>TPM-based boot attestation via Keylime. Cryptographic proof of system integrity from power-on, with Integrity Measurement Architecture (IMA) for file-level verification.</p>
+    </div>
+    <div class="pillar">
+      <img class="pillar-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTIxLjY5IDI5LjE1IDE4IDMxLjI4IDYuNSAyNC42NFYxMS4zNkwxOCA0LjcybDExLjUgNi42NFYyMmEuNjMuNjMgMCAwIDAgMS4yNSAwVjExYS42My42MyAwIDAgMC0uMzEtLjU0bC0xMi4xMy03YS42Mi42MiAwIDAgMC0uNjIgMGwtMTIuMTMgN2EuNjMuNjMgMCAwIDAtLjMxLjU0djE0YS42My42MyAwIDAgMCAuMzEuNTRsMTIuMTMgN2EuNjQuNjQgMCAwIDAgLjYyIDBsNC0yLjMxYS42Mi42MiAwIDAgMC0uNjItMS4wOFoiLz4KICA8cGF0aCBkPSJtMzEuMTMgMjUtMy0uNjRhLjU3LjU3IDAgMCAwLS4yNiAwbC0zIC42NGEuNjEuNjEgMCAwIDAtLjQ5LjYxdjMuNDVhMy42MiAzLjYyIDAgMSAwIDcuMjQgMHYtMy40MmEuNjEuNjEgMCAwIDAtLjQ5LS42NFoiLz4KPC9zdmc+Cg==" alt="">
+      <h3>Supply Chain Verification</h3>
+      <p>Container image signature verification via Sigstore and cosign. Transparency log inclusion proofs confirm images were built by authorized pipelines and have not been tampered with.</p>
+    </div>
+    <div class="pillar">
+      <img class="pillar-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0ibTI5LjEzIDYuNzMtMTEtMi4zNGEuNTcuNTcgMCAwIDAtLjI2IDBsLTExIDIuMzRhLjYxLjYxIDAgMCAwLS40OS42MVYyMGExMS42MiAxMS42MiAwIDAgMCAyMy4yNCAwVjcuMzRhLjYxLjYxIDAgMCAwLS40OS0uNjFaTTE4IDUuNjRsMTAuMzggMi4ydjUuNjFMNy42MiAxNy44NnYtMTBabTAgMjQuNzRBMTAuNCAxMC40IDAgMCAxIDcuNjIgMjB2LS44NmwyMC43Ni00LjQxVjIwQTEwLjQgMTAuNCAwIDAgMSAxOCAzMC4zOFoiLz4KPC9zdmc+Cg==" alt="">
+      <h3>Runtime Behavior</h3>
+      <p>eBPF-based system call monitoring via Falco. Detects reverse shells, unauthorized file access, and unexpected processes in real time, not after a scheduled scan.</p>
+    </div>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">4 / 12</span>
+</div>
+
+<!-- Slide 5: Trust Lifecycle -->
+<div class="slide slide-content" data-slide="4">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <h2>Trust Lifecycle</h2>
+  <p style="font-size:clamp(.9rem,1.1vw,1rem);color:#4d4d4d;margin-bottom:clamp(.5rem,1vh,1rem)">Seven states govern workload trust. Continuous re-attestation keeps healthy workloads trusted. Revocation is permanent.</p>
+  <div class="state-flow">
+    <div class="state-node blue">Registered</div>
+    <span class="state-arrow">&rarr;</span>
+    <div class="state-node blue">Attesting</div>
+    <span class="state-arrow">&rarr;</span>
+    <div class="state-node green">Healthy</div>
+    <span class="state-arrow">&rarr;</span>
+    <div class="state-node yellow">Stale</div>
+    <span class="state-arrow">&rarr;</span>
+    <div class="state-node orange">Failed</div>
+    <span class="state-arrow">&rarr;</span>
+    <div class="state-node yellow">Remediation</div>
+    <span class="state-arrow">&rarr;</span>
+    <div class="state-node blue">Re-attest</div>
+  </div>
+  <div style="display:flex;gap:clamp(1.5rem,3vw,3rem);margin-top:clamp(1.5rem,3vh,2.5rem);flex-wrap:wrap">
+    <div class="card" style="flex:1;min-width:200px">
+      <h3 style="color:#3d7317">Healthy (Trusted)</h3>
+      <p>All attestation backends report PASS. Workload has access to secrets and resources. Continuous re-attestation on configurable TTL.</p>
+    </div>
+    <div class="card" style="flex:1;min-width:200px">
+      <h3 style="color:#b1380b">Failed (Untrusted)</h3>
+      <p>One or more backends report FAIL. Secrets revoked. Automated remediation triggered. Network quarantine applied.</p>
+    </div>
+    <div class="card" style="flex:1;min-width:200px">
+      <h3 style="color:#a60000">Revoked (Terminal)</h3>
+      <div class="state-node dark" style="display:inline-block;margin:.5rem 0">REVOKED</div>
+      <p>Trust permanently withdrawn. Workload must be deleted and re-registered. No remediation path.</p>
+    </div>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">5 / 12</span>
+</div>
+
+<!-- Slide 6: Automated Detection + Response -->
+<div class="slide slide-content" data-slide="5">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <img class="slide-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTE0Ljc1IDQuMzhoLTZhLjYzLjYzIDAgMCAwLS42My42MnY2YS42My42MyAwIDAgMCAuNjMuNjJoNmEuNjMuNjMgMCAwIDAgLjYzLS42MlY1YS42My42MyAwIDAgMC0uNjMtLjYyWm0tLjYzIDZIOS4zOFY1LjYyaDQuNzRabS42MyA0aC02YS42My42MyAwIDAgMC0uNjMuNjJ2NmEuNjMuNjMgMCAwIDAgLjYzLjYyaDZhLjYzLjYzIDAgMCAwIC42My0uNjJ2LTZhLjYzLjYzIDAgMCAwLS42My0uNjJabS0uNjMgNkg5LjM4di00Ljc2aDQuNzRaIi8+CiAgPHJlY3QgeD0iOC4xMyIgeT0iMjQuMzgiIHdpZHRoPSI3LjI1IiBoZWlnaHQ9IjcuMjUiIHJ4PSIuNjMiLz4KICA8cGF0aCBkPSJNMjQuMjUgMjMuMzhhLjYzLjYzIDAgMCAwLS42My42MnYxYTIuMzggMi4zOCAwIDAgMS0yLjM3IDIuMzhoLTEuNDlsLjkzLS45NGEuNjIuNjIgMCAwIDAtLjg4LS44OGwtMiAyYS41Ny41NyAwIDAgMC0uMTkuNDEuNy43IDAgMCAwIC4xOS40N2wyIDJhLjYzLjYzIDAgMCAwIC44OCAwIC42MS42MSAwIDAgMCAwLS44OGwtLjkzLS45NGgxLjQ5QTMuNjMgMy42MyAwIDAgMCAyNC44OCAyNXYtMWEuNjMuNjMgMCAwIDAtLjYzLS42MlptLTYtMTQuNzZoM0EyLjM4IDIuMzggMCAwIDEgMjMuNjIgMTF2MWEuNjMuNjMgMCAwIDAgMS4yNiAwdi0xYTMuNjMgMy42MyAwIDAgMC0zLjYzLTMuNjJoLTNhLjYyLjYyIDAgMSAwIDAgMS4yNFptMyAxMGguNDZhMi40OSAyLjQ5IDAgMCAwIC4zLjczbC0uMzIuMzNhLjYyLjYyIDAgMCAwIC44OC44OGwuMzMtLjMyYTIuNTUgMi41NSAwIDAgMCAuNzIuM1YyMWEuNjMuNjMgMCAwIDAgMS4yNSAwdi0uNDZhMi40OSAyLjQ5IDAgMCAwIC43My0uM2wuMzMuMzJhLjYyLjYyIDAgMCAwIC44OC0uODhsLS4zMi0uMzNhMi40OSAyLjQ5IDAgMCAwIC4zLS43M2guNDZhLjYzLjYzIDAgMCAwIDAtMS4yNWgtLjQ2YTIuNTUgMi41NSAwIDAgMC0uMy0uNzJsLjMyLS4zM2MuNTgtLjU2LS4zMi0xLjQ2LS44OC0uODhsLS4zMy4zMmEyLjQ5IDIuNDkgMCAwIDAtLjczLS4zVjE1YS42My42MyAwIDAgMC0xLjI1IDB2LjQ2YTIuNTUgMi41NSAwIDAgMC0uNzIuM2wtLjMzLS4zMmMtLjU2LS41OC0xLjQ2LjMyLS44OC44OGwuMzIuMzNhMi41NSAyLjU1IDAgMCAwLS4zLjcyaC0uNDZhLjYzLjYzIDAgMCAwIDAgMS4yNVptMy0yYTEuMzggMS4zOCAwIDAgMSAwIDIuNzUgMS4zOCAxLjM4IDAgMCAxIDAtMi43NVoiLz4KPC9zdmc+Cg==" alt="">
+  <h2>Automated Detection + Response</h2>
+  <p style="font-size:clamp(.9rem,1.1vw,1rem);color:#4d4d4d;margin-bottom:.5rem">From detection to containment in under 2 seconds.</p>
+  <div class="timeline">
+    <div class="timeline-item"><span class="time">T+0.0s</span><div class="desc">Falco detects reverse shell on attested workload</div></div>
+    <div class="timeline-item"><span class="time">T+0.2s</span><div class="desc">Alert delivered to Arbiter Hub API</div></div>
+    <div class="timeline-item"><span class="time">T+0.5s</span><div class="desc">State transition: HEALTHY &rarr; FAILED. Secrets revoked.</div></div>
+    <div class="timeline-item"><span class="time">T+0.8s</span><div class="desc">HMAC-signed webhook dispatched to Event-Driven Ansible</div></div>
+    <div class="timeline-item"><span class="time">T+1.5s</span><div class="desc">Network quarantine applied. Forensic evidence collected.</div></div>
+    <div class="timeline-item done"><span class="time" style="color:#3d7317">T+2.0s</span><div class="desc">Re-attestation triggered. Loop completes.</div></div>
+  </div>
+  <div class="timeline-total">Total: ~2 seconds from detection to containment</div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">6 / 12</span>
+</div>
+
+<!-- Slide 7: Key Broker Service -->
+<div class="slide slide-content" data-slide="6">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <img class="slide-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTIxLjYyIDIxdi0zLjM4YTcuMTMgNy4xMyAwIDEgMC02LjI0LjQ4VjI5YS41OS41OSAwIDAgMCAuMTguNDRsMiAyYS42My42MyAwIDAgMCAuODggMGwyLTJhLjU5LjU5IDAgMCAwIC4xOC0uNDR2LTIuNzRsMS44Mi0xLjgyYS42MS42MSAwIDAgMCAwLS44OEwyMC44OCAyMmwuNTYtLjU2YS41OS41OSAwIDAgMCAuMTgtLjQ0Wm0tLjUgMy0xLjU2IDEuNTZhLjU5LjU5IDAgMCAwLS4xOC40NHYyLjc0TDE4IDMwLjEybC0xLjM4LTEuMzh2LTExYS42Ny42NyAwIDAgMC0uNDMtLjYgNS44OCA1Ljg4IDAgMSAxIDQuNTItLjM4LjY4LjY4IDAgMCAwLS4zMy41NnYzLjQ3bC0uODIuODJhLjYxLjYxIDAgMCAwIDAgLjg4WiIvPgogIDxwYXRoIGQ9Ik0xOCA3LjM4YS42My42MyAwIDEgMCAuNjIuNjMuNjMuNjMgMCAwIDAtLjYyLS42M1oiLz4KPC9zdmc+Cg==" alt="">
+  <h2>Key Broker Service</h2>
+  <p style="font-size:clamp(.9rem,1.1vw,1rem);color:#4d4d4d;margin-bottom:clamp(1rem,2vh,1.5rem)">Secrets released only to workloads with current, passing attestation. No trust, no keys.</p>
+  <div class="kbs-flow">
+    <div class="kbs-box workload"><strong>Workload</strong><br>requests secret</div>
+    <span class="kbs-arrow">&rarr;</span>
+    <div class="kbs-box arbiter"><strong>Arbiter Hub</strong><br>checks state + attestation</div>
+    <span class="kbs-arrow">&rarr;</span>
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div class="kbs-box allow"><strong>HEALTHY + current</strong><br>Secret released</div>
+      <div class="kbs-box deny"><strong>FAILED / REVOKED</strong><br>Access denied</div>
+    </div>
+  </div>
+  <div class="card-grid cols-3" style="margin-top:clamp(1.5rem,3vh,2rem)">
+    <div class="card"><h3>Encryption Keys</h3><p>Database keys, TLS certificates, API tokens gated on attestation state.</p></div>
+    <div class="card"><h3>Row-Level Locking</h3><p>Concurrent revocation and secret requests safely serialized. No race conditions.</p></div>
+    <div class="card"><h3>CVM Ready</h3><p>Designed for confidential computing workloads. TEE evidence validated before secret release.</p></div>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">7 / 12</span>
+</div>
+
+<!-- Slide 8: AI Tool Security -->
+<div class="slide slide-content" data-slide="7">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <img class="slide-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTMxIDI4LjYyNUg1QS42MjUuNjI1IDAgMCAxIDQuMzc1IDI4VjE4YzAtLjM0NS4yOC0uNjI1LjYyNS0uNjI1aDI2Yy4zNDUgMCAuNjI1LjI4LjYyNS42MjV2MTBjMCAuMzQ1LS4yOC42MjUtLjYyNS42MjVabS0yNS4zNzUtMS4yNWgyNC43NXYtOC43NUg1LjYyNXY4Ljc1Wm0xMC00LjM3NWEuNjI1LjYyNSAwIDAgMC0uNjI1LS42MjVIOWEuNjI1LjYyNSAwIDAgMCAwIDEuMjVoNmMuMzQ1IDAgLjYyNS0uMjguNjI1LS42MjVaTTI3IDIyLjM4YS42MjUuNjI1IDAgMSAwIDAgMS4yNS42MjUuNjI1IDAgMCAwIDAtMS4yNVptLTktNy4wMDUtLjAwMy0uMDAxYy0uMzEzLS4wMDEtLjYyLS4yNzYtLjY2LS41ODdhNC4zNzggNC4zNzggMCAwIDAtMy43NTItMy43NDkuNzA3LjcwNyAwIDAgMS0uNTg1LS42NjkuNzA4LjcwOCAwIDAgMSAuNTk0LS42NTggNC4zNzYgNC4zNzYgMCAwIDAgMy43NDItMy43NTFjLjA0Mi0uMzEuMzQ5LS41ODQuNjYtLjU4NS4yODQtLjAxNy42MjUuMjcxLjY2Ny41ODJhNC4zNzggNC4zNzggMCAwIDAgMy43NTIgMy43NTVjLjMwOC4wNC41ODIuMzQ2LjU4NS42NTcuMDAyLjMxNS0uMjcxLjYyNi0uNTgyLjY3aC0uMDAzYTQuMzc3IDQuMzc3IDAgMCAwLTMuNzUxIDMuNzUxYy0uMDQyLjMxLS4zNTEuNTg1LS42NjUuNTg1Wm0tMi40MjEtNWE1LjY1IDUuNjUgMCAwIDEgMi40MiAyLjQyIDUuNjUxIDUuNjUxIDAgMCAxIDIuNDIzLTIuNDIxQTUuNjQ4IDUuNjQ4IDAgMCAxIDE4IDcuOTU0YTUuNjUzIDUuNjUzIDAgMCAxLTIuNDIxIDIuNDIxWiIvPgo8L3N2Zz4K" alt="">
+  <h2>AI Tool Security</h2>
+  <p style="font-size:clamp(.9rem,1.1vw,1rem);color:#4d4d4d;margin-bottom:clamp(1rem,2vh,1.5rem)">MCP servers (Model Context Protocol) registered as attested workloads.</p>
+  <div class="card-grid cols-3" style="max-width:80%">
+    <div class="card">
+      <h3>Identity Bound</h3>
+      <p>Each AI tool server registered with a Kerberos principal. Identity verified through IPA before tool invocation.</p>
+    </div>
+    <div class="card">
+      <h3>Image Verified</h3>
+      <p>Container image signatures verified via cosign before the tool starts. Tampered images rejected at deployment.</p>
+    </div>
+    <div class="card">
+      <h3>Runtime Monitored</h3>
+      <p>Falco watches for unexpected behavior: data exfiltration, privilege escalation, unauthorized network access.</p>
+    </div>
+  </div>
+  <div style="margin-top:clamp(1rem,2vh,1.5rem);padding:clamp(1rem,1.5vw,1.5rem);background:#f2f2f2;border-radius:12px;border-left:4px solid #EE0000;max-width:70%">
+    <p style="font-size:clamp(.85rem,1vw,.95rem);color:#292929"><strong>Why it matters:</strong> AI tools with access to production data, customer records, and infrastructure credentials need the same attestation guarantees as any other workload. A compromised AI tool is a supply chain attack with elevated privileges.</p>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">8 / 12</span>
+</div>
+
+<!-- Slide 9: Integration Ecosystem -->
+<div class="slide slide-content" data-slide="8">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <h2>Integration Ecosystem</h2>
+  <div class="hub-spoke">
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div class="spoke-item"><h4>IPA / Keycloak</h4><p>Identity + OIDC</p></div>
+      <div class="spoke-item"><h4>Keylime</h4><p>TPM attestation</p></div>
+    </div>
+    <div class="hub-center">Arbiter<br>Hub</div>
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div class="spoke-item"><h4>Ansible AAP</h4><p>Event-driven remediation</p></div>
+      <div class="spoke-item"><h4>Falco</h4><p>Runtime monitoring</p></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div class="spoke-item"><h4>OpenShift</h4><p>Container orchestration</p></div>
+      <div class="spoke-item"><h4>Satellite</h4><p>Fleet management</p></div>
+    </div>
+  </div>
+  <p style="font-size:clamp(.85rem,1vw,.95rem);color:#707070;margin-top:clamp(1rem,2vh,1.5rem);text-align:center">Pluggable backend architecture. New attestation sources added without changing the control plane API.</p>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">9 / 12</span>
+</div>
+
+<!-- Slide 10: Business Outcomes -->
+<div class="slide slide-content" data-slide="9">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <img class="slide-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTEwLjUgMTMuNjJhNS45MyA1LjkzIDAgMCAxIDEuMDkuMTEuNjMuNjMgMCAwIDAgLjY5LS4zNiA3Ljg3IDcuODcgMCAwIDEgMTUuMSAzLjEzdi41YS42My42MyAwIDAgMCAuNTYuNjYgMy44OSAzLjg5IDAgMCAxIDMuMjQgMi41NC42My42MyAwIDAgMCAuOC4zOC42Mi42MiAwIDAgMCAuMzgtLjggNS4xNyA1LjE3IDAgMCAwLTMuNzEtMy4yNyA5LjEyIDkuMTIgMCAwIDAtMTcuMjgtNC4wNyA3LjEyIDcuMTIgMCAxIDAtLjg0IDE0LjE5SDIzYS42Mi42MiAwIDAgMCAwLTEuMjRIMTAuNWE1Ljg4IDUuODggMCAwIDEgMC0xMS43NloiLz4KICA8cGF0aCBkPSJtMzIuMTMgMjItMy0uNjRhLjU3LjU3IDAgMCAwLS4yNiAwbC0zIC42NGEuNjEuNjEgMCAwIDAtLjQ5LjYxdjMuNDVhMy42MiAzLjYyIDAgMSAwIDcuMjQgMHYtMy40MmEuNjEuNjEgMCAwIDAtLjQ5LS42NFoiLz4KPC9zdmc+Cg==" alt="">
+  <h2>Business Outcomes</h2>
+  <div class="card-grid cols-4" style="margin-top:clamp(1.5rem,3vh,2.5rem)">
+    <div class="card" style="text-align:center">
+      <div class="num">~2s</div>
+      <div class="label">Detection to Containment</div>
+      <p style="margin-top:.8rem">Automated response replaces manual triage. Alert to quarantine in seconds.</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="num" style="font-size:clamp(1.4rem,2.2vw,2rem)">Auto</div>
+      <div class="label">Remediation</div>
+      <p style="margin-top:.8rem">Event-Driven Ansible executes playbooks. No operator intervention needed for known patterns.</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="num" style="font-size:clamp(1.4rem,2.2vw,2rem)">24/7</div>
+      <div class="label">Continuous Compliance</div>
+      <p style="margin-top:.8rem">Continuous attestation with audit trail. Replace point-in-time scans with always-on verification.</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="num" style="font-size:clamp(1.4rem,2.2vw,2rem)">Crypto</div>
+      <div class="label">Trust, Not Assumed</div>
+      <p style="margin-top:.8rem">TPM quotes, image signatures, and behavioral evidence. Trust backed by cryptographic proof.</p>
+    </div>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">10 / 12</span>
+</div>
+
+<!-- Slide 11: Deployment Flexibility -->
+<div class="slide slide-content" data-slide="10">
+  <div class="accent-bar"></div>
+  <span class="conf-label">NDA Required</span>
+  <img class="slide-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTI3IDEyLjM4aC0zLjM4VjEwYTUuNjIgNS42MiAwIDAgMC0xMS4yNCAwdjIuMzhIOWEuNjIuNjIgMCAwIDAtLjYyLjYydjE4YS42Mi42MiAwIDAgMCAuNjIuNjJoMThhLjYyLjYyIDAgMCAwIC42Mi0uNjJWMTNhLjYyLjYyIDAgMCAwLS42Mi0uNjJaTTEzLjYyIDEwYTQuMzggNC4zOCAwIDEgMSA4Ljc2IDB2Mi4zOGgtOC43NlptLTQgMjAuMzhWMTMuNjJoMTYuNzZ2My43NkgxOGEuNjIuNjIgMCAwIDAgMCAxLjI0aDguMzh2Mi43NkgxOGEuNjIuNjIgMCAwIDAgMCAxLjI0aDguMzh2Mi43NkgxOGEuNjIuNjIgMCAwIDAgMCAxLjI0aDguMzh2My43NloiLz4KPC9zdmc+Cg==" alt="">
+  <h2>Deployment Flexibility</h2>
+  <div class="deploy-grid">
+    <div class="deploy-item">
+      <h3>Podman on RHEL</h3>
+      <p>Containers managed by systemd via Podman Quadlet. No Kubernetes required. Runs on any RHEL 9+ or RHEL 10 host.</p>
+    </div>
+    <div class="deploy-item">
+      <h3>Ansible Automated</h3>
+      <p>Full deployment via Ansible playbooks. Database, API, UI, monitoring, and attestation backends provisioned in one run.</p>
+    </div>
+    <div class="deploy-item">
+      <h3>OpenShift Compatible</h3>
+      <p>Same container images deploy on OpenShift. Attestation backends reach Keylime and Falco agents on host nodes.</p>
+    </div>
+  </div>
+  <div style="margin-top:clamp(1.5rem,3vh,2rem);display:flex;gap:clamp(1rem,2vw,2rem);flex-wrap:wrap">
+    <div class="card" style="flex:1;min-width:200px">
+      <h3>UBI 10 Base Images</h3>
+      <p>Built on Universal Base Image 10. Signed with cosign. Published to container registry.</p>
+    </div>
+    <div class="card" style="flex:1;min-width:200px">
+      <h3>PostgreSQL Backend</h3>
+      <p>Production-grade RHEL PostgreSQL 16. All state in the database. API nodes are stateless and horizontally scalable.</p>
+    </div>
+    <div class="card" style="flex:1;min-width:200px">
+      <h3>OpenTelemetry</h3>
+      <p>Traces, metrics, and structured events. Prometheus endpoint at /metrics. OCSF-formatted security events.</p>
+    </div>
+  </div>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+  <span class="slide-num">11 / 12</span>
+</div>
+
+<!-- Slide 12: Closing -->
+<div class="slide slide-closing" data-slide="11">
+  <h2>Learn More</h2>
+  <p>Contact your Red Hat account team for a live demonstration</p>
+  <p class="cta">redhat.com/rhel/security</p>
+  <img class="logo-br" src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" alt="Red Hat">
+</div>
+
+<!-- Nav dots: 12 slides -->
+<div class="nav-dots" id="nav-dots"></div>
+
+<script>
+(function(){
+  const TOTAL=12;
+  const slides=document.querySelectorAll('.slide');
+  const dotsContainer=document.getElementById('nav-dots');
+  let current=0;
+
+  // Build nav dots
+  for(let i=0;i<TOTAL;i++){
+    const d=document.createElement('div');
+    d.className='nav-dot'+(i===0?' active':'');
+    d.addEventListener('click',()=>goTo(i));
+    dotsContainer.appendChild(d);
+  }
+
+  function goTo(n){
+    n=Math.max(0,Math.min(n,TOTAL-1));
+    slides[current].classList.remove('active');
+    current=n;
+    slides[current].classList.add('active');
+    document.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===current));
+  }
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' '){e.preventDefault();goTo(current+1)}
+    if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();goTo(current-1)}
+    if(e.key==='Home'){e.preventDefault();goTo(0)}
+    if(e.key==='End'){e.preventDefault();goTo(TOTAL-1)}
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+---
+# values-bare-metal.yaml — AAP-managed bare-metal/VM site overrides
+#
+# Deploys all three planes (identity, hub, agent) on VMs via
+# AAP workflow templates. Hub containers run as Podman Quadlets
+# with host nginx TLS termination via certmonger/IPA CA.
+target: bare-metal
+
+# All planes managed by AAP workflow templates
+identity:
+  managed: true
+
+hub:
+  managed: true
+  # Quadlet containers with host nginx TLS termination
+  tls:
+    enabled: true
+    certmonger: true
+  database:
+    dataDir: /var/lib/pgsql/data
+
+agent:
+  managed: true
+  falco:
+    managed: true
+  openshell:
+    managed: true
+
+# OS and package sources
+os: fedora-44
+copr:
+  - abbra/modrnizer-darc

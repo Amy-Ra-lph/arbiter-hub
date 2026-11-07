@@ -5,18 +5,42 @@
 #   demo-good-workload: healthy container, passes attestation
 #   demo-bad-workload:  triggers Falco alerts, demonstrates remediation flow
 # Both registered with Arbiter Hub on hub node.
+#
+# Metadata captures actual container IDs (podman inspect), container names,
+# and Keylime agent details needed for enrollment.
 - name: Deploy demo workloads
   hosts: arbiter_agent
   become: true
   vars:
-    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+    arbiter_hub_api: "http://{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}:8400"
     demo_image: "registry.access.redhat.com/ubi10/ubi:latest"
+    keylime_agent_uuid: ""
+    keylime_agent_ip: "{{ ansible_default_ipv4.address }}"
+    keylime_agent_port: 9002
   tasks:
     - name: Pull demo base image
       ansible.builtin.command:
         cmd: podman pull {{ demo_image }}
       register: pull_result
       changed_when: "'Storing' in pull_result.stdout or 'Copying' in pull_result.stderr"
+
+    - name: Get Keylime agent UUID
+      ansible.builtin.slurp:
+        src: /var/lib/keylime/cv_ca/cacert.crt
+      register: keylime_cert_check
+      failed_when: false
+
+    - name: Read Keylime agent UUID from config
+      ansible.builtin.command:
+        cmd: grep -oP '(?<=uuid\s=\s").*(?=")' /etc/keylime/agent.conf
+      register: keylime_uuid_result
+      changed_when: false
+      failed_when: false
+
+    - name: Set Keylime UUID fact
+      ansible.builtin.set_fact:
+        keylime_agent_uuid: "{{ keylime_uuid_result.stdout | default('') }}"
+      when: keylime_uuid_result.rc == 0
 
     - name: Create demo-good-workload container
       ansible.builtin.command:
@@ -42,20 +66,39 @@
       changed_when: bad_create.rc == 0
       failed_when: bad_create.rc != 0 and 'already in use' not in bad_create.stderr
 
+    - name: Get actual container ID for demo-good-workload
+      ansible.builtin.command:
+        cmd: podman inspect demo-good-workload --format '{{ '{{' }}.Id{{ '}}' }}'
+      register: good_container_id
+      changed_when: false
+
+    - name: Get actual container ID for demo-bad-workload
+      ansible.builtin.command:
+        cmd: podman inspect demo-bad-workload --format '{{ '{{' }}.Id{{ '}}' }}'
+      register: bad_container_id
+      changed_when: false
+
     - name: Register demo-good-workload with Arbiter Hub
       ansible.builtin.uri:
         url: "{{ arbiter_hub_api }}/workloads"
         method: POST
+        headers:
+          Origin: "{{ arbiter_hub_api }}"
         body_format: json
         body:
           name: demo-good-workload
           ipa_principal: "host/{{ ansible_fqdn }}@ARBITER.DEMO"
           display_name: "Demo Good Workload"
           workload_type: service
-          backend_type: keylime
-          owner: admin
+          backend_types:
+            - keylime
+            - falco
           metadata:
-            container_id: demo-good-workload
+            container_id: "{{ good_container_id.stdout }}"
+            container_name: demo-good-workload
+            keylime_agent_uuid: "{{ keylime_agent_uuid }}"
+            keylime_agent_ip: "{{ keylime_agent_ip }}"
+            keylime_agent_port: "{{ keylime_agent_port }}"
             description: "Healthy demo workload — passes attestation"
         status_code: [200, 201, 409]
       register: good_reg
@@ -64,16 +107,23 @@
       ansible.builtin.uri:
         url: "{{ arbiter_hub_api }}/workloads"
         method: POST
+        headers:
+          Origin: "{{ arbiter_hub_api }}"
         body_format: json
         body:
           name: demo-bad-workload
           ipa_principal: "service/demo-bad-workload@ARBITER.DEMO"
           display_name: "Demo Bad Workload"
           workload_type: service
-          backend_type: keylime
-          owner: admin
+          backend_types:
+            - keylime
+            - falco
           metadata:
-            container_id: demo-bad-workload
+            container_id: "{{ bad_container_id.stdout }}"
+            container_name: demo-bad-workload
+            keylime_agent_uuid: "{{ keylime_agent_uuid }}"
+            keylime_agent_ip: "{{ keylime_agent_ip }}"
+            keylime_agent_port: "{{ keylime_agent_port }}"
             description: "Demo workload for remediation scenarios — triggers Falco alerts"
         status_code: [200, 201, 409]
       register: bad_reg
@@ -90,6 +140,7 @@
       ansible.builtin.debug:
         msg: >-
           Demo workloads deployed:
-          - demo-good-workload (running, registered)
-          - demo-bad-workload (created/stopped, registered — start during demo)
+          - demo-good-workload (running, id={{ good_container_id.stdout[:12] }}, registered)
+          - demo-bad-workload (created/stopped, id={{ bad_container_id.stdout[:12] }}, registered)
+          Keylime UUID: {{ keylime_agent_uuid | default('not found') }}
           Workloads in hub: {{ workloads_list.json.total | default(workloads_list.json | length) }}

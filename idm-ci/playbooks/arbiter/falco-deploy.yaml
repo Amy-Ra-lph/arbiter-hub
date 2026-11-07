@@ -4,10 +4,10 @@
 # Installs Falco with eBPF driver (not kernel module), loads arbiter-specific
 # rules, configures HTTP output to forward alerts to Arbiter Hub API.
 - name: Deploy Falco runtime monitoring
-  hosts: agent.arbiter.demo
+  hosts: arbiter_agent
   become: true
   vars:
-    arbiter_hub_api: "http://hub.arbiter.demo:8400"
+    arbiter_hub_api: "http://{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}:8400"
     arbiter_repo_dir: "/opt/arbiter-hub"
     falco_rules_dir: "/etc/falco/rules.d"
   tasks:
@@ -51,13 +51,13 @@
             desc: Detects unexpected process execution inside attested workload containers
             condition: >-
               spawned_process and container and
-              container.image.repository contains "arbiter" and
-              not proc.name in (python3, uvicorn, gunicorn, bash, sh)
+              (container.name in (demo-good-workload, demo-bad-workload,
+               wid-sovereign, wid-verified, wid-untrusted)) and
+              not proc.name in (python3, uvicorn, gunicorn, bash, sh, sleep, tail, cat)
             output: >-
               Unexpected process in attested workload
-              (container=%container.id process=%proc.name
-               cmdline=%proc.cmdline user=%user.name
-               image=%container.image.repository)
+              (container=%container.id container_name=%container.name
+               process=%proc.name cmdline=%proc.cmdline user=%user.name)
             priority: WARNING
             tags: [arbiter, workload, process]
 
@@ -65,14 +65,15 @@
             desc: Detects reverse shell attempts from workload containers
             condition: >-
               spawned_process and container and
-              container.image.repository contains "arbiter" and
+              (container.name in (demo-good-workload, demo-bad-workload,
+               wid-sovereign, wid-verified, wid-untrusted)) and
               (proc.name in (nc, ncat, netcat, socat) or
                proc.cmdline contains "/dev/tcp" or
                proc.cmdline contains "bash -i")
             output: >-
               Reverse shell detected in attested workload
-              (container=%container.id process=%proc.name
-               cmdline=%proc.cmdline user=%user.name)
+              (container=%container.id container_name=%container.name
+               process=%proc.name cmdline=%proc.cmdline user=%user.name)
             priority: CRITICAL
             tags: [arbiter, workload, reverse-shell]
 
@@ -80,13 +81,14 @@
             desc: Detects access to sensitive files from workload containers
             condition: >-
               open_read and container and
-              container.image.repository contains "arbiter" and
+              (container.name in (demo-good-workload, demo-bad-workload,
+               wid-sovereign, wid-verified, wid-untrusted)) and
               fd.name in (/etc/shadow, /etc/gshadow, /etc/sudoers,
                           /root/.ssh/id_rsa, /root/.ssh/authorized_keys)
             output: >-
               Sensitive file accessed in attested workload
-              (container=%container.id file=%fd.name process=%proc.name
-               user=%user.name image=%container.image.repository)
+              (container=%container.id container_name=%container.name
+               file=%fd.name process=%proc.name user=%user.name)
             priority: WARNING
             tags: [arbiter, workload, file-access]
 
@@ -100,7 +102,7 @@
 
           http_output:
             enabled: true
-            url: {{ arbiter_hub_api }}/api/v1/falco/alerts
+            url: "{{ arbiter_hub_api }}/api/alerts/falco"
             user_agent: falco/arbiter-demo
 
           json_output: true
@@ -151,4 +153,4 @@
         msg: >-
           Falco {{ falco_version.stdout }} running with eBPF driver.
           Arbiter rules loaded from {{ falco_rules_dir }}/arbiter-rules.yaml.
-          HTTP output → {{ arbiter_hub_api }}/api/v1/falco/alerts
+          HTTP output → {{ arbiter_hub_api }}/api/alerts/falco

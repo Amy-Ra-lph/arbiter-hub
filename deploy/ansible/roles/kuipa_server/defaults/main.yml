@@ -1,0 +1,35 @@
+kuipa_repo: "https://github.com/abbra/kuipa.git"
+kuipa_version: "main"
+kuipa_build_from_source: true
+
+kuipa_key_dir: "/var/lib/ipa/ku"
+kuipa_config_path: "/etc/ipa/kuipad.json"
+kuipa_log_path: "/var/log/kuipad.log"
+kuipa_socket_path: "/run/ipa/kuipad.sock"
+
+kuipa_service_name: "ipa-ku"
+kuipa_discover_peers: false
+kuipa_anchor: true
+
+kuipa_build_deps:
+  - rust
+  - cargo
+  - gcc
+  - clang-devel
+  - pkgconf-pkg-config
+  - openssl-devel
+  - krb5-devel
+  - openldap-devel
+  - krb5-server
+  - krb5-workstation
+  - krb5-pkinit
+
+kuipa_binaries:
+  - kuipa
+  - kuipad
+  - kuipa-unseal
+  - kuipa-voucher
+  - kuipa-audit
+  - tang-pqc
+
+kuipa_enrollment_string_days: 7

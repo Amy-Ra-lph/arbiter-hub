@@ -1,0 +1,71 @@
+[
+  {
+    "name": "require-all-backends-pass",
+    "policy_type": "attestation",
+    "policy_content": {
+      "description": "All registered backends must report PASS for workload to be HEALTHY",
+      "rules": [
+        {
+          "condition": "all_backends_pass",
+          "action": "allow",
+          "description": "Workload transitions to HEALTHY only when every configured backend returns PASS"
+        },
+        {
+          "condition": "any_backend_fail",
+          "action": "deny_and_revoke",
+          "description": "Any backend FAIL triggers state transition to FAILED and KBS secret revocation"
+        }
+      ],
+      "staleness_ttl_seconds": 300,
+      "re_attest_on_fail": true
+    },
+    "scope": "global",
+    "active": true
+  },
+  {
+    "name": "cosign-image-verification",
+    "policy_type": "signing",
+    "policy_content": {
+      "description": "Container images must have a valid cosign signature before workload enrollment",
+      "rules": [
+        {
+          "condition": "cosign_signature_valid",
+          "action": "allow_enrollment",
+          "description": "Image has a valid cosign signature matching the configured public key"
+        },
+        {
+          "condition": "cosign_signature_missing",
+          "action": "deny_enrollment",
+          "description": "Reject workload registration when image has no cosign signature"
+        }
+      ],
+      "enforce_tlog": false,
+      "require_key": true
+    },
+    "scope": "global",
+    "active": true
+  },
+  {
+    "name": "staleness-revocation",
+    "policy_type": "lifecycle",
+    "policy_content": {
+      "description": "Workloads that go stale beyond threshold are automatically revoked",
+      "rules": [
+        {
+          "condition": "staleness_exceeded",
+          "threshold_seconds": 600,
+          "action": "revoke",
+          "description": "Workload revoked if no attestation received within 10 minutes"
+        },
+        {
+          "condition": "staleness_warning",
+          "threshold_seconds": 300,
+          "action": "alert",
+          "description": "Alert fired when workload has not re-attested in 5 minutes"
+        }
+      ]
+    },
+    "scope": "global",
+    "active": true
+  }
+]

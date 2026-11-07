@@ -1,0 +1,6 @@
+apiVersion: v2
+name: arbiter-hub-mcp
+description: Arbiter Hub MCP — attestation tooling server (Keylime, Cosign, Falco, MeasuredBoot)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

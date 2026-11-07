@@ -1,0 +1,64 @@
+server {
+    listen 443 ssl http2;
+    server_name __HOSTNAME__;
+
+    ssl_certificate     /etc/pki/arbiter-hub/server.crt;
+    ssl_certificate_key /etc/pki/arbiter-hub/server.key;
+    ssl_protocols       TLSv1.3 TLSv1.2;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # API backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:__API_PORT__;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Auth endpoints
+    location /auth/ {
+        proxy_pass http://127.0.0.1:__API_PORT__;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Health check
+    location /health {
+        proxy_pass http://127.0.0.1:__API_PORT__;
+    }
+
+    # MCP server
+    location /mcp/ {
+        proxy_pass http://127.0.0.1:__MCP_PORT__/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # UI (static files served by container)
+    location / {
+        proxy_pass http://127.0.0.1:__UI_PORT__;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # EDA webhook receiver (internal)
+    location /eda/ {
+        proxy_pass http://127.0.0.1:__EDA_PORT__/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+server {
+    listen 80;
+    server_name __HOSTNAME__;
+    return 301 https://$host$request_uri;
+}

@@ -6,7 +6,7 @@
   hosts: ipaserver
   become: true
   vars:
-    ipa_admin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
+    ipa_admin_password: "{{ ipaserver_admin_password }}"
     hub_fqdn: "{{ hostvars[groups['arbiter_hub'][0]]['ansible_fqdn'] | default('hub.arbiter.demo') }}"
     ahdapa_url: "https://{{ ansible_fqdn }}/idp"
   tasks:

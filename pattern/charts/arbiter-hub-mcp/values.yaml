@@ -1,0 +1,26 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/rhel-security/arbiter-hub-mcp
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8500
+
+api:
+  url: "http://arbiter-hub-api:8400"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false

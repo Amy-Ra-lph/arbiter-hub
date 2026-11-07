@@ -65,7 +65,8 @@ class StalenessScheduler:
             )
 
             try:
-                await transition(session, workload, WorkloadState.ATTESTING, "reattest_scheduler")
+                await transition(session, workload, WorkloadState.ATTESTING, "reattest_scheduler",
+                                 justification=f"TTL {elapsed / workload.stale_ttl_seconds:.0%} elapsed, proactive re-attestation")
 
                 backends = []
                 for bt in workload.backend_types:
@@ -108,7 +109,9 @@ class StalenessScheduler:
 
                 composite = compute_composite_verdict(att_results)
                 if composite == AttestationVerdict.PASS:
-                    await transition(session, workload, WorkloadState.HEALTHY, "reattest_scheduler")
+                    backends_str = "+".join(ar.backend for ar in att_results)
+                    await transition(session, workload, WorkloadState.HEALTHY, "reattest_scheduler",
+                                     justification=f"all backends passed ({backends_str})")
                     workload.last_attested_at = datetime.now(UTC)
                     count += 1
                 elif composite == AttestationVerdict.FAIL:

@@ -1,0 +1,43 @@
+# Containerfile.arbiter-signing — Trust Anchor Plane (bootc)
+#
+# Keylime verifier + registrar, cosign keypair, container registry.
+# Holds ALL private signing keys and attestation CAs — hardened node.
+#
+# Build (from deploy/bootc/ directory):
+#   podman build -t quay.io/rhel-security/arbiter-signing:latest \
+#     -f Containerfile.arbiter-signing .
+
+FROM quay.io/fedora/fedora-bootc:44
+
+RUN dnf install -y \
+        freeipa-client \
+        keylime-verifier \
+        keylime-registrar \
+        skopeo \
+        podman \
+        cloud-init \
+        qemu-guest-agent \
+    && dnf clean all
+
+# cosign — not in Fedora repos, install from sigstore releases
+RUN curl -sL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+        -o /usr/local/bin/cosign \
+    && chmod 755 /usr/local/bin/cosign
+
+# Firstboot provisioning
+COPY deploy/bootc/signing-firstboot.sh /usr/local/sbin/arbiter-signing-firstboot
+COPY deploy/bootc/signing-firstboot.service /etc/systemd/system/arbiter-signing-firstboot.service
+COPY deploy/bootc/config.env.example /etc/arbiter-hub/config.env.example
+
+# Directories for generated CAs and keys
+RUN mkdir -p /etc/arbiter/cosign /var/lib/registry
+
+# Lab access
+RUN echo 'root:Secret123!' | chpasswd \
+    && useradd -m -G wheel cloud-user \
+    && echo 'cloud-user:Secret123!' | chpasswd \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
+RUN chmod 755 /usr/local/sbin/arbiter-signing-firstboot \
+    && systemctl enable arbiter-signing-firstboot.service \
+                        qemu-guest-agent.service

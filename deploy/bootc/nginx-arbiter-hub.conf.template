@@ -1,0 +1,31 @@
+server {
+    listen 443 ssl;
+    server_name __HOSTNAME__;
+
+    ssl_certificate     /etc/pki/arbiter-hub/server.crt;
+    ssl_certificate_key /etc/pki/arbiter-hub/server.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:__API_PORT__/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /mcp/ {
+        proxy_pass http://127.0.0.1:__MCP_PORT__/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:__UI_PORT__/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}

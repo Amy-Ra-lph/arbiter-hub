@@ -1,0 +1,63 @@
+---
+# ArgoCD ApplicationSet for Arbiter Hub OpenShift Validated Pattern
+#
+# Deploys the 5 hub-plane Helm charts to a single OpenShift cluster.
+# Agent-plane and identity-plane are managed by AAP (bare-metal).
+#
+# Prerequisites:
+#   - OpenShift GitOps operator installed
+#   - ArgoCD instance in openshift-gitops namespace
+#   - Quay pull secret created in arbiter-hub namespace
+#   - values-global.yaml and values-hub.yaml in repo
+#
+# Usage:
+#   oc apply -f pattern/argocd-applicationset.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: arbiter-hub
+  namespace: openshift-gitops
+spec:
+  generators:
+    - list:
+        elements:
+          - chart: arbiter-hub-db
+            namespace: arbiter-hub
+            syncWave: "1"
+          - chart: arbiter-hub-api
+            namespace: arbiter-hub
+            syncWave: "2"
+          - chart: arbiter-hub-mcp
+            namespace: arbiter-hub
+            syncWave: "3"
+          - chart: arbiter-hub-ui
+            namespace: arbiter-hub
+            syncWave: "4"
+          - chart: enforcement-mcp
+            namespace: arbiter-hub
+            syncWave: "5"
+  template:
+    metadata:
+      name: "arbiter-{{chart}}"
+      annotations:
+        argocd.argoproj.io/sync-wave: "{{syncWave}}"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Amy-Ra-lph/arbiter-hub.git
+        targetRevision: main
+        path: "pattern/charts/{{chart}}"
+        helm:
+          valueFiles:
+            - ../../values-global.yaml
+            - ../../values-hub.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

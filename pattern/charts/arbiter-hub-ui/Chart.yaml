@@ -1,0 +1,6 @@
+apiVersion: v2
+name: arbiter-hub-ui
+description: Arbiter Hub UI — nginx serving React SPA with API reverse proxy
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

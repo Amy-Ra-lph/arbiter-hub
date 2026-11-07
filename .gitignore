@@ -12,3 +12,4 @@ docs/demo-walkthrough-beaker.md
 .superpowers/
 *.tsbuildinfo
 *.d.ts
+idm-ci/playbooks/arbiter/inventory/arbiter-rebuild.yml

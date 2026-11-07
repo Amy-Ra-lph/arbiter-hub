@@ -11,6 +11,7 @@ from server.config import settings
 logger = logging.getLogger(__name__)
 
 _oidc_validator = None
+_local_provider = None
 
 
 def _resolve_auth_mode(auth_mode: str, dev_mode_legacy: bool) -> str:
@@ -27,6 +28,18 @@ _dev_mode_legacy = os.environ.get("ARBITER_DEV_MODE", "").lower() in (
     "yes",
 )
 _auth_mode = _resolve_auth_mode(settings.auth_mode, _dev_mode_legacy)
+
+
+def _get_local_provider():
+    global _local_provider
+    if _local_provider is None:
+        from server.auth.local import LocalAuthProvider
+
+        _local_provider = LocalAuthProvider.from_password(
+            password=settings.local_admin_password,
+            signing_key=settings.local_signing_key or None,
+        )
+    return _local_provider
 
 
 def _get_oidc_validator():
@@ -81,10 +94,29 @@ async def get_caller(request: Request) -> CallerIdentity:
             scopes=[s.strip() for s in scopes if s.strip()],
         )
 
-    # oidc mode
+    # local mode (standalone) or oidc mode
     token = _extract_bearer(request)
     if not token:
         raise HTTPException(status_code=401, detail="Bearer token required")
+
+    # Try local auth first if enabled (works alongside OIDC)
+    if _auth_mode == "local" or settings.local_admin_enabled:
+        try:
+            from server.auth.local import LOCAL_ISSUER
+
+            header = pyjwt.get_unverified_header(token)
+            unverified = pyjwt.decode(token, options={"verify_signature": False})
+            if unverified.get("iss") == LOCAL_ISSUER:
+                provider = _get_local_provider()
+                return provider.validate_token(token)
+        except (pyjwt.InvalidTokenError, ValueError, KeyError):
+            if _auth_mode == "local":
+                raise HTTPException(status_code=401, detail="invalid local token")
+
+    if _auth_mode == "local":
+        raise HTTPException(status_code=401, detail="Bearer token required (local auth)")
+
+    # oidc mode
     try:
         validator = _get_oidc_validator()
         return await validator.validate_and_extract(token)
