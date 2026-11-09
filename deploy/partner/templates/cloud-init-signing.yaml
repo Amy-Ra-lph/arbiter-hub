@@ -1,0 +1,22 @@
+#cloud-config
+# Cloud-init userdata for Arbiter Signing node
+
+write_files:
+  - path: /etc/arbiter-hub/config.env
+    owner: root:root
+    permissions: '0600'
+    content: |
+      __CONFIG_ENV_CONTENT__
+
+  - path: /root/.ssh/authorized_keys
+    owner: root:root
+    permissions: '0600'
+    append: true
+    content: |
+      __SSH_PUBKEY__
+
+hostname: __SHORT_HOSTNAME__
+fqdn: __FQDN__
+
+runcmd:
+  - systemctl start signing-firstboot || systemctl start arbiter-signing-firstboot || true
