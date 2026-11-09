@@ -139,6 +139,81 @@ deploy_kvm_node() {
     fi
 }
 
+# ── Render kickstart from template + config ────────────────────────
+render_kickstart() {
+    local role="$1" config_env="$2" fqdn="$3" image_tag="$4" output_path="$5"
+
+    local ks_role="$role"
+    [[ "$role" == "signing" ]] && ks_role="hub"
+    local template="${SCRIPT_DIR}/templates/kickstart-${ks_role}.ks"
+    [[ -f "${SCRIPT_DIR}/templates/kickstart-${role}.ks" ]] && \
+        template="${SCRIPT_DIR}/templates/kickstart-${role}.ks"
+
+    if [[ ! -f "$template" ]]; then
+        log_err "Kickstart template not found: $template"
+        return 1
+    fi
+
+    local config_content
+    config_content=$(cat "$config_env")
+    local ssh_key="${SSH_PUBKEY:-}"
+    local admin_pw="${ADMIN_PASSWORD:-changeme}"
+
+    local image_source
+    if $OFFLINE && [[ -n "$IMAGES_DIR" ]]; then
+        image_source="${IMAGES_DIR}/${image_tag}.qcow2"
+    else
+        image_source="${QUAY_REPO}:${image_tag}"
+    fi
+
+    sed \
+        -e "s|__FQDN__|${fqdn}|g" \
+        -e "s|__ADMIN_PASSWORD__|${admin_pw}|g" \
+        -e "s|__SSH_PUBKEY__|${ssh_key}|g" \
+        -e "s|__IMAGE_SOURCE__|${image_source}|g" \
+        "$template" | \
+    awk -v content="$config_content" '{
+        if ($0 ~ /__CONFIG_ENV_CONTENT__/) {
+            n = split(content, lines, "\n")
+            for (i = 1; i <= n; i++) print lines[i]
+        } else {
+            print
+        }
+    }' > "$output_path"
+}
+
+# ── Deploy bare-metal: generate kickstart files ────────────────────
+deploy_bare_metal_node() {
+    local role="$1" config_env="$2" fqdn="$3" image_tag="$4"
+
+    local ks_dir="$WORK_DIR/kickstart"
+    mkdir -p "$ks_dir"
+    local ks_path="$ks_dir/${fqdn%%.*}.ks"
+
+    render_kickstart "$role" "$config_env" "$fqdn" "$image_tag" "$ks_path"
+    log_info "Generated kickstart: $ks_path"
+
+    if $DRY_RUN; then
+        echo "[DRY-RUN] Kickstart generated: $ks_path"
+    fi
+}
+
+# ── Deploy image-only: generate cloud-init user-data only ──────────
+deploy_image_only_node() {
+    local role="$1" config_env="$2" fqdn="$3"
+
+    local ci_dir="$WORK_DIR/cloud-init"
+    mkdir -p "$ci_dir"
+    local userdata="$ci_dir/${fqdn%%.*}-user-data.yaml"
+
+    render_cloud_init "$role" "$config_env" "$fqdn" "$userdata"
+    log_info "Generated cloud-init user-data: $userdata"
+
+    if $DRY_RUN; then
+        echo "[DRY-RUN] Cloud-init user-data generated: $userdata"
+    fi
+}
+
 # ── Wait for a node to finish firstboot ────────────────────────────
 wait_for_node() {
     local fqdn="$1"
@@ -181,9 +256,44 @@ case "$TARGET" in
         done
         ;;
 
-    bare-metal|image-only)
-        log_err "Target '${TARGET}' not yet implemented — see Task 3"
-        exit 1
+    bare-metal)
+        deploy_bare_metal_node "ipa" "$CONFIGS_DIR/ipa-config.env" \
+            "$IPA_HOSTNAME" "idm-identity"
+        deploy_bare_metal_node "hub" "$CONFIGS_DIR/hub-config.env" \
+            "$HUB_HOSTNAME" "arbiter-attestation"
+        deploy_bare_metal_node "signing" "$CONFIGS_DIR/signing-config.env" \
+            "$SIGNING_HOSTNAME" "arbiter-signing"
+
+        read -ra AGENTS <<< "${AGENT_HOSTNAMES}"
+        for agent_host in "${AGENTS[@]}"; do
+            local_config="$CONFIGS_DIR/agent-${agent_host}-config.env"
+            [[ ! -f "$local_config" ]] && local_config="$CONFIGS_DIR/agent-config.env"
+            deploy_bare_metal_node "agent" "$local_config" \
+                "$agent_host" "arbiter-agent"
+        done
+
+        echo ""
+        echo "Kickstart files generated in: $WORK_DIR/kickstart/"
+        echo "Boot each node from Fedora 44 netinstall ISO and provide the"
+        echo "matching kickstart file via HTTP or inst.ks= boot parameter."
+        ;;
+
+    image-only)
+        deploy_image_only_node "ipa" "$CONFIGS_DIR/ipa-config.env" "$IPA_HOSTNAME"
+        deploy_image_only_node "hub" "$CONFIGS_DIR/hub-config.env" "$HUB_HOSTNAME"
+        deploy_image_only_node "signing" "$CONFIGS_DIR/signing-config.env" "$SIGNING_HOSTNAME"
+
+        read -ra AGENTS <<< "${AGENT_HOSTNAMES}"
+        for agent_host in "${AGENTS[@]}"; do
+            local_config="$CONFIGS_DIR/agent-${agent_host}-config.env"
+            [[ ! -f "$local_config" ]] && local_config="$CONFIGS_DIR/agent-config.env"
+            deploy_image_only_node "agent" "$local_config" "$agent_host"
+        done
+
+        echo ""
+        echo "Cloud-init user-data files generated in: $WORK_DIR/cloud-init/"
+        echo "Import qcow2 images into your hypervisor and attach the"
+        echo "matching cloud-init user-data for each node."
         ;;
 
     *)
