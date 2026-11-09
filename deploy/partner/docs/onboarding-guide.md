@@ -11,7 +11,7 @@ This guide walks you through deploying the Arbiter Hub stack in your data center
 - **CI/CD Integration**: GitHub Actions attestation gate
 - **ITSM Integration**: ServiceNow incident creation from trust violations
 
-**Time estimate**: 3-4 hours for a 3-node cluster, plus 1-2 hours for PQC configuration.
+**Time estimate**: 3-4 hours for a 4-node cluster, plus 1-2 hours for PQC configuration.
 
 ## Prerequisites
 
@@ -20,8 +20,9 @@ This guide walks you through deploying the Arbiter Hub stack in your data center
 | Node | Role | RAM | vCPU | Disk | Purpose |
 |------|------|-----|------|------|---------|
 | 1 | IPA Primary | 8 GB | 2 | 40 GB | Identity, OAuth2, ACME CA, PQC |
-| 2 | Arbiter Hub | 4 GB | 2 | 20 GB | Attestation, signing, EDA |
-| 3+ | Agent | 2 GB | 1 | 20 GB | Workloads, TPM attestation |
+| 2 | Arbiter Hub | 4 GB | 2 | 20 GB | Attestation, EDA |
+| 3 | Signing | 4 GB | 2 | 20 GB | cosign, Rekor transparency log |
+| 4+ | Agent | 2 GB | 1 | 20 GB | Workloads, TPM attestation |
 
 ### Network
 

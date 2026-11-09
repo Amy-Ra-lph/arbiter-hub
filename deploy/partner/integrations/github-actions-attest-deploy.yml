@@ -54,6 +54,7 @@ jobs:
             -H "Content-Type: application/x-www-form-urlencoded" \
             -d "grant_type=client_credentials&scope=openid" \
             | jq -r .access_token)
+          echo "::add-mask::${TOKEN}"
           echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
 
       - name: Sign image with cosign via Hub
@@ -93,6 +94,7 @@ jobs:
             -X POST "https://${{ vars.IPA_HOST }}/idp/token" \
             -d "grant_type=client_credentials&scope=openid" \
             | jq -r .access_token)
+          echo "::add-mask::${TOKEN}"
           echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
 
       - name: Verify attestation state

@@ -8,14 +8,21 @@ source "${SCRIPT_DIR}/lib/partner-common.sh"
 
 SITE_ENV=""
 DRY_RUN=false
+PHASE="all"
 
 for arg in "$@"; do
     case "$arg" in
         --site-env=*) SITE_ENV="${arg#*=}" ;;
+        --phase=*)    PHASE="${arg#*=}" ;;
         --dry-run)    DRY_RUN=true ;;
         -h|--help)
-            echo "Usage: setup-pqc.sh --site-env=PATH [--dry-run]"
+            echo "Usage: setup-pqc.sh --site-env=PATH [--phase=submit|configure|all] [--dry-run]"
             echo "Configures PQC cert chain: RHCS → akamu → end-entity certs"
+            echo ""
+            echo "Phases:"
+            echo "  submit     Generate CSR and submit to RHCS (Phase 1)"
+            echo "  configure  Configure akamu + kuipa enrollment (Phase 2-3, requires signed cert)"
+            echo "  all        Run both phases (only if RHCS has auto-approval)"
             exit 0
             ;;
         *) log_err "Unknown arg: $arg"; exit 1 ;;
@@ -23,7 +30,12 @@ for arg in "$@"; do
 done
 
 if [[ -z "$SITE_ENV" ]]; then
-    log_err "Usage: setup-pqc.sh --site-env=PATH [--dry-run]"
+    log_err "Usage: setup-pqc.sh --site-env=PATH [--phase=submit|configure|all] [--dry-run]"
+    exit 1
+fi
+
+if [[ "$PHASE" != "submit" && "$PHASE" != "configure" && "$PHASE" != "all" ]]; then
+    log_err "Invalid --phase value: $PHASE (must be submit, configure, or all)"
     exit 1
 fi
 
@@ -45,13 +57,15 @@ run_or_dry() {
     fi
 }
 
-# ── Phase 1: Generate akamu subordinate CA CSR ─────────────────────
-log_info "Phase 1: Generating akamu subordinate CA CSR (${PQC_ALGORITHM})"
-
 CSR_CNF="${CSR_DIR}/akamu-sub-ca.cnf"
 CSR_KEY="${CSR_DIR}/akamu-sub-ca.key"
 CSR_FILE="${CSR_DIR}/akamu-sub-ca.csr"
 SIGNED_CERT="${CSR_DIR}/akamu-sub-ca.pem"
+
+if [[ "$PHASE" == "submit" || "$PHASE" == "all" ]]; then
+
+# ── Phase 1: Generate akamu subordinate CA CSR ─────────────────────
+log_info "Phase 1: Generating akamu subordinate CA CSR (${PQC_ALGORITHM})"
 
 if $DRY_RUN; then
     echo "[DRY-RUN] mkdir -p ${CSR_DIR}"
@@ -74,27 +88,45 @@ fi
 # ── Phase 1b: Submit CSR to RHCS ──────────────────────────────────
 log_info "Phase 1b: Submitting CSR to RHCS at ${RHCS_CA_URL}"
 
+if ! $DRY_RUN; then
+    if ! curl -sk --connect-timeout 10 -o /dev/null "${RHCS_CA_URL}" 2>/dev/null; then
+        log_err "RHCS CA at ${RHCS_CA_URL} is not reachable"
+        log_err "Verify the URL and network connectivity before continuing"
+        exit 1
+    fi
+fi
+
 RHCS_PROFILE="caSubCA"
 run_or_dry "pki -d /root/.dogtag/nssdb -n 'admin' -U '${RHCS_CA_URL}' ca-cert-request-submit --profile ${RHCS_PROFILE} --csr-file '${CSR_FILE}'"
 
-if ! $DRY_RUN; then
-    echo ""
-    log_info "CSR submitted to RHCS. Next steps:"
-    echo "  1. Approve the request in RHCS admin console or CLI:"
-    echo "     pki -U '${RHCS_CA_URL}' ca-cert-request-approve <request-id>"
-    echo "  2. Download the signed certificate:"
-    echo "     pki -U '${RHCS_CA_URL}' ca-cert-show <cert-serial> --output ${SIGNED_CERT}"
-    echo "  3. Re-run this script with --phase=configure after downloading the cert"
-    echo ""
-    echo "  Or if auto-approval is configured, the cert is at:"
-    echo "     ${SIGNED_CERT}"
+echo ""
+log_info "CSR submitted to RHCS. Next steps:"
+echo "  1. Approve the request in RHCS admin console or CLI:"
+echo "     pki -U '${RHCS_CA_URL}' ca-cert-request-approve <request-id>"
+echo "  2. Download the signed certificate:"
+echo "     pki -U '${RHCS_CA_URL}' ca-cert-show <cert-serial> --output ${SIGNED_CERT}"
+echo "  3. Re-run: ./setup-pqc.sh --site-env=${SITE_ENV} --phase=configure"
+echo ""
+
+if [[ "$PHASE" == "submit" ]]; then
+    log_ok "Phase 1 complete — waiting for RHCS certificate approval"
+    exit 0
 fi
 
-if $DRY_RUN; then
-    echo "[DRY-RUN] pki -U '${RHCS_CA_URL}' ca-cert-show <serial> --output ${SIGNED_CERT}"
-fi
+fi # end submit/all phase
 
 # ── Phase 2: Configure akamu with subordinate CA cert ─────────────
+if [[ "$PHASE" == "configure" || "$PHASE" == "all" ]]; then
+
+if ! $DRY_RUN && [[ ! -f "${SIGNED_CERT}" ]]; then
+    log_err "Signed certificate not found at ${SIGNED_CERT}"
+    log_err "Download it from RHCS first:"
+    echo "  pki -U '${RHCS_CA_URL}' ca-cert-show <cert-serial> --output ${SIGNED_CERT}"
+    echo ""
+    echo "Then re-run: ./setup-pqc.sh --site-env=${SITE_ENV} --phase=configure"
+    exit 1
+fi
+
 log_info "Phase 2: Configuring akamu with PQC subordinate CA"
 
 RHCS_ROOT_CERT="${RHCS_CA_CERT:-/etc/pki/ca-trust/source/anchors/rhcs-root.pem}"
@@ -148,5 +180,7 @@ fi
 # kuipa protect (sealed keytabs) blocked on upstream ACIs
 log_info "Note: kuipa 'protect' (sealed keytabs) requires upstream ACI patch — skipping"
 log_info "Use 'kuipa enroll' without sealing for now"
+
+fi # end configure/all phase
 
 log_ok "PQC setup complete (${PQC_ALGORITHM} signing, ${PQC_KEM} key exchange)"

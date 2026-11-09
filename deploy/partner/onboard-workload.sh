@@ -92,8 +92,8 @@ query_state() {
 onboard_container() {
     log_info "Onboarding container workload: ${NAME}"
 
-    # 1. Create IPA service identity
-    run_or_dry "ipa service-add container/${NAME}@${REALM}"
+    # 1. Create IPA service identity (idempotent)
+    run_or_dry "ipa service-show container/${NAME}@${REALM} 2>/dev/null || ipa service-add container/${NAME}@${REALM}"
 
     # 2. kuipa enrollment
     run_or_dry "kuipa enroll --method=otp --service=container/${NAME} --algorithm=${PQC_ALGORITHM}"

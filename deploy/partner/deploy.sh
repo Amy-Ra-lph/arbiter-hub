@@ -55,6 +55,29 @@ log_info "Generating per-node configs from $SITE_ENV"
 # shellcheck disable=SC1090
 source "$SITE_ENV"
 
+# ── Pre-flight: DNS resolution check ─────────────────────────────
+preflight_dns() {
+    local host="$1" role="$2"
+    if ! $DRY_RUN; then
+        if ! getent hosts "$host" >/dev/null 2>&1; then
+            log_err "${role} hostname '${host}' does not resolve — fix DNS before deploying"
+            return 1
+        fi
+    fi
+}
+
+if [[ "$TARGET" != "image-only" ]]; then
+    log_info "Pre-flight: checking DNS resolution for all nodes"
+    preflight_dns "$IPA_HOSTNAME" "IPA"
+    preflight_dns "$HUB_HOSTNAME" "Hub"
+    preflight_dns "$SIGNING_HOSTNAME" "Signing"
+    read -ra _AGENTS <<< "${AGENT_HOSTNAMES}"
+    for _a in "${_AGENTS[@]}"; do
+        preflight_dns "$_a" "Agent"
+    done
+    log_ok "All hostnames resolve"
+fi
+
 # ── Render cloud-init user-data from template + config ─────────────
 render_cloud_init() {
     local role="$1" config_env="$2" fqdn="$3" output_path="$4"
@@ -133,9 +156,14 @@ deploy_kvm_node() {
     if $DRY_RUN; then
         echo "[DRY-RUN] $cmd"
     else
+        local vm_name="${fqdn%%.*}"
+        if virsh dominfo "$vm_name" >/dev/null 2>&1; then
+            log_info "VM '${vm_name}' already exists — skipping (use virsh undefine to recreate)"
+            return 0
+        fi
         log_info "Deploying ${role} node: ${fqdn}"
         eval "$cmd"
-        wait_for_node "$fqdn"
+        wait_for_node "$fqdn" "$role"
     fi
 }
 
@@ -216,9 +244,9 @@ deploy_image_only_node() {
 
 # ── Wait for a node to finish firstboot ────────────────────────────
 wait_for_node() {
-    local fqdn="$1"
-    local stamp="/var/lib/idm-image-mode/.firstboot-complete"
-    [[ "$1" != *"ipa"* ]] && stamp="/var/lib/arbiter-hub/.firstboot-complete"
+    local fqdn="$1" role="${2:-hub}"
+    local stamp="/var/lib/arbiter-hub/.firstboot-complete"
+    [[ "$role" == "ipa" ]] && stamp="/var/lib/idm-image-mode/.firstboot-complete"
 
     log_info "Waiting for $fqdn to become reachable..."
     for i in $(seq 1 60); do

@@ -85,6 +85,22 @@ check_url() {
     fi
 }
 
+check_optional() {
+    local host="$1" category="$2" desc="$3"; shift 3
+    CHECKS+=("${category}|${desc} (optional)")
+    if $DRY_RUN; then
+        echo "  [ ] ${category}: ${desc} (optional, via ssh ${host})"
+        return
+    fi
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "root@${host}" "$@" >/dev/null 2>&1; then
+        echo -e "  \033[32mPASS\033[0m ${category}: ${desc}"
+        PASS=$((PASS+1))
+    else
+        echo -e "  \033[33mSKIP\033[0m ${category}: ${desc} (not available)"
+        SKIP=$((SKIP+1))
+    fi
+}
+
 # ══ IPA Node (14 checks) ══════════════════════════════════════════
 echo "=== IPA Node: ${IPA_HOSTNAME} ==="
 
@@ -119,7 +135,7 @@ check_ssh "$HUB_HOSTNAME" "Hub" "Trustee KBS running" "systemctl is-active kbs |
 check_ssh "$HUB_HOSTNAME" "Hub" "cosign available" "command -v cosign"
 check_ssh "$HUB_HOSTNAME" "Hub" "Rekor running" "systemctl is-active rekor-server || curl -sk http://localhost:3000/api/v1/log 2>/dev/null | grep -q treeSize"
 check_ssh "$HUB_HOSTNAME" "Hub" "EDA controller active" "systemctl is-active arbiter-eda || curl -sk http://localhost:${EDA_PORT:-5001}/health 2>/dev/null | grep -q ok"
-check_ssh "$HUB_HOSTNAME" "Hub" "Prometheus metrics" "curl -sk http://localhost:9090/metrics 2>/dev/null | grep -q arbiter || true"
+check_optional "$HUB_HOSTNAME" "Hub" "Prometheus metrics" "curl -sk http://localhost:9090/metrics 2>/dev/null | grep -q arbiter"
 
 # ══ Agent Node (8 checks per agent) ═══════════════════════════════
 read -ra AGENTS <<< "${AGENT_HOSTNAMES}"
@@ -133,8 +149,8 @@ for agent in "${AGENTS[@]}"; do
     check_ssh "$agent" "Agent" "Hub state ATTESTED/HEALTHY" \
         "curl -sk --negotiate -u : 'https://${HUB_HOSTNAME}:8400/api/v1/workloads/${agent}/state' | python3 -c 'import sys,json; s=json.load(sys.stdin)[\"state\"]; assert s in (\"ATTESTED\",\"HEALTHY\"), s'"
     check_ssh "$agent" "Agent" "kuipa enrolled" "kuipa status 2>/dev/null | grep -q enrolled || test -f /var/lib/kuipa/.enrolled"
-    check_ssh "$agent" "Agent" "swtpm available (if VM)" "test -c /dev/tpm0 || systemctl is-active swtpm 2>/dev/null || echo skip"
-    check_ssh "$agent" "Agent" "Falco running" "systemctl is-active falco 2>/dev/null || echo skip"
+    check_optional "$agent" "Agent" "swtpm available (if VM)" "test -c /dev/tpm0 || systemctl is-active swtpm 2>/dev/null"
+    check_optional "$agent" "Agent" "Falco running" "systemctl is-active falco 2>/dev/null"
     check_ssh "$agent" "Agent" "SPNEGO auth to Hub" \
         "echo '${ADMIN_PASSWORD}' | kinit admin && curl -sk --negotiate -u : 'https://${HUB_HOSTNAME}:8400/api/v1/health' | grep -q ok"
 done
@@ -157,9 +173,9 @@ if $DRY_RUN; then
     exit 0
 fi
 
-TOTAL=$((PASS + FAIL))
+TOTAL=$((PASS + FAIL + SKIP))
 echo "═══════════════════════════════════════════"
-echo -e "  Results: \033[32m${PASS} pass\033[0m, \033[31m${FAIL} fail\033[0m / ${TOTAL} total"
+echo -e "  Results: \033[32m${PASS} pass\033[0m, \033[31m${FAIL} fail\033[0m, \033[33m${SKIP} skip\033[0m / ${TOTAL} total"
 echo "═══════════════════════════════════════════"
 
 if [[ $FAIL -gt 0 ]]; then
