@@ -1,0 +1,119 @@
+# GitHub Actions workflow: Build, Sign, and Deploy with Arbiter Hub
+#
+# Prerequisites:
+#   1. Self-hosted runner in partner's network (access to Hub + IPA)
+#   2. ahdapa OAuth2 client registered (client_credentials grant)
+#   3. cosign installed on runner
+#
+# Repository secrets:
+#   ARBITER_CLIENT_ID     — ahdapa OAuth2 client ID
+#   ARBITER_CLIENT_SECRET — ahdapa OAuth2 client secret
+#
+# Repository variables:
+#   IPA_HOST  — IPA server FQDN (e.g. ipa.example.corp)
+#   HUB_HOST  — Hub server FQDN (e.g. hub.example.corp)
+#   REGISTRY  — Container registry (e.g. registry.example.corp:5000)
+#
+# Branch protection: require "verify-attestation" job to pass before
+# merging to main.
+
+name: Build, Sign, Deploy with Arbiter Hub
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  IMAGE: ${{ vars.REGISTRY }}/${{ github.event.repository.name }}:${{ github.sha }}
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build container image
+        run: podman build -t $IMAGE .
+
+      - name: Push to registry
+        run: podman push $IMAGE
+
+  sign-and-attest:
+    needs: build
+    runs-on: self-hosted
+    outputs:
+      workload-id: ${{ steps.register.outputs.id }}
+    steps:
+      - name: Get service token from ahdapa
+        id: auth
+        run: |
+          TOKEN=$(curl -sk \
+            -u "${{ secrets.ARBITER_CLIENT_ID }}:${{ secrets.ARBITER_CLIENT_SECRET }}" \
+            -X POST "https://${{ vars.IPA_HOST }}/idp/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=client_credentials&scope=openid" \
+            | jq -r .access_token)
+          echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign image with cosign via Hub
+        run: |
+          cosign sign \
+            --key arbiter-hub://${{ vars.HUB_HOST }}:8400/signing/key \
+            --token ${{ steps.auth.outputs.token }} \
+            $IMAGE
+
+      - name: Register workload with Hub
+        id: register
+        run: |
+          RESP=$(curl -sk \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -X POST "https://${{ vars.HUB_HOST }}:8400/api/v1/workloads" \
+            -d "{
+              \"name\": \"${{ github.event.repository.name }}\",
+              \"type\": \"container\",
+              \"image\": \"${IMAGE}\",
+              \"cosign_verified\": true,
+              \"commit\": \"${{ github.sha }}\"
+            }")
+          ID=$(echo "$RESP" | jq -r .id)
+          echo "id=${ID}" >> "$GITHUB_OUTPUT"
+          echo "Workload registered: ${ID}"
+
+  verify-attestation:
+    needs: sign-and-attest
+    runs-on: self-hosted
+    steps:
+      - name: Get service token
+        id: auth
+        run: |
+          TOKEN=$(curl -sk \
+            -u "${{ secrets.ARBITER_CLIENT_ID }}:${{ secrets.ARBITER_CLIENT_SECRET }}" \
+            -X POST "https://${{ vars.IPA_HOST }}/idp/token" \
+            -d "grant_type=client_credentials&scope=openid" \
+            | jq -r .access_token)
+          echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify attestation state
+        run: |
+          STATE=$(curl -sk \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
+            "https://${{ vars.HUB_HOST }}:8400/api/v1/workloads/${{ needs.sign-and-attest.outputs.workload-id }}/state" \
+            | jq -r .state)
+          echo "Workload state: ${STATE}"
+          if [ "$STATE" != "ATTESTED" ] && [ "$STATE" != "HEALTHY" ]; then
+            echo "::error::Workload not in trusted state: ${STATE}"
+            exit 1
+          fi
+
+  deploy:
+    needs: [verify-attestation, sign-and-attest]
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy verified image
+        run: |
+          echo "Deploying attested image: ${IMAGE}"
+          podman pull $IMAGE
+          podman run -d --name ${{ github.event.repository.name }} $IMAGE
