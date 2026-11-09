@@ -1,0 +1,18 @@
+# OpenSSL config for akamu subordinate CA CSR generation
+# Placeholders filled by setup-pqc.sh from site.env
+
+[req]
+default_md = __PQC_ALGORITHM__
+prompt = no
+distinguished_name = dn
+req_extensions = v3_sub_ca
+
+[dn]
+CN = akamu Subordinate CA
+O = __SITE_DOMAIN__
+OU = Arbiter Hub PoC
+
+[v3_sub_ca]
+basicConstraints = critical, CA:TRUE, pathlen:0
+keyUsage = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
