@@ -36,6 +36,7 @@ EDA_ENABLED="${EDA_ENABLED:-true}"
 API_PORT="${API_PORT:-8400}"
 UI_PORT="${UI_PORT:-8080}"
 EDA_PORT="${EDA_PORT:-5001}"
+MCP_PORT="${MCP_PORT:-8401}"
 
 # ═══════════════════════════════════════════════════════════════════════
 # Phase 1: Identity Enrollment
@@ -174,7 +175,10 @@ echo "Configuring container environment..."
 mkdir -p /etc/containers/systemd/arbiter-hub-api.container.d \
          /etc/containers/systemd/arbiter-hub-db.container.d
 
-# DB password
+# Create Podman secret for DB password (Quadlet Secret= lines reference it)
+printf '%s' "$DB_PASSWORD" | podman secret create arbiter-hub-db-password - 2>/dev/null || true
+
+# DB password via env drop-in (belt + suspenders with the secret above)
 cat > /etc/containers/systemd/arbiter-hub-db.container.d/password.conf <<DROPIN
 [Container]
 Environment=POSTGRESQL_PASSWORD=${DB_PASSWORD}
@@ -228,6 +232,7 @@ if [ -f /etc/nginx/conf.d/arbiter-hub.conf.template ]; then
         -e "s|__API_PORT__|$API_PORT|g" \
         -e "s|__UI_PORT__|$UI_PORT|g" \
         -e "s|__EDA_PORT__|$EDA_PORT|g" \
+        -e "s|__MCP_PORT__|$MCP_PORT|g" \
         /etc/nginx/conf.d/arbiter-hub.conf.template \
         > /etc/nginx/conf.d/arbiter-hub.conf
 fi

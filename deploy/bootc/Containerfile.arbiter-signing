@@ -3,9 +3,9 @@
 # Keylime verifier + registrar, cosign keypair, container registry.
 # Holds ALL private signing keys and attestation CAs — hardened node.
 #
-# Build (from deploy/bootc/ directory):
+# Build (from repo root):
 #   podman build -t quay.io/rhel-security/arbiter-signing:latest \
-#     -f Containerfile.arbiter-signing .
+#     -f deploy/bootc/Containerfile.arbiter-signing .
 
 FROM quay.io/fedora/fedora-bootc:44
 

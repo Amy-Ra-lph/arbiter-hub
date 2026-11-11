@@ -20,10 +20,11 @@ RUN dnf install -y \
     && dnf clean all
 
 # Falco from upstream RPM repo (not in Fedora repos)
+# --setopt=tsflags=noscripts avoids kmod compile attempt during container build
 RUN rpm --import https://falco.org/repo/falcosecurity-packages.asc \
     && curl -s -o /etc/yum.repos.d/falcosecurity.repo \
         https://falco.org/repo/falcosecurity-rpm.repo \
-    && dnf install -y falco \
+    && dnf install -y --setopt=tsflags=noscripts falco \
     && dnf clean all
 
 # Falco rules for Arbiter workload monitoring

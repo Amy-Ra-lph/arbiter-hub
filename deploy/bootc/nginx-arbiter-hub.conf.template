@@ -2,8 +2,8 @@ server {
     listen 443 ssl;
     server_name __HOSTNAME__;
 
-    ssl_certificate     /etc/pki/arbiter-hub/server.crt;
-    ssl_certificate_key /etc/pki/arbiter-hub/server.key;
+    ssl_certificate     /etc/pki/arbiter/server.crt;
+    ssl_certificate_key /etc/pki/arbiter/server.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
 
     location /api/ {
