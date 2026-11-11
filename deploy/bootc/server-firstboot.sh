@@ -248,6 +248,22 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
+# Wait for PostgreSQL to accept connections inside the container
+echo "Waiting for PostgreSQL..."
+for i in $(seq 1 30); do
+    podman exec arbiter-hub-db pg_isready -q 2>/dev/null && break
+    sleep 2
+done
+
+# Run Alembic migrations (alembic.ini has localhost URL; override via sed)
+echo "Running database migrations..."
+MIGRATION_DB_URL="postgresql+asyncpg://arbiter:${DB_PASSWORD}@arbiter-hub-db:5432/arbiter"
+podman exec arbiter-hub-api bash -c "
+    sed -i 's|^sqlalchemy.url = .*|sqlalchemy.url = ${MIGRATION_DB_URL}|' /opt/app-root/src/alembic.ini
+    cd /opt/app-root/src && alembic upgrade head
+"
+echo "Migrations complete"
+
 systemctl start arbiter-hub-api arbiter-hub-mcp
 for i in $(seq 1 30); do
     curl -sf "http://localhost:${API_PORT}/health" >/dev/null 2>&1 && break
