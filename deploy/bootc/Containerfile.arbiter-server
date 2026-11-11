@@ -70,7 +70,7 @@ COPY deploy/bootc/nginx-arbiter-hub.conf.template /etc/nginx/conf.d/arbiter-hub.
 
 # ── Layer 8: Trust profiles + seed policies ──────────────────────────
 COPY deploy/bootc/trust-profiles/ /etc/arbiter/trust-profiles/
-COPY server/seed-policies.json /etc/arbiter/seed-policies.json
+COPY deploy/seed/policies.json /etc/arbiter/seed-policies.json
 
 # ── Layer 9: Firstboot ───────────────────────────────────────────────
 COPY deploy/bootc/server-firstboot.sh /usr/local/sbin/arbiter-server-firstboot
