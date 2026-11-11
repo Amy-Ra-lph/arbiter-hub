@@ -1,0 +1,17 @@
+name: sovereign
+description: Full host access, audit-only monitoring. For trusted internal workloads.
+openshell:
+  mode: host
+  resource_limits: none
+  network: unrestricted
+falco:
+  mode: audit
+  rules: minimal
+  action: log
+keylime:
+  attestation_interval_seconds: 3600
+  ima_enabled: false
+  measured_boot: false
+network:
+  egress: allow_all
+  ingress: allow_all

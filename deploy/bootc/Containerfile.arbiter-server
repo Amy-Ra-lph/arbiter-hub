@@ -1,0 +1,95 @@
+# Containerfile.arbiter-server — Appliance Server (bootc)
+#
+# Self-contained Arbiter attestation control plane:
+#   - IPA client (enrolls against existing IdM)
+#   - keylime-verifier + keylime-registrar (TPM attestation backend)
+#   - Hub API + PostgreSQL + KBS (Quadlet containers)
+#   - enforcement-mcp (SELinux/fapolicyd policy engine)
+#   - EDA controller (Event-Driven Ansible remediation)
+#   - cosign (container image signature verification)
+#   - nginx (UI + TLS termination + reverse proxy)
+#
+# Does NOT include FreeIPA server — IdM is a separate node.
+# Targets: Fedora latest (PoC) and RHEL 10 (production).
+#
+# Build (from repo root):
+#   podman build -t quay.io/rhel-security/arbiter-bootc:arbiter-server \
+#     -f deploy/bootc/Containerfile.arbiter-server .
+#
+# Convert to qcow2:
+#   sudo podman run --rm -it --privileged --pull=newer \
+#     -v ./output:/output \
+#     quay.io/centos-bootc/bootc-image-builder:latest \
+#     --type qcow2 quay.io/rhel-security/arbiter-bootc:arbiter-server
+
+ARG BASE_IMAGE=quay.io/fedora/fedora-bootc:44
+FROM ${BASE_IMAGE}
+
+# ── Layer 1: IPA client + system deps ────────────────────────────────
+RUN dnf install -y \
+        freeipa-client \
+        nginx \
+        certmonger \
+        python3-pip \
+        python3-ansible-runner \
+        cloud-init \
+        qemu-guest-agent \
+        bind-utils \
+    && dnf clean all
+
+# dbus-broker fails in bootc (inotify limit); use classic dbus-daemon
+RUN dnf install -y dbus-daemon \
+    && ln -sf /usr/lib/systemd/system/dbus-daemon.service /etc/systemd/system/dbus.service \
+    && dnf clean all
+
+# ── Layer 2: Keylime verifier + registrar ────────────────────────────
+RUN dnf install -y \
+        keylime-verifier \
+        keylime-registrar \
+        keylime-tenant \
+        tpm2-tools \
+    && dnf clean all
+
+# ── Layer 3: cosign ──────────────────────────────────────────────────
+ARG COSIGN_VERSION=2.4.3
+RUN curl -sLo /usr/local/bin/cosign \
+        "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64" \
+    && chmod 755 /usr/local/bin/cosign
+
+# ── Layer 4: ansible-rulebook for EDA ────────────────────────────────
+RUN pip install ansible-rulebook ansible
+
+# ── Layer 5: Quadlet container units + network ───────────────────────
+COPY deploy/quadlet/ /etc/containers/systemd/
+
+# ── Layer 6: EDA rulebooks and plugins ───────────────────────────────
+COPY eda/ /opt/arbiter-eda/
+
+# ── Layer 7: nginx TLS termination template ──────────────────────────
+COPY deploy/bootc/nginx-arbiter-hub.conf.template /etc/nginx/conf.d/arbiter-hub.conf.template
+
+# ── Layer 8: Trust profiles + seed policies ──────────────────────────
+COPY deploy/bootc/trust-profiles/ /etc/arbiter/trust-profiles/
+COPY server/seed-policies.json /etc/arbiter/seed-policies.json
+
+# ── Layer 9: Firstboot ───────────────────────────────────────────────
+COPY deploy/bootc/server-firstboot.sh /usr/local/sbin/arbiter-server-firstboot
+COPY deploy/bootc/server-firstboot.service /etc/systemd/system/arbiter-server-firstboot.service
+COPY deploy/bootc/server.env.example /etc/arbiter/server.env.example
+
+# ── Directories for runtime config ───────────────────────────────────
+RUN mkdir -p /etc/arbiter/keylime /etc/arbiter/cosign /etc/arbiter/repl \
+             /etc/arbiter/enrollment-tokens /var/lib/arbiter
+
+# ── Lab access (remove for production builds) ────────────────────────
+RUN echo 'root:Secret123!' | chpasswd \
+    && useradd -m -G wheel cloud-user \
+    && echo 'cloud-user:Secret123!' | chpasswd \
+    && echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd
+
+RUN chmod 755 /usr/local/sbin/arbiter-server-firstboot \
+    && systemctl enable arbiter-server-firstboot.service \
+                        qemu-guest-agent.service
+
+LABEL arbiter.role=server
+LABEL arbiter.version=0.1.0

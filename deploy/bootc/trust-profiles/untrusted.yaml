@@ -1,0 +1,21 @@
+name: untrusted
+description: Read-only rootfs, strict syscall filter, no network egress. For external or third-party code.
+openshell:
+  mode: readonly
+  resource_limits:
+    cpu: "1"
+    memory: 512Mi
+  network: none
+  devices: none
+falco:
+  mode: enforce
+  rules: strict
+  action: kill
+  process_whitelist: true
+keylime:
+  attestation_interval_seconds: 300
+  ima_enabled: true
+  measured_boot: true
+network:
+  egress: deny_all
+  ingress: deny_all
