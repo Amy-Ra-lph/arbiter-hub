@@ -255,14 +255,14 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# Run Alembic migrations (alembic.ini has localhost URL; override via env.py)
+# Run Alembic migrations via podman run (API container doesn't exist yet —
+# Quadlet creates it on systemctl start, so podman exec would fail).
 echo "Running database migrations..."
 MIGRATION_DB_URL="postgresql+asyncpg://arbiter:$(python3 -c "import urllib.parse; print(urllib.parse.quote('${DB_PASSWORD}', safe=''))")@arbiter-hub-db:5432/arbiter"
-podman exec -e ALEMBIC_DB_URL="$MIGRATION_DB_URL" arbiter-hub-api bash -c '
-    cd /opt/app-root/src
-    sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = $ALEMBIC_DB_URL|" alembic.ini
-    alembic upgrade head
-'
+podman run --rm --network systemd-arbiter-hub \
+    -e ALEMBIC_DB_URL="$MIGRATION_DB_URL" \
+    quay.io/rhel-security/arbiter-hub-api:latest \
+    bash -c 'cd /opt/app-root/src && sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = $ALEMBIC_DB_URL|" alembic.ini && alembic upgrade head'
 echo "Migrations complete"
 
 systemctl start arbiter-hub-api arbiter-hub-mcp
