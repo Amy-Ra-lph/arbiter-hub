@@ -262,7 +262,7 @@ MIGRATION_DB_URL="postgresql+asyncpg://arbiter:$(python3 -c "import urllib.parse
 podman run --rm --network systemd-arbiter-hub \
     -e ALEMBIC_DB_URL="$MIGRATION_DB_URL" \
     quay.io/rhel-security/arbiter-hub-api:latest \
-    bash -c 'cd /opt/app-root/src && sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = $ALEMBIC_DB_URL|" alembic.ini && alembic upgrade head'
+    bash -c 'cd /opt/app-root/src && alembic upgrade head'
 echo "Migrations complete"
 
 systemctl start arbiter-hub-api arbiter-hub-mcp
