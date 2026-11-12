@@ -257,8 +257,12 @@ done
 
 # Run Alembic migrations via podman run (API container doesn't exist yet —
 # Quadlet creates it on systemctl start, so podman exec would fail).
+# Resolve DB container IP directly — aardvark-dns name resolution doesn't
+# work reliably for ad-hoc podman run containers on Quadlet networks.
 echo "Running database migrations..."
-MIGRATION_DB_URL="postgresql+asyncpg://arbiter:$(python3 -c "import urllib.parse; print(urllib.parse.quote('${DB_PASSWORD}', safe=''))")@arbiter-hub-db:5432/arbiter"
+DB_CONTAINER_IP=$(podman inspect arbiter-hub-db --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+echo "DB container IP: ${DB_CONTAINER_IP}"
+MIGRATION_DB_URL="postgresql+asyncpg://arbiter:$(python3 -c "import urllib.parse; print(urllib.parse.quote('${DB_PASSWORD}', safe=''))")@${DB_CONTAINER_IP}:5432/arbiter"
 podman run --rm --network systemd-arbiter-hub \
     -e ALEMBIC_DB_URL="$MIGRATION_DB_URL" \
     quay.io/rhel-security/arbiter-hub-api:latest \
