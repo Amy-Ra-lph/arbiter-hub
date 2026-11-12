@@ -3,7 +3,7 @@ FROM registry.redhat.io/ubi10/python-312-minimal
 
 # krb5-devel needed to build gssapi wheel for SPNEGO auth
 USER 0
-RUN microdnf -y install krb5-workstation krb5-devel gcc && microdnf clean all
+RUN microdnf -y install krb5-workstation krb5-devel gcc python3.12-devel && microdnf clean all
 USER 1001
 
 WORKDIR /opt/app-root/src
