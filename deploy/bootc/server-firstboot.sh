@@ -366,7 +366,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EDASVC
     systemctl daemon-reload
-    systemctl enable --now arbiter-eda || echo "WARNING: arbiter-eda failed to start (non-fatal)"
+    systemctl enable arbiter-eda
+    echo "EDA enabled (starts on next boot or manually via systemctl start arbiter-eda)"
 
     # Register webhook
     for i in $(seq 1 10); do
