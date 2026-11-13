@@ -366,8 +366,10 @@ RestartSec=5
 WantedBy=multi-user.target
 EDASVC
     systemctl daemon-reload
-    systemctl enable arbiter-eda
-    echo "EDA enabled (starts on next boot or manually via systemctl start arbiter-eda)"
+    # Enable after firstboot stamp — systemctl enable can auto-start the
+    # service if multi-user.target is already active, and a crash propagates
+    # exit code 7 to the parent oneshot, killing firstboot.
+    echo "EDA unit written (will enable after stamp)"
 
     # Register webhook
     for i in $(seq 1 10); do
@@ -418,5 +420,10 @@ echo "    cat /etc/arbiter/enrollment-tokens/verified.token"
 echo ""
 echo "  Keylime:  $([ "$KEYLIME_ENABLED" = "true" ] && echo "ACTIVE" || echo "DISABLED")"
 echo "  Cosign:   $([ "$COSIGN_ENABLED" = "true" ] && echo "ACTIVE" || echo "DISABLED")"
-echo "  EDA:      $([ "$EDA_ENABLED" = "true" ] && echo "ACTIVE" || echo "DISABLED")"
+echo "  EDA:      $([ "$EDA_ENABLED" = "true" ] && echo "ENABLED" || echo "DISABLED")"
 echo "════════════════════════════════════════════════════════════════"
+
+# Enable EDA after stamp — safe now since firstboot is already complete
+if [ "$EDA_ENABLED" = "true" ]; then
+    systemctl enable arbiter-eda 2>/dev/null || true
+fi
