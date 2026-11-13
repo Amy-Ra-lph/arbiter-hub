@@ -328,7 +328,8 @@ if [ "$EDA_ENABLED" = "true" ]; then
     echo "$WEBHOOK_SECRET" > /etc/arbiter/webhook-secret
     chmod 600 /etc/arbiter/webhook-secret
 
-    cat > /opt/arbiter-eda/inventory/hosts.yml <<EDAINV
+    mkdir -p /var/lib/arbiter/eda/inventory
+    cat > /var/lib/arbiter/eda/inventory/hosts.yml <<EDAINV
 ---
 all:
   vars:
@@ -341,7 +342,7 @@ all:
         ${HOSTNAME}:
           ansible_connection: local
 EDAINV
-    chmod 600 /opt/arbiter-eda/inventory/hosts.yml
+    chmod 600 /var/lib/arbiter/eda/inventory/hosts.yml
 
     cat > /etc/systemd/system/arbiter-eda.service <<EDASVC
 [Unit]
@@ -353,7 +354,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/local/bin/ansible-rulebook \
   --rulebook /opt/arbiter-eda/rulebooks/attestation.yml \
-  --inventory /opt/arbiter-eda/inventory/hosts.yml \
+  --inventory /var/lib/arbiter/eda/inventory/hosts.yml \
   --source-dir /opt/arbiter-eda/plugins/event_source
 WorkingDirectory=/opt/arbiter-eda
 Environment=ARBITER_WEBHOOK_SECRET=${WEBHOOK_SECRET}
