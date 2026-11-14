@@ -361,15 +361,9 @@ WorkingDirectory=/opt/arbiter-eda
 Environment=ARBITER_WEBHOOK_SECRET=${WEBHOOK_SECRET}
 Restart=on-failure
 RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
 EDASVC
     systemctl daemon-reload
-    # Enable after firstboot stamp — systemctl enable can auto-start the
-    # service if multi-user.target is already active, and a crash propagates
-    # exit code 7 to the parent oneshot, killing firstboot.
-    echo "EDA unit written (will enable after stamp)"
+    echo "EDA unit written (no [Install] section — enable deferred to post-stamp)"
 
     # Register webhook
     for i in $(seq 1 10); do
@@ -423,7 +417,11 @@ echo "  Cosign:   $([ "$COSIGN_ENABLED" = "true" ] && echo "ACTIVE" || echo "DIS
 echo "  EDA:      $([ "$EDA_ENABLED" = "true" ] && echo "ENABLED" || echo "DISABLED")"
 echo "════════════════════════════════════════════════════════════════"
 
-# Enable EDA after stamp — safe now since firstboot is already complete
+# Enable EDA after stamp — unit has no [Install] section to prevent
+# daemon-reload from auto-starting it during firstboot. Create the
+# WantedBy symlink manually.
 if [ "$EDA_ENABLED" = "true" ]; then
-    systemctl enable arbiter-eda 2>/dev/null || true
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf /etc/systemd/system/arbiter-eda.service \
+        /etc/systemd/system/multi-user.target.wants/arbiter-eda.service
 fi
