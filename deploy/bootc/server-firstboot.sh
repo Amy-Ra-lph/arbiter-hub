@@ -365,12 +365,13 @@ EDASVC
     systemctl daemon-reload
     echo "EDA unit written (no [Install] section — enable deferred to post-stamp)"
 
-    # Register webhook
+    # Register webhook — curl may fail to connect if daemon-reload
+    # disrupted the API container (Quadlet regeneration), so retry.
     for i in $(seq 1 10); do
         HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:${API_PORT}/api/webhooks" \
             -H "Content-Type: application/json" \
             -H "Origin: http://localhost:${API_PORT}" \
-            -d "{\"url\":\"http://localhost:${EDA_PORT}/\",\"events\":[\"state_transition\"],\"secret\":\"${WEBHOOK_SECRET}\",\"active\":true}" 2>/dev/null)
+            -d "{\"url\":\"http://localhost:${EDA_PORT}/\",\"events\":[\"state_transition\"],\"secret\":\"${WEBHOOK_SECRET}\",\"active\":true}" 2>/dev/null) || HTTP=000
         [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ] || [ "$HTTP" = "409" ] && break
         sleep 3
     done
