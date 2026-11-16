@@ -28,6 +28,11 @@ source "$CONFIG"
 
 HOSTNAME="${ARBITER_HOSTNAME:-$(hostname -f)}"
 DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 32)}"
+# Base64 passwords contain '/' and '=', which are illegal in URL userinfo.
+# The DSN written to the Quadlet drop-in must percent-encode it, or asyncpg
+# fails to parse the URL at startup. (Same reason line ~266 quotes it for
+# the Alembic migration URL.)
+DB_PASSWORD_URLENC="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DB_PASSWORD")"
 WEBHOOK_SECRET="${WEBHOOK_SECRET:-$(openssl rand -base64 24)}"
 ARBITER_SERVICE_PASSWORD="${ARBITER_SERVICE_PASSWORD:-$(openssl rand -base64 24)}"
 KEYLIME_ENABLED="${KEYLIME_ENABLED:-true}"
@@ -211,13 +216,13 @@ SPNEGO_VOLUME="Volume=${SPNEGO_KEYTAB}:/etc/arbiter/http.keytab:ro,Z"
 
 cat > /etc/containers/systemd/arbiter-hub-api.container.d/config.conf <<DROPIN
 [Container]
-Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://arbiter:${DB_PASSWORD}@arbiter-hub-db:5432/arbiter
+Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://arbiter:${DB_PASSWORD_URLENC}@arbiter-hub-db:5432/arbiter
 Environment=ARBITER_AUTH_MODE=oidc
 Environment=ARBITER_OIDC_ISSUER=https://${IPA_SERVER}/idp
 Environment=ARBITER_OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
 Environment=ARBITER_LOCAL_ADMIN_ENABLED=true
 Environment=ARBITER_LOCAL_ADMIN_PASSWORD=${ARBITER_SERVICE_PASSWORD}
-Environment=ARBITER_CORS_ALLOWED_ORIGINS=["http://${HOSTNAME}:${API_PORT}","https://${HOSTNAME}:${UI_PORT}","http://localhost:${API_PORT}"]
+Environment='ARBITER_CORS_ALLOWED_ORIGINS=["http://${HOSTNAME}:${API_PORT}","https://${HOSTNAME}:${UI_PORT}","http://localhost:${API_PORT}"]'
 ${KEYLIME_ENV}
 ${COSIGN_ENV}
 ${SPNEGO_ENV}
@@ -271,10 +276,23 @@ podman run --rm --network systemd-arbiter-hub \
 echo "Migrations complete"
 
 systemctl start arbiter-hub-api arbiter-hub-mcp
+# Fail loudly if the API never answers. Previously this echoed "Hub API healthy"
+# unconditionally, so a crashlooping container was reported as success and the
+# failure only surfaced at CI verification.
+API_UP=false
 for i in $(seq 1 30); do
-    curl -sf "http://localhost:${API_PORT}/health" >/dev/null 2>&1 && break
+    if curl -sf "http://localhost:${API_PORT}/health" >/dev/null 2>&1; then
+        API_UP=true
+        break
+    fi
     sleep 2
 done
+if [ "$API_UP" != "true" ]; then
+    echo "ERROR: Hub API not healthy after 60s — dumping diagnostics"
+    systemctl status arbiter-hub-api --no-pager 2>&1 | tail -20 || true
+    podman logs --tail 30 arbiter-hub-api 2>&1 || true
+    exit 1
+fi
 echo "Hub API healthy"
 
 systemctl start arbiter-hub-ui 2>/dev/null || echo "UI container not available (optional)"
