@@ -362,11 +362,12 @@ Environment=ARBITER_WEBHOOK_SECRET=${WEBHOOK_SECRET}
 Restart=on-failure
 RestartSec=5
 EDASVC
-    systemctl daemon-reload
+    # Skip daemon-reload here — it disrupts Quadlet containers (API
+    # restart). EDA unit is on disk; post-stamp symlink + next-boot
+    # daemon-reload will pick it up.
     echo "EDA unit written (no [Install] section — enable deferred to post-stamp)"
 
-    # Register webhook — curl may fail to connect if daemon-reload
-    # disrupted the API container (Quadlet regeneration), so retry.
+    # Register webhook
     for i in $(seq 1 10); do
         HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:${API_PORT}/api/webhooks" \
             -H "Content-Type: application/json" \
