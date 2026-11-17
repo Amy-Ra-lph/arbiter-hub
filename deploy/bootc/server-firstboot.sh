@@ -33,6 +33,10 @@ DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 32)}"
 # fails to parse the URL at startup. (Same reason line ~266 quotes it for
 # the Alembic migration URL.)
 DB_PASSWORD_URLENC="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DB_PASSWORD")"
+# systemd unit files treat '%' as a specifier, so the URL-encoded '%2F'/'%3D'
+# sequences make the generated unit invalid ("bad unit file setting").
+# Double them for the Environment= line only; the migration uses the raw form.
+DB_PASSWORD_URLENC_UNIT="${DB_PASSWORD_URLENC//%/%%}"
 WEBHOOK_SECRET="${WEBHOOK_SECRET:-$(openssl rand -base64 24)}"
 ARBITER_SERVICE_PASSWORD="${ARBITER_SERVICE_PASSWORD:-$(openssl rand -base64 24)}"
 KEYLIME_ENABLED="${KEYLIME_ENABLED:-true}"
@@ -216,7 +220,7 @@ SPNEGO_VOLUME="Volume=${SPNEGO_KEYTAB}:/etc/arbiter/http.keytab:ro,Z"
 
 cat > /etc/containers/systemd/arbiter-hub-api.container.d/config.conf <<DROPIN
 [Container]
-Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://arbiter:${DB_PASSWORD_URLENC}@arbiter-hub-db:5432/arbiter
+Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://arbiter:${DB_PASSWORD_URLENC_UNIT}@arbiter-hub-db:5432/arbiter
 Environment=ARBITER_AUTH_MODE=oidc
 Environment=ARBITER_OIDC_ISSUER=https://${IPA_SERVER}/idp
 Environment=ARBITER_OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
