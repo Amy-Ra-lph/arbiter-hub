@@ -1,8 +1,12 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings
+
+from server.db_url import build_dsn
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://arbiter:arbiter@localhost:5432/arbiter"
+    database_url: str = ""
+    db_password: SecretStr = SecretStr("")
     api_host: str = "0.0.0.0"
     api_port: int = 8400
     kbs_port: int = 8085
@@ -59,7 +63,14 @@ class Settings(BaseSettings):
     otel_exporter_endpoint: str = ""
     otel_service_name: str = "arbiter-hub"
 
-    model_config = {"env_prefix": "ARBITER_"}
+    model_config = {"env_prefix": "ARBITER_", "secrets_dir": "/run/secrets"}
+
+    @property
+    def dsn(self) -> str:
+        """Asyncpg URL: explicit override wins, else built from the secret."""
+        if self.database_url:
+            return self.database_url
+        return build_dsn(self.db_password.get_secret_value())
 
 
 settings = Settings()

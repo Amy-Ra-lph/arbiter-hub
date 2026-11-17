@@ -47,6 +47,11 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# /run/secrets exists only in deployed images; importing server.config warns
+# locally. Tests that exercise secret loading pass their own _secrets_dir.
+filterwarnings = [
+    "ignore:directory .* does not exist:UserWarning",
+]
 
 [tool.setuptools.packages.find]
 include = ["server*", "arbiter_mcp*", "alembic*"]

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
 from alembic import context
 
 # Import Base to get all model metadata
+from server.db_url import build_dsn
 from server.models.db import Base
 
 # this is the Alembic Config object, which provides
@@ -16,6 +17,11 @@ config = context.config
 # DB URL override via env var — stored separately to avoid configparser
 # % interpolation errors on URL-encoded passwords.
 _db_url_override = os.environ.get("ALEMBIC_DB_URL")
+if not _db_url_override and os.environ.get("ALEMBIC_DB_PASSWORD"):
+    _db_url_override = build_dsn(
+        os.environ["ALEMBIC_DB_PASSWORD"],
+        host=os.environ.get("ALEMBIC_DB_HOST", "arbiter-hub-db"),
+    )
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

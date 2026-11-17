@@ -200,11 +200,27 @@ class WebhookRegistration(Base):
     )
 
 
-# Create async engine
-engine = create_async_engine(settings.database_url, echo=False)
+# Engine and session factory are created lazily: settings.dsn raises when
+# neither ARBITER_DATABASE_URL nor a db_password secret is configured, and this
+# module is imported by nearly every other module (including test collection).
+_engine = None
+_session_factory = None
 
-# Create session factory
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_async_engine(settings.dsn, echo=False)
+    return _engine
+
+
+def async_session():
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = async_sessionmaker(
+            get_engine(), class_=AsyncSession, expire_on_commit=False
+        )
+    return _session_factory()
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
