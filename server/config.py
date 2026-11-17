@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     auth_mode: str = "dev"
     local_admin_enabled: bool = False
-    local_admin_password: str = ""
+    local_admin_password: SecretStr = SecretStr("")
     local_signing_key: str = ""
 
     spnego_enabled: bool = False

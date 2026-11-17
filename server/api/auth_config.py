@@ -35,7 +35,7 @@ class LocalLoginRequest(BaseModel):
 async def local_login(body: LocalLoginRequest):
     if settings.auth_mode != "local" and not settings.local_admin_enabled:
         raise HTTPException(status_code=404, detail="local auth not enabled")
-    if not settings.local_admin_password:
+    if not settings.local_admin_password.get_secret_value():
         raise HTTPException(status_code=503, detail="local admin password not configured")
 
     from server.auth.dependencies import _get_local_provider

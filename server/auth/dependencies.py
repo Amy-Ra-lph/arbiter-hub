@@ -36,7 +36,7 @@ def _get_local_provider():
         from server.auth.local import LocalAuthProvider
 
         _local_provider = LocalAuthProvider.from_password(
-            password=settings.local_admin_password,
+            password=settings.local_admin_password.get_secret_value(),
             signing_key=settings.local_signing_key or None,
         )
     return _local_provider
