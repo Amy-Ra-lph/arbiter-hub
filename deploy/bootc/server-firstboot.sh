@@ -53,6 +53,36 @@ ensure_podman_secret() {
     podman secret create "$name" < "${SECRETS_DIR}/${file}"
 }
 
+# Deployment mode decides where secrets come from and whether the local admin
+# account exists. Production fails closed; demo generates on demand.
+DEPLOYMENT_MODE="${ARBITER_DEPLOYMENT_MODE:-production}"
+case "$DEPLOYMENT_MODE" in
+    demo|production) ;;
+    *) echo "ERROR: ARBITER_DEPLOYMENT_MODE must be demo or production"; exit 1 ;;
+esac
+
+if [ "$DEPLOYMENT_MODE" = "production" ]; then
+    if [ "$IPA_ADMIN_PASSWORD" = "Secret123!" ]; then
+        echo "ERROR: refusing demo IPA admin password in production"
+        exit 1
+    fi
+    for cred in db_password local_admin_password; do
+        if [ ! -s "${SECRETS_DIR}/${cred}" ]; then
+            if [ -f "${SECRETS_DIR}/${cred}.cred" ]; then
+                systemd-creds decrypt --name="$cred" --with-key=host+tpm2 \
+                    "${SECRETS_DIR}/${cred}.cred" > "${SECRETS_DIR}/${cred}"
+                chmod 600 "${SECRETS_DIR}/${cred}"
+            else
+                echo "ERROR: missing sealed secret ${cred} for production"
+                exit 1
+            fi
+        fi
+    done
+    LOCAL_ADMIN_ENABLED="${ARBITER_ALLOW_LOCAL_ADMIN:-false}"
+else
+    LOCAL_ADMIN_ENABLED="${ARBITER_LOCAL_ADMIN_ENABLED:-true}"
+fi
+
 ensure_secret_file db_password 32 "${DB_PASSWORD:-}"
 ensure_secret_file local_admin_password 24 "${ARBITER_SERVICE_PASSWORD:-}"
 ensure_podman_secret arbiter-hub-db-password db_password
@@ -234,7 +264,7 @@ cat > /etc/containers/systemd/arbiter-hub-api.container.d/config.conf <<DROPIN
 Environment=ARBITER_AUTH_MODE=oidc
 Environment=ARBITER_OIDC_ISSUER=https://${IPA_SERVER}/idp
 Environment=ARBITER_OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
-Environment=ARBITER_LOCAL_ADMIN_ENABLED=true
+Environment=ARBITER_LOCAL_ADMIN_ENABLED=${LOCAL_ADMIN_ENABLED}
 Environment='ARBITER_CORS_ALLOWED_ORIGINS=["http://${HOSTNAME}:${API_PORT}","https://${HOSTNAME}:${UI_PORT}","http://localhost:${API_PORT}"]'
 ${KEYLIME_ENV}
 ${COSIGN_ENV}
