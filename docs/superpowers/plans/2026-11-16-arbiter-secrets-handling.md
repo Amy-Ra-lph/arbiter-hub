@@ -19,7 +19,7 @@
 - Bash: `set -euo pipefail` stays; all secret files created under `umask 077`; mode 0600/0700.
 - Demo images must provision with no operator input; production must fail closed.
 - Quadlet secret names are fixed: `arbiter-hub-db-password`, `arbiter-hub-admin-password`.
-- Secret file names match the Settings field names exactly: `db_password`, `local_admin_password`.
+- pydantic-settings applies `env_prefix` to secret filenames, so the files under `/run/secrets` are `arbiter_db_password` and `arbiter_local_admin_password`. Quadlet mount targets use the same names (pin in Task 3).
 
 ## File Structure
 
@@ -202,7 +202,7 @@ from server.config import Settings
 
 
 def test_admin_password_from_secret_file(tmp_path):
-    (tmp_path / "local_admin_password").write_text("s3cret", encoding="utf-8")
+    (tmp_path / "arbiter_local_admin_password").write_text("s3cret", encoding="utf-8")
     settings = Settings(_secrets_dir=str(tmp_path))
     assert settings.local_admin_password.get_secret_value() == "s3cret"
 
@@ -213,7 +213,7 @@ def test_empty_admin_password_is_empty_string(tmp_path):
 
 
 def test_admin_password_not_in_repr(tmp_path):
-    (tmp_path / "local_admin_password").write_text("s3cret", encoding="utf-8")
+    (tmp_path / "arbiter_local_admin_password").write_text("s3cret", encoding="utf-8")
     settings = Settings(_secrets_dir=str(tmp_path))
     assert "s3cret" not in repr(settings)
 ```
@@ -275,9 +275,9 @@ API_UNITS = [
 @pytest.mark.parametrize("unit", API_UNITS)
 def test_api_unit_mounts_both_secrets(unit):
     text = unit.read_text()
-    assert "Secret=arbiter-hub-db-password,type=mount,target=db_password" in text
+    assert "Secret=arbiter-hub-db-password,type=mount,target=arbiter_db_password" in text
     assert (
-        "Secret=arbiter-hub-admin-password,type=mount,target=local_admin_password"
+        "Secret=arbiter-hub-admin-password,type=mount,target=arbiter_local_admin_password"
         in text
     )
 
@@ -299,8 +299,8 @@ Expected: FAIL on missing mount lines.
 Replace the `Secret=...,type=env,target=ARBITER_DB_PASSWORD` line and the plaintext `Environment=ARBITER_DATABASE_URL=...` line in both files with:
 
 ```
-Secret=arbiter-hub-db-password,type=mount,target=db_password
-Secret=arbiter-hub-admin-password,type=mount,target=local_admin_password
+Secret=arbiter-hub-db-password,type=mount,target=arbiter_db_password
+Secret=arbiter-hub-admin-password,type=mount,target=arbiter_local_admin_password
 ```
 
 Leave `deploy/quadlet/arbiter-hub-db.container` unchanged — the Postgres image only accepts `POSTGRESQL_PASSWORD` through the environment, injected by podman from the secret; the value never lands in a host unit file.

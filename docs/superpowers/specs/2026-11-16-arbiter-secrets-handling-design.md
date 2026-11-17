@@ -52,9 +52,10 @@ Two secondary defects:
 Secrets live as **files**. The container engine mounts them; the application
 reads them itself.
 
-- Quadlet: `Secret=<name>,type=mount,target=<field_name>` → `/run/secrets/<field_name>`
+- Quadlet: `Secret=<name>,type=mount,target=arbiter_<field>` → `/run/secrets/arbiter_<field>`
+  (pydantic-settings applies `env_prefix` to secret filenames)
 - App: `pydantic-settings` `secrets_dir=/run/secrets` reads a field from a file
-  of the same name with no extra code.
+  named with the `env_prefix` applied (`arbiter_db_password`) with no extra code.
 - Podman secret names: `arbiter-hub-db-password` (target `db_password`),
   `arbiter-hub-admin-password` (target `local_admin_password`).
 

@@ -6,6 +6,7 @@
 # Phase 3: Hub containers (DB, API, KBS, MCP, UI) + EDA
 # Phase 4: Seed policies, RBAC roles, enrollment tokens, redact secrets
 set -euo pipefail
+umask 077
 
 STAMP="/var/lib/arbiter/.server-firstboot-complete"
 CONFIG="/etc/arbiter/server.env"
@@ -27,18 +28,67 @@ source "$CONFIG"
 : "${IPA_ADMIN_PASSWORD:?Set IPA_ADMIN_PASSWORD in server.env}"
 
 HOSTNAME="${ARBITER_HOSTNAME:-$(hostname -f)}"
-DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 32)}"
-# Base64 passwords contain '/' and '=', which are illegal in URL userinfo.
-# The DSN written to the Quadlet drop-in must percent-encode it, or asyncpg
-# fails to parse the URL at startup. (Same reason line ~266 quotes it for
-# the Alembic migration URL.)
-DB_PASSWORD_URLENC="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DB_PASSWORD")"
-# systemd unit files treat '%' as a specifier, so the URL-encoded '%2F'/'%3D'
-# sequences make the generated unit invalid ("bad unit file setting").
-# Double them for the Environment= line only; the migration uses the raw form.
-DB_PASSWORD_URLENC_UNIT="${DB_PASSWORD_URLENC//%/%%}"
+
+# Secrets live as root-only files; podman secrets are created from them and the
+# containers read them through /run/secrets. Nothing is written to a unit file
+# or passed on a command line.
+SECRETS_DIR=/etc/arbiter/secrets
+mkdir -p "$SECRETS_DIR"
+chmod 700 "$SECRETS_DIR"
+
+ensure_secret_file() {
+    local name="$1" bytes="$2" override="${3:-}"
+    [ -s "${SECRETS_DIR}/${name}" ] && return 0
+    if [ -n "$override" ]; then
+        printf '%s' "$override" > "${SECRETS_DIR}/${name}"
+    else
+        openssl rand -base64 "$bytes" > "${SECRETS_DIR}/${name}"
+    fi
+    chmod 600 "${SECRETS_DIR}/${name}"
+}
+
+ensure_podman_secret() {
+    local name="$1" file="$2"
+    podman secret inspect "$name" >/dev/null 2>&1 && return 0
+    podman secret create "$name" < "${SECRETS_DIR}/${file}"
+}
+
+# Deployment mode decides where secrets come from and whether the local admin
+# account exists. Production fails closed; demo generates on demand.
+DEPLOYMENT_MODE="${ARBITER_DEPLOYMENT_MODE:-production}"
+case "$DEPLOYMENT_MODE" in
+    demo|production) ;;
+    *) echo "ERROR: ARBITER_DEPLOYMENT_MODE must be demo or production"; exit 1 ;;
+esac
+
+if [ "$DEPLOYMENT_MODE" = "production" ]; then
+    if [ "$IPA_ADMIN_PASSWORD" = "Secret123!" ]; then
+        echo "ERROR: refusing demo IPA admin password in production"
+        exit 1
+    fi
+    for cred in db_password local_admin_password; do
+        if [ ! -s "${SECRETS_DIR}/${cred}" ]; then
+            if [ -f "${SECRETS_DIR}/${cred}.cred" ]; then
+                systemd-creds decrypt --name="$cred" --with-key=host+tpm2 \
+                    "${SECRETS_DIR}/${cred}.cred" > "${SECRETS_DIR}/${cred}"
+                chmod 600 "${SECRETS_DIR}/${cred}"
+            else
+                echo "ERROR: missing sealed secret ${cred} for production"
+                exit 1
+            fi
+        fi
+    done
+    LOCAL_ADMIN_ENABLED="${ARBITER_ALLOW_LOCAL_ADMIN:-false}"
+else
+    LOCAL_ADMIN_ENABLED="${ARBITER_LOCAL_ADMIN_ENABLED:-true}"
+fi
+
+ensure_secret_file db_password 32 "${DB_PASSWORD:-}"
+ensure_secret_file local_admin_password 24 "${ARBITER_SERVICE_PASSWORD:-}"
+ensure_podman_secret arbiter-hub-db-password db_password
+ensure_podman_secret arbiter-hub-admin-password local_admin_password
+
 WEBHOOK_SECRET="${WEBHOOK_SECRET:-$(openssl rand -base64 24)}"
-ARBITER_SERVICE_PASSWORD="${ARBITER_SERVICE_PASSWORD:-$(openssl rand -base64 24)}"
 KEYLIME_ENABLED="${KEYLIME_ENABLED:-true}"
 COSIGN_ENABLED="${COSIGN_ENABLED:-true}"
 EDA_ENABLED="${EDA_ENABLED:-true}"
@@ -184,15 +234,6 @@ echo "Configuring container environment..."
 mkdir -p /etc/containers/systemd/arbiter-hub-api.container.d \
          /etc/containers/systemd/arbiter-hub-db.container.d
 
-# Create Podman secret for DB password (Quadlet Secret= lines reference it)
-printf '%s' "$DB_PASSWORD" | podman secret create arbiter-hub-db-password - 2>/dev/null || true
-
-# DB password via env drop-in (belt + suspenders with the secret above)
-cat > /etc/containers/systemd/arbiter-hub-db.container.d/password.conf <<DROPIN
-[Container]
-Environment=POSTGRESQL_PASSWORD=${DB_PASSWORD}
-DROPIN
-
 # API config — database, backends, auth
 KEYLIME_ENV=""
 KEYLIME_VOLUME=""
@@ -220,12 +261,10 @@ SPNEGO_VOLUME="Volume=${SPNEGO_KEYTAB}:/etc/arbiter/http.keytab:ro,Z"
 
 cat > /etc/containers/systemd/arbiter-hub-api.container.d/config.conf <<DROPIN
 [Container]
-Environment=ARBITER_DATABASE_URL=postgresql+asyncpg://arbiter:${DB_PASSWORD_URLENC_UNIT}@arbiter-hub-db:5432/arbiter
 Environment=ARBITER_AUTH_MODE=oidc
 Environment=ARBITER_OIDC_ISSUER=https://${IPA_SERVER}/idp
 Environment=ARBITER_OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
-Environment=ARBITER_LOCAL_ADMIN_ENABLED=true
-Environment=ARBITER_LOCAL_ADMIN_PASSWORD=${ARBITER_SERVICE_PASSWORD}
+Environment=ARBITER_LOCAL_ADMIN_ENABLED=${LOCAL_ADMIN_ENABLED}
 Environment='ARBITER_CORS_ALLOWED_ORIGINS=["http://${HOSTNAME}:${API_PORT}","https://${HOSTNAME}:${UI_PORT}","http://localhost:${API_PORT}"]'
 ${KEYLIME_ENV}
 ${COSIGN_ENV}
@@ -234,6 +273,7 @@ ${KEYLIME_VOLUME}
 ${COSIGN_VOLUME}
 ${SPNEGO_VOLUME}
 DROPIN
+chmod 600 /etc/containers/systemd/arbiter-hub-api.container.d/*.conf
 
 # nginx config
 echo "Configuring nginx..."
@@ -272,9 +312,9 @@ done
 echo "Running database migrations..."
 DB_CONTAINER_IP=$(podman inspect arbiter-hub-db --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
 echo "DB container IP: ${DB_CONTAINER_IP}"
-MIGRATION_DB_URL="postgresql+asyncpg://arbiter:$(python3 -c "import urllib.parse; print(urllib.parse.quote('${DB_PASSWORD}', safe=''))")@${DB_CONTAINER_IP}:5432/arbiter"
 podman run --rm --network systemd-arbiter-hub \
-    -e ALEMBIC_DB_URL="$MIGRATION_DB_URL" \
+    --secret arbiter-hub-db-password,type=env,target=ALEMBIC_DB_PASSWORD \
+    -e ALEMBIC_DB_HOST="${DB_CONTAINER_IP}" \
     quay.io/rhel-security/arbiter-hub-api:latest \
     bash -c 'cd /opt/app-root/src && alembic upgrade head'
 echo "Migrations complete"
@@ -358,7 +398,7 @@ all:
   vars:
     arbiter_api_url: http://localhost:${API_PORT}
     arbiter_webhook_secret: ${WEBHOOK_SECRET}
-    arbiter_service_password: ${ARBITER_SERVICE_PASSWORD}
+    arbiter_service_password: $(cat "${SECRETS_DIR}/local_admin_password")
   children:
     server:
       hosts:
