@@ -15,3 +15,5 @@ docs/demo-walkthrough-beaker.md
 idm-ci/playbooks/arbiter/inventory/arbiter-rebuild.yml
 deploy/partner/site.env
 deploy/partner/output/
+
+.worktrees/
