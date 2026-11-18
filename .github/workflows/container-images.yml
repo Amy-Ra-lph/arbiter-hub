@@ -57,6 +57,13 @@ jobs:
           username: ${{ secrets.QUAY_USER }}
           password: ${{ secrets.QUAY_TOKEN }}
 
+      - name: Log in to registry.redhat.io
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: registry.redhat.io
+          username: ${{ secrets.REGISTRY_REDHAT_USER }}
+          password: ${{ secrets.REGISTRY_REDHAT_TOKEN }}
+
       - name: Build and push arbiter-hub-${{ matrix.image }}
         run: |
           IMAGE_TAG="${REGISTRY}/${REGISTRY_ORG}/arbiter-hub-${{ matrix.image }}:latest"
