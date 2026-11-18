@@ -314,6 +314,16 @@ done
 # work reliably for ad-hoc podman run containers on Quadlet networks.
 echo "Running database migrations..."
 DB_CONTAINER_IP=$(podman inspect arbiter-hub-db --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+if [ -z "$DB_CONTAINER_IP" ]; then
+    echo "WARN: podman inspect returned empty IP, retrying after 5s..."
+    sleep 5
+    DB_CONTAINER_IP=$(podman inspect arbiter-hub-db --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+fi
+if [ -z "$DB_CONTAINER_IP" ]; then
+    echo "ERROR: DB container has no IP — cannot run migrations"
+    podman inspect arbiter-hub-db --format '{{json .NetworkSettings}}' 2>&1 || true
+    exit 1
+fi
 echo "DB container IP: ${DB_CONTAINER_IP}"
 podman run --rm --network systemd-arbiter-hub \
     --secret arbiter-hub-db-password,type=env,target=ALEMBIC_DB_PASSWORD \

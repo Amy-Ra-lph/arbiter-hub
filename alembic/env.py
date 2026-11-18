@@ -20,7 +20,7 @@ _db_url_override = os.environ.get("ALEMBIC_DB_URL")
 if not _db_url_override and os.environ.get("ALEMBIC_DB_PASSWORD"):
     _db_url_override = build_dsn(
         os.environ["ALEMBIC_DB_PASSWORD"],
-        host=os.environ.get("ALEMBIC_DB_HOST", "arbiter-hub-db"),
+        host=os.environ.get("ALEMBIC_DB_HOST") or "arbiter-hub-db",
     )
 
 # Interpret the config file for Python logging.
