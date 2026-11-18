@@ -50,7 +50,7 @@ ensure_secret_file() {
 ensure_podman_secret() {
     local name="$1" file="$2"
     podman secret inspect "$name" >/dev/null 2>&1 && return 0
-    podman secret create "$name" < "${SECRETS_DIR}/${file}"
+    podman secret create "$name" "${SECRETS_DIR}/${file}"
 }
 
 # Deployment mode decides where secrets come from and whether the local admin
