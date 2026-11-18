@@ -292,6 +292,9 @@ systemctl enable --now nginx
 # Start containers
 echo "Starting containers..."
 systemctl daemon-reload
+# The containers auto-start at boot before these secrets exist, so their units
+# may already be in failed state after hitting the start-rate limiter.
+systemctl reset-failed arbiter-hub-db arbiter-hub-api arbiter-hub-mcp 2>/dev/null || true
 systemctl start arbiter-hub-db
 for i in $(seq 1 30); do
     systemctl is-active arbiter-hub-db >/dev/null 2>&1 && break

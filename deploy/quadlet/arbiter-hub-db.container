@@ -1,6 +1,9 @@
 [Unit]
 Description=Arbiter Hub PostgreSQL
 After=arbiter-hub.network
+# See arbiter-hub-api.container: podman secret is created by firstboot, which
+# races this unit at first boot.
+StartLimitIntervalSec=0
 
 [Container]
 Image=registry.redhat.io/rhel10/postgresql-16:latest

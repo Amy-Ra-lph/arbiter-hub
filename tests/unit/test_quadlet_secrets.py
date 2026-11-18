@@ -25,3 +25,11 @@ def test_api_unit_has_no_password_env(unit):
     text = unit.read_text()
     assert not re.search(r"^Environment=\S*PASSWORD", text, re.MULTILINE)
     assert "ARBITER_DATABASE_URL" not in text
+
+
+@pytest.mark.parametrize("unit", [
+    REPO / "deploy/quadlet/arbiter-hub-api.container",
+    REPO / "deploy/quadlet/arbiter-hub-db.container",
+])
+def test_secret_dependent_unit_disables_start_rate_limit(unit):
+    assert "StartLimitIntervalSec=0" in unit.read_text()

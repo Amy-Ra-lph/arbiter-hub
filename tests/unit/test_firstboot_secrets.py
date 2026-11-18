@@ -27,3 +27,8 @@ def test_migration_does_not_pass_dsn_on_argv():
 
 def test_dropins_are_private():
     assert re.search(r"chmod 600 .*arbiter-hub-api\.container\.d", SCRIPT)
+
+
+def test_resets_failed_container_units_before_start():
+    """Containers may have hit the start-rate limiter before secrets existed."""
+    assert "systemctl reset-failed arbiter-hub-db arbiter-hub-api arbiter-hub-mcp" in SCRIPT

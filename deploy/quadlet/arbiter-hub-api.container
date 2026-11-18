@@ -2,6 +2,9 @@
 Description=Arbiter Hub API Server
 After=arbiter-hub-db.container
 Requires=arbiter-hub-db.container
+# At first boot this unit races firstboot for the podman secrets it mounts.
+# Never let the start-rate limiter disable it before firstboot creates them.
+StartLimitIntervalSec=0
 
 [Container]
 Image=quay.io/rhel-security/arbiter-hub-api:latest
