@@ -1,5 +1,5 @@
 # deploy/containerfiles/Containerfile.kbs
-FROM registry.redhat.io/ubi10/python-312-minimal
+FROM registry.access.redhat.com/ubi10/python-312-minimal
 WORKDIR /opt/app-root/src
 COPY pyproject.toml .
 COPY server/ server/
