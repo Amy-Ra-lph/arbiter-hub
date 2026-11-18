@@ -57,7 +57,10 @@ jobs:
           username: ${{ secrets.QUAY_USER }}
           password: ${{ secrets.QUAY_TOKEN }}
 
+      # Optional: only needed if a Containerfile goes back to registry.redhat.io.
+      # Public UBI bases are pulled anonymously, so a bad token must not fail the build.
       - name: Log in to registry.redhat.io
+        continue-on-error: true
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: registry.redhat.io
