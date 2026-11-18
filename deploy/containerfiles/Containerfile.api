@@ -1,5 +1,5 @@
 # deploy/containerfiles/Containerfile.api
-FROM registry.access.redhat.com/ubi10/python-312-minimal
+FROM registry.redhat.io/ubi10/python-312-minimal
 
 # krb5-devel needed to build gssapi wheel for SPNEGO auth
 USER 0

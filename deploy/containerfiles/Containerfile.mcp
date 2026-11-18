@@ -1,5 +1,5 @@
 # deploy/containerfiles/Containerfile.mcp
-FROM registry.access.redhat.com/ubi10/python-312-minimal
+FROM registry.redhat.io/ubi10/python-312-minimal
 WORKDIR /opt/app-root/src
 COPY pyproject.toml .
 COPY arbiter_mcp/ arbiter_mcp/
