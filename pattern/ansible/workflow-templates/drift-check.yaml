@@ -1,0 +1,71 @@
+---
+# AAP Scheduled Job Template: Arbiter Hub Drift Detection
+#
+# Runs rebuild.yaml checkpoints only (--tags checkpoint) every 4 hours
+# to detect configuration drift on the demo environment.
+#
+# Failures trigger the notify_failure template for alerting.
+#
+# Import: awx import < drift-check.yaml
+
+- name: "Arbiter - Drift Check"
+  description: >-
+    Scheduled checkpoint-only run. Verifies all 10 phase gates
+    without making changes. Detects: stopped services, expired certs,
+    missing containers, DNS resolution failures, broken OIDC, Keylime
+    agent disconnect, and EDA webhook deregistration.
+  job_type: check
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "checkpoint"
+  verbosity: 1
+  timeout: 300
+  extra_vars:
+    drift_check_mode: true
+
+  schedules:
+    - name: "Arbiter Drift Check - Every 4 Hours"
+      description: "Run checkpoint verification every 4 hours during lab reservation"
+      rrule: "DTSTART:20261022T000000Z RRULE:FREQ=HOURLY;INTERVAL=4"
+      enabled: true
+      extra_data:
+        drift_check_mode: true
+
+    - name: "Arbiter Drift Check - Pre-Demo"
+      description: "Run 30 minutes before typical demo time (10:30 ET)"
+      rrule: "DTSTART:20261022T143000Z RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR"
+      enabled: false
+      extra_data:
+        drift_check_mode: true
+        notify_on_success: true
+
+# Companion: auto-remediation workflow (optional, disabled by default)
+# Triggers the full rebuild workflow if drift-check fails.
+- name: "Arbiter - Auto-Remediate on Drift"
+  description: >-
+    Workflow that runs drift-check, and on failure triggers a targeted
+    rebuild of only the failed phases. Disabled by default — enable
+    for unattended demo environments.
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "pattern/ansible/playbooks/auto-remediate.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+    - "Arbiter - IPA Admin"
+    - "Arbiter - Database"
+    - "Arbiter - OIDC Secret"
+  verbosity: 2
+  timeout: 2700
+  extra_vars:
+    remediation_mode: "targeted"
+    max_remediation_attempts: 2
+
+  schedules:
+    - name: "Arbiter Auto-Remediate - Daily"
+      description: "Daily overnight remediation (02:00 ET)"
+      rrule: "DTSTART:20261022T060000Z RRULE:FREQ=DAILY"
+      enabled: false

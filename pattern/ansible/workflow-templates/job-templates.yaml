@@ -1,0 +1,286 @@
+---
+# AAP Job Template definitions for Arbiter Hub rebuild workflow.
+#
+# Each template maps to one or more playbooks from idm-ci/playbooks/arbiter/.
+# Import: awx import < job-templates.yaml
+#
+# Credential references use AAP credential names (defined in credentials.yaml).
+# Inventory: arbiter-hub-dynamic (IdM-CI dynamic inventory plugin).
+#
+# Playbook paths are relative to the AAP project root (arbiter-hub repo).
+
+# ─── Phase 0: Prerequisites ─────────────────────────────────────
+- name: "Arbiter - Phase 0 Prerequisites"
+  description: "Install ansible collections, configure /etc/hosts, registry auth"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+    - "Arbiter - Registry Auth"
+  job_tags: "phase0"
+  verbosity: 1
+  timeout: 300
+  extra_vars:
+    global_domain: "{{ global_domain }}"
+
+# ─── Phase 1: Foundation ────────────────────────────────────────
+- name: "Arbiter - Phase 1 Foundation"
+  description: "DNS client setup, package installation, repo cloning"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase1"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 600
+
+- name: "Arbiter - Checkpoint 1 Verify"
+  description: "Verify DNS, podman, repo clone on all nodes"
+  job_type: check
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase1,checkpoint"
+  skip_tags: "foundation"
+  verbosity: 1
+  timeout: 120
+
+# ─── Phase 2: Identity ──────────────────────────────────────────
+- name: "Arbiter - Phase 2 Identity"
+  description: "IPA post-install verification, roles, users, HBAC rules"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+    - "Arbiter - IPA Admin"
+  job_tags: "phase2"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 600
+  extra_vars:
+    ipaserver_admin_password: "{{ identity_admin_password }}"
+
+- name: "Arbiter - Checkpoint 2 Verify"
+  description: "Verify ahdapa OIDC discovery, demo users, HBAC rules"
+  job_type: check
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase2,checkpoint"
+  skip_tags: "identity"
+  verbosity: 1
+  timeout: 120
+
+# ─── Phase 3: Attestation ───────────────────────────────────────
+- name: "Arbiter - Phase 3 Attestation"
+  description: "swtpm, Keylime verifier+registrar+agent, mTLS certs"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase3"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 900
+
+- name: "Arbiter - Checkpoint 3 Verify"
+  description: "Verify swtpm, verifier :8881, registrar :8891, agent :9002, mTLS certs"
+  job_type: check
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase3,checkpoint"
+  skip_tags: "attestation"
+  verbosity: 1
+  timeout: 120
+
+# ─── Phase 4: Containers ────────────────────────────────────────
+- name: "Arbiter - Phase 4 Containers"
+  description: "PostgreSQL, API, MCP, UI Quadlet containers + TLS termination"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+    - "Arbiter - Database"
+    - "Arbiter - Quay Robot"
+  job_tags: "phase4"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 900
+  extra_vars:
+    vault_arbiter_db_password: "{{ hub_database_password }}"
+
+- name: "Arbiter - Checkpoint 4 Verify"
+  description: "Verify 4 containers running, API health, HTTPS proxy"
+  job_type: check
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase4,checkpoint"
+  skip_tags: "containers"
+  verbosity: 1
+  timeout: 120
+
+# ─── Phase 5: OIDC ──────────────────────────────────────────────
+- name: "Arbiter - Phase 5 OIDC"
+  description: "ahdapa client registration, CORS, Quadlet OIDC drop-ins"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+    - "Arbiter - IPA Admin"
+    - "Arbiter - OIDC Secret"
+  job_tags: "phase5"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 300
+  extra_vars:
+    arbiter_oidc_client_secret: "{{ identity_ahdapa_oidc_client_secret }}"
+    ipaserver_admin_password: "{{ identity_admin_password }}"
+
+- name: "Arbiter - Checkpoint 5 Verify"
+  description: "Verify OIDC token grant, CORS headers, UI PKCE"
+  job_type: check
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase5,checkpoint"
+  skip_tags: "oidc"
+  verbosity: 1
+  timeout: 120
+
+# ─── Phase 6: Agent (parallel with Phase 7) ─────────────────────
+- name: "Arbiter - Phase 6 Agent"
+  description: "Falco, OpenShell, linux-mcp-server, demo workloads on agent node"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase6"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 900
+
+# ─── Phase 7: EDA (parallel with Phase 6) ───────────────────────
+- name: "Arbiter - Phase 7 EDA"
+  description: "ansible-rulebook, webhook registration, delegation rules on hub"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+    - "Arbiter - IPA Admin"
+  job_tags: "phase7"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 600
+  extra_vars:
+    ipaserver_admin_password: "{{ identity_admin_password }}"
+
+- name: "Arbiter - Checkpoint 6+7 Verify"
+  description: "Verify Falco, OpenShell, EDA, webhooks after parallel phases converge"
+  job_type: check
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase6,phase7,checkpoint"
+  skip_tags: "agent,eda"
+  verbosity: 1
+  timeout: 120
+
+# ─── Phase 8: Demo Enrichment ───────────────────────────────────
+- name: "Arbiter - Phase 8 Demo Enrichment"
+  description: "Trust profiles, demo agents, canaries, SIEM bridge, behavioral audit, enforcement-mcp"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase8"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 600
+
+# ─── Phase 9: Federation ────────────────────────────────────────
+- name: "Arbiter - Phase 9 Federation"
+  description: "SPIRE server+agent, OAuth2 attestation scopes, OBO token exchange"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+    - "Arbiter - IPA Admin"
+  job_tags: "phase9"
+  skip_tags: "checkpoint"
+  verbosity: 1
+  timeout: 600
+  extra_vars:
+    ipaserver_admin_password: "{{ identity_admin_password }}"
+
+# ─── Phase 10: Validation ───────────────────────────────────────
+- name: "Arbiter - Phase 10 Validation"
+  description: "Full health check + 12 E2E smoke tests"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "idm-ci/playbooks/arbiter/rebuild.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  job_tags: "phase10"
+  verbosity: 2
+  timeout: 300
+
+# ─── Notification Templates ─────────────────────────────────────
+- name: "Arbiter - Notify Success"
+  description: "Post rebuild success notification"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "pattern/ansible/playbooks/notify.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  extra_vars:
+    notification_status: "success"
+    notification_message: "Arbiter Hub rebuild completed successfully"
+
+- name: "Arbiter - Notify Failure"
+  description: "Post rebuild failure notification"
+  job_type: run
+  inventory: "arbiter-hub-dynamic"
+  project: "arbiter-hub"
+  playbook: "pattern/ansible/playbooks/notify.yaml"
+  credentials:
+    - "Arbiter - SSH Key"
+  extra_vars:
+    notification_status: "failure"
+    notification_message: "Arbiter Hub rebuild failed — check workflow job output"

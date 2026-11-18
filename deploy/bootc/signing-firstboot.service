@@ -1,0 +1,14 @@
+[Unit]
+Description=Arbiter signing node firstboot provisioning
+After=network-online.target cloud-final.service
+Wants=network-online.target
+ConditionPathExists=!/var/lib/arbiter-hub/.signing-firstboot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/arbiter-signing-firstboot
+TimeoutStartSec=1800
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

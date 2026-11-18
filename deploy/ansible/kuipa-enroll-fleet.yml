@@ -1,0 +1,33 @@
+---
+# Enroll IPA client hosts with kuipa and optionally register as
+# Arbiter Hub workloads.
+#
+# Required variables:
+#   kuipa_enrollment_string  - from kuipad enrollment-string (includes OTP)
+#   kuipa_ipa_server         - FQDN of the IPA server running kuipad
+#
+# Optional:
+#   kuipa_auto_register_workload: true
+#   kuipa_arbiter_hub_url: https://hub.arbiter.demo/api
+#   kuipa_arbiter_hub_token: <bearer token>
+#
+# Example:
+#   ansible-playbook kuipa-enroll-fleet.yml \
+#     -i inventory/arbiter-demo.yml \
+#     -e kuipa_ipa_server=idm.arbiter.demo \
+#     -e kuipa_enrollment_string="ipa-ku1:ARBITER.DEMO:...:...:OTP" \
+#     -e kuipa_auto_register_workload=true \
+#     -e kuipa_arbiter_hub_url=https://hub.arbiter.demo/api \
+#     -e kuipa_arbiter_hub_token=eyJ...
+
+- name: Enroll hosts with kuipa
+  hosts: ipaclients
+  become: true
+  roles:
+    - kuipa_client
+  post_tasks:
+    - name: Summary
+      ansible.builtin.debug:
+        msg: |
+          {{ ansible_fqdn }}: kuipa enrollment complete
+          Advertisement verification: {{ 'PASS' if 'advertisement verified' in kuipa_check.stdout else 'FAIL' }}

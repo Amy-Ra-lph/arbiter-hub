@@ -1,0 +1,82 @@
+name: Build bootc images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/bootc/**"
+  workflow_dispatch:
+    inputs:
+      images:
+        description: "Comma-separated image names (blank = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: quay.io
+  REGISTRY_ORG: rhel-security
+  REGISTRY_REPO: arbiter-bootc
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.set.outputs.images }}
+    steps:
+      - id: set
+        run: |
+          INPUT="${{ github.event.inputs.images }}"
+          if [ -z "$INPUT" ]; then
+            echo 'images=["idm-identity","arbiter-attestation","arbiter-signing","arbiter-agent"]' >> "$GITHUB_OUTPUT"
+          else
+            FORMATTED=$(echo "$INPUT" | python3 -c "import sys,json; print(json.dumps([x.strip() for x in sys.stdin.read().split(',')]))")
+            echo "images=${FORMATTED}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.matrix.outputs.images) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v7.0.1
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USER }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Build and push ${{ matrix.image }}
+        run: |
+          IMAGE_TAG="${REGISTRY}/${REGISTRY_ORG}/${REGISTRY_REPO}:${{ matrix.image }}"
+          CONTAINERFILE="deploy/bootc/Containerfile.${{ matrix.image }}"
+
+          if [ ! -f "$CONTAINERFILE" ]; then
+            echo "ERROR: ${CONTAINERFILE} not found"
+            exit 1
+          fi
+
+          echo "Building ${IMAGE_TAG} from ${CONTAINERFILE}"
+          docker build \
+            -t "${IMAGE_TAG}" \
+            -t "${REGISTRY}/${REGISTRY_ORG}/${REGISTRY_REPO}:${{ matrix.image }}-$(date +%Y%m%d)" \
+            -f "${CONTAINERFILE}" \
+            .
+
+          echo "Pushing ${IMAGE_TAG}"
+          docker push "${IMAGE_TAG}"
+          docker push "${REGISTRY}/${REGISTRY_ORG}/${REGISTRY_REPO}:${{ matrix.image }}-$(date +%Y%m%d)"
+
+      - name: Verify image
+        run: |
+          IMAGE_TAG="${REGISTRY}/${REGISTRY_ORG}/${REGISTRY_REPO}:${{ matrix.image }}"
+          docker inspect "${IMAGE_TAG}" --format '{{.Size}}' | \
+            awk '{printf "Image size: %.1f MB\n", $1/1024/1024}'

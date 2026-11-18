@@ -1,8 +1,15 @@
+import os
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+_TRUSTED_SERVICE_IPS = {"127.0.0.1", "::1", "10.89.0.1"}
+_extra = os.environ.get("ARBITER_ALERT_TRUSTED_IPS", "")
+if _extra:
+    _TRUSTED_SERVICE_IPS.update(ip.strip() for ip in _extra.split(",") if ip.strip())
 
 
 class CSRFOriginMiddleware(BaseHTTPMiddleware):
@@ -25,7 +32,7 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
 
         # Internal service calls (Falco, EDA) from container network
         client = request.client
-        if client and client.host in ("127.0.0.1", "::1", "10.89.0.1"):
+        if client and client.host in _TRUSTED_SERVICE_IPS:
             return await call_next(request)
 
         origin = request.headers.get("Origin")

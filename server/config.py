@@ -1,14 +1,19 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings
+
+from server.db_url import build_dsn
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://arbiter:arbiter@localhost:5432/arbiter"
+    database_url: str = ""
+    db_password: SecretStr = SecretStr("")
     api_host: str = "0.0.0.0"
     api_port: int = 8400
     kbs_port: int = 8085
     mcp_port: int = 8401
 
     keylime_verifier_url: str = ""
+    keylime_registrar_url: str = ""
     keylime_ca_cert: str = ""
     keylime_client_cert: str = ""
     keylime_client_key: str = ""
@@ -16,12 +21,22 @@ class Settings(BaseSettings):
     trustee_url: str = ""
     cosign_binary: str = "cosign"
     cosign_public_key: str = ""
+    cosign_insecure_ignore_tlog: bool = False
+    cosign_allow_http_registry: bool = False
     falco_healthz_url: str = ""
+    measured_boot_enabled: bool = False
     rekor_url: str = ""
     rhtas_fulcio_url: str = ""
     rhtas_tuf_root: str = ""
 
     auth_mode: str = "dev"
+    local_admin_enabled: bool = False
+    local_admin_password: SecretStr = SecretStr("")
+    local_signing_key: str = ""
+
+    spnego_enabled: bool = False
+    spnego_keytab: str = "/etc/arbiter-hub/http.keytab"
+    spnego_principal: str = ""
 
     oidc_issuer: str = ""
     oidc_client_id: str = "arbiter-hub"
@@ -33,6 +48,8 @@ class Settings(BaseSettings):
     oidc_jwks_cache_ttl: int = 3600
     oidc_actor_type_claim: str = ""
     oidc_scopes: str = "openid profile"
+    oidc_ui_client_id: str = ""
+    oidc_ui_scopes: str = ""
 
     kbs_encryption_key_file: str = "/etc/arbiter/kbs.key"
     policy_file: str = "/etc/arbiter/policies.yaml"
@@ -46,7 +63,14 @@ class Settings(BaseSettings):
     otel_exporter_endpoint: str = ""
     otel_service_name: str = "arbiter-hub"
 
-    model_config = {"env_prefix": "ARBITER_"}
+    model_config = {"env_prefix": "ARBITER_", "secrets_dir": "/run/secrets"}
+
+    @property
+    def dsn(self) -> str:
+        """Asyncpg URL: explicit override wins, else built from the secret."""
+        if self.database_url:
+            return self.database_url
+        return build_dsn(self.db_password.get_secret_value())
 
 
 settings = Settings()

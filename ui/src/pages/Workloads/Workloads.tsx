@@ -19,7 +19,7 @@ import AddWorkload from "./AddWorkload";
 import DeleteWorkloads from "./DeleteWorkloads";
 import { useGetWorkloadsQuery } from "src/services/rpcWorkloads";
 import { useListPageSearchParams } from "src/hooks/useListPageSearchParams";
-import { WorkloadState, WorkloadType } from "src/utils/datatypes/globalDataTypes";
+import { WorkloadState, WorkloadType, BackendType } from "src/utils/datatypes/globalDataTypes";
 import type { Workload } from "src/utils/datatypes/globalDataTypes";
 
 const Workloads: React.FC = () => {
@@ -39,9 +39,12 @@ const Workloads: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const initialState = new URLSearchParams(window.location.search).get("state") ?? "";
+  const params = new URLSearchParams(window.location.search);
+  const initialState = params.get("state") ?? "";
+  const initialBackend = params.get("backend") ?? "";
   const [stateFilter, setStateFilter] = useState<string>(initialState);
   const [typeFilter, setTypeFilter] = useState<string>("");
+  const [backendFilter, setBackendFilter] = useState<string>(initialBackend);
 
   const { data, isLoading, isError } = useGetWorkloadsQuery(
     { count: 100 },
@@ -59,6 +62,9 @@ const Workloads: React.FC = () => {
     if (typeFilter) {
       result = result.filter((w) => w.workload_type === typeFilter);
     }
+    if (backendFilter) {
+      result = result.filter((w) => w.backend_type === backendFilter);
+    }
     if (search) {
       const lower = search.toLowerCase();
       result = result.filter(
@@ -69,7 +75,7 @@ const Workloads: React.FC = () => {
     }
 
     return sortWorkloads(result, sortBy, sortDir);
-  }, [allWorkloads, stateFilter, typeFilter, search, sortBy, sortDir]);
+  }, [allWorkloads, stateFilter, typeFilter, backendFilter, search, sortBy, sortDir]);
 
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
@@ -135,6 +141,18 @@ const Workloads: React.FC = () => {
               <FormSelectOption value="" label="All types" />
               {Object.values(WorkloadType).map((t) => (
                 <FormSelectOption key={t} value={t} label={t} />
+              ))}
+            </FormSelect>
+          </ToolbarItem>
+          <ToolbarItem>
+            <FormSelect
+              value={backendFilter}
+              onChange={(_evt, val) => setBackendFilter(val)}
+              aria-label="Filter by backend"
+            >
+              <FormSelectOption value="" label="All backends" />
+              {Object.values(BackendType).map((b) => (
+                <FormSelectOption key={b} value={b} label={b} />
               ))}
             </FormSelect>
           </ToolbarItem>

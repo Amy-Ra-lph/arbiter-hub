@@ -1,18 +1,20 @@
 # Arbiter Hub — Demo Walkthrough
 
 **For:** lvrabec, Mubeen, demo attendees
-**3-node topology:**
-- **IDM:** `idm.arbiter.demo` — IPA + ahdapa + akamu + SPIRE + Keylime verifier
-- **HUB:** `hub.arbiter.demo` — Arbiter Hub API/UI + enforcement-mcp + EDA
-- **AGENT:** `agent.arbiter.demo` — OpenShell + linux-mcp-server + Falco + Keylime agent
+**4-node topology:**
+- **IDM:** `idm.arbiter.demo` — IPA + ahdapa + akamu (identity plane)
+- **HUB:** `hub.arbiter.demo` — Arbiter Hub API/UI + enforcement-mcp + EDA + SPIRE Server (decision plane)
+- **SIGNING:** `signing.arbiter.demo` — Keylime verifier/registrar + cosign + registry (trust anchor plane)
+- **AGENT:** `agent.arbiter.demo` — OpenShell + linux-mcp-server + Falco + Keylime agent + SPIRE Agent (workload plane)
 
 ## Prerequisites
 
-SSH access to all three machines:
+SSH access to all four machines:
 ```bash
-ssh root@<IDM>    # IPA server
-ssh root@<HUB>    # Arbiter Hub
-ssh root@<AGENT>  # Agent runtime
+ssh root@<IDM>      # IPA server
+ssh root@<HUB>      # Arbiter Hub + SPIRE Server
+ssh root@<SIGNING>  # Keylime verifier + cosign + registry
+ssh root@<AGENT>    # Agent runtime
 ```
 
 ## Architecture
@@ -22,11 +24,9 @@ ssh root@<AGENT>  # Agent runtime
 │  IPA Server (domain=arbiter.demo)                  │
 │  ahdapa IdP (OIDC, ML-DSA-65 + ES256)             │
 │  akamu MTC CA (ML-DSA-65, ACME)                    │
-│  SPIRE Server (workload identity)                  │
-│  Keylime Verifier (:8881) + Registrar (:8890)      │
-│  Exfil Receiver (canary detection, :9443)          │
+│  Kerberos KDC + LDAP + CA                          │
 └─────────────────┬──────────────────────────────────┘
-       OIDC tokens│  mTLS attestation
+       OIDC tokens│  Kerberos auth
                   ▼
 ┌─ HUB (hub.arbiter.demo) ──────────────────────────┐
 │  arbiter-hub-api (:8400, OIDC mode)                │
@@ -34,15 +34,25 @@ ssh root@<AGENT>  # Agent runtime
 │  PostgreSQL (arbiter-db)                           │
 │  enforcement-mcp (:8402)                           │
 │  EDA controller (ansible-rulebook, :5001)          │
+│  SPIRE Server (:8081, workload identity SVIDs)     │
 │  Webhook receiver (state_transition → EDA)         │
+└───────┬─────────┬──────────────────────────────────┘
+        │         │  SPIFFE federation (JWT SVID → OAuth2)
+        │         │
+┌───────▼─────────┼──────────────────────────────────┐
+│ SIGNING (signing.arbiter.demo)                     │
+│  Keylime Verifier (:8881) + Registrar (:8890)      │
+│  cosign (private keys)                             │
+│  Container Registry (:5000)                        │
+│  PRIVATE KEYS — hardened, no inbound SSH           │
 └─────────────────┬──────────────────────────────────┘
-       webhooks   │  Falco alerts
+       mTLS       │  TPM attestation
                   ▼
 ┌─ AGENT (agent.arbiter.demo) ──────────────────────┐
 │  OpenShell gateway (:8443) + supervisor            │
 │  linux-mcp-server (19 RHEL tools)                  │
 │  Keylime Agent (swtpm TPM 2.0)                     │
-│  SPIRE Agent (JWT-SVID)                            │
+│  SPIRE Agent (JWT-SVID → ahdapa token exchange)    │
 │  Falco eBPF (→ Hub API /api/v1/falco/alerts)       │
 │  Trust tier profiles (sovereign/verified/untrusted)│
 │  Demo agents (governed + rogue)                    │
@@ -65,11 +75,8 @@ ipactl status
 systemctl status ahdapa
 curl -sk https://idm.arbiter.demo/idp/.well-known/openid-configuration | python3 -m json.tool
 
-# Keylime verifier + registrar
-systemctl status keylime_verifier keylime_registrar
-
-# SPIRE server
-spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock
+# akamu MTC CA
+systemctl status akamu
 ```
 
 ### HUB node
@@ -89,6 +96,27 @@ curl -s http://localhost:8402/health | python3 -m json.tool
 
 # EDA controller
 systemctl status eda-arbiter
+
+# SPIRE server
+spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock
+spire-server entry list -socketPath /tmp/spire-server/private/api.sock
+
+# SPIFFE→IPA JWKS federation
+curl -sk https://localhost/.well-known/spire-jwks.json | python3 -m json.tool
+```
+
+### SIGNING node
+```bash
+ssh root@<SIGNING>
+
+# Keylime verifier + registrar
+systemctl status keylime_verifier keylime_registrar
+
+# cosign keypair
+cosign public-key --key /etc/arbiter/cosign/cosign.key
+
+# Container registry
+curl -s http://localhost:5000/v2/_catalog | python3 -m json.tool
 ```
 
 ### AGENT node
@@ -135,7 +163,54 @@ curl -s http://localhost:8400/healthz \
 
 ---
 
-## Stage 3: Single-Backend Attestation (Keylime TPM)
+## Stage 3: SPIFFE Workload Identity → IPA Federation
+
+Zero-credential workload authentication: SPIRE attestation → JWT SVID → ahdapa token exchange (RFC 8693) → OAuth2 access token backed by IPA identity.
+
+### 3a. Verify SPIRE Agent is attested
+```bash
+# On AGENT
+spire-agent healthcheck -socketPath /tmp/spire-agent/public/api.sock
+```
+
+### 3b. Fetch JWT SVID
+```bash
+# On AGENT — workload gets a short-lived JWT proving its identity
+spire-agent api fetch jwt \
+    -audience arbiter-hub \
+    -socketPath /tmp/spire-agent/public/api.sock \
+    -output json | python3 -m json.tool
+```
+
+Shows: SPIFFE ID (`spiffe://arbiter.demo/workload/governed-agent`), audience, 5m expiry. No static credentials involved — identity comes from SPIRE attestation (unix process selectors).
+
+### 3c. Token exchange — JWT SVID → OAuth2 token
+```bash
+# On AGENT — exchange SPIRE JWT for an ahdapa OAuth2 access token
+TOKEN=$(spiffe-token-exchange arbiter-hub)
+echo "OAuth2 token: ${TOKEN:0:20}..."
+```
+
+**What happened:** The JWT SVID proved the workload's SPIFFE identity to ahdapa. ahdapa verified the SVID against SPIRE Server's JWKS (served at `https://hub.arbiter.demo/.well-known/spire-jwks.json`), mapped it to an IPA service principal, and issued an OAuth2 access token.
+
+### 3d. Use OAuth2 token to call Hub API
+```bash
+# On AGENT — authenticated API call, no password anywhere
+curl -s http://hub.arbiter.demo:8400/api/v1/workloads \
+    -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+### 3e. Full interactive demo (shows all steps with output)
+```bash
+# On AGENT
+demo-spiffe-flow
+```
+
+**Key point for audience:** The entire chain — from process identity to API authorization — has zero static credentials. Identity is rooted in SPIRE workload attestation, bridged to FreeIPA via ahdapa's SPIFFE federation policy. Credentials are cryptographic, short-lived, and automatically rotated.
+
+---
+
+## Stage 4: Single-Backend Attestation (Keylime TPM)
 
 ### 3a. Register a workload with Keylime backend
 ```bash
@@ -171,7 +246,7 @@ curl -s http://localhost:8400/api/v1/workloads/demo-tpm-workload \
 
 ---
 
-## Stage 4: Multi-Backend Attestation
+## Stage 5: Multi-Backend Attestation
 
 ### 4a. Register workload with multiple backends
 ```bash
@@ -200,7 +275,7 @@ Expected: composite verdict with per-backend results. FAIL on any backend = over
 
 ---
 
-## Stage 5: Falco Runtime Monitoring → Attestation Failure
+## Stage 6: Falco Runtime Monitoring → Attestation Failure
 
 This is the "rogue agent" demo. Falco detects bad behavior → Arbiter Hub marks workload FAILED → EDA auto-quarantines.
 
@@ -239,7 +314,7 @@ State: `failed`. The Falco alert triggered a state transition.
 
 ---
 
-## Stage 6: EDA Auto-Remediation
+## Stage 7: EDA Auto-Remediation
 
 ### 6a. Check webhook registration
 ```bash
@@ -266,7 +341,7 @@ podman inspect demo-good-workload --format '{{.HostConfig.NetworkMode}}'
 
 ---
 
-## Stage 7: Rogue Agent Demo (Trust Tiers)
+## Stage 8: Rogue Agent Demo (Trust Tiers)
 
 ### 7a. Run governed agent (well-behaved)
 ```bash
@@ -299,7 +374,7 @@ journalctl -u exfil-receiver --since "2 minutes ago"
 
 ---
 
-## Stage 8: KBS Secrets (Key Broker)
+## Stage 9: KBS Secrets (Key Broker)
 
 ### 8a. Store a secret
 ```bash
@@ -316,7 +391,7 @@ curl -s http://localhost:8400/kbs/v0/resource/default/demo/my-secret \
 
 ---
 
-## Stage 9: Audit Trail
+## Stage 10: Audit Trail
 
 ```bash
 curl -s "http://localhost:8400/api/v1/audit?limit=20" \
@@ -327,7 +402,7 @@ Every action recorded: create, attest, state transition, remediation, webhook de
 
 ---
 
-## Stage 10: Web UI
+## Stage 11: Web UI
 
 ### SSH tunnel for browser access
 ```bash
@@ -354,7 +429,7 @@ Login with IPA credentials. The UI shows:
 | **Arbiter Hub API** | Multi-backend attestation orchestration, 7-state machine |
 | **ahdapa + IPA** | OIDC/OAuth2 for API auth, PQC-ready (ML-DSA-65) |
 | **akamu** | PQC certificate authority (ML-DSA-65 MTC certs) |
-| **SPIRE** | Workload identity (JWT-SVID) federated with ahdapa |
+| **SPIRE** | Workload identity (JWT-SVID) federated with ahdapa via RFC 8693 token exchange — zero static credentials |
 | **Falco eBPF** | Runtime behavioral monitoring → attestation failure |
 | **EDA** | Event-driven auto-remediation (quarantine, re-attest, forensics) |
 | **Webhooks** | Real-time state transition notifications (HMAC-signed) |
@@ -378,5 +453,13 @@ Login with IPA credentials. The UI shows:
 **EDA not triggering:** Check webhook registration (Stage 6a) and EDA service: `systemctl status eda-arbiter`.
 
 **OIDC discovery fails:** Verify ahdapa on IDM: `curl -sk https://idm.arbiter.demo/idp/.well-known/openid-configuration`
+
+**SPIRE server not healthy:** Check `systemctl status spire-server` on HUB. Socket at `/tmp/spire-server/private/api.sock`.
+
+**SPIRE agent not attested:** Check join token validity (10m TTL). Regenerate: `spire-server token generate -spiffeID spiffe://arbiter.demo/agent/arbiter-agent -socketPath /tmp/spire-server/private/api.sock` on HUB.
+
+**Token exchange fails:** Verify JWKS is served: `curl -sk https://hub.arbiter.demo/.well-known/spire-jwks.json`. Check ahdapa federation policy exists. Verify SPIRE agent can reach ahdapa.
+
+**Keylime verifier unreachable:** Verifier is on SIGNING node now (not IDM). Check `systemctl status keylime_verifier` on SIGNING.
 
 **UI login redirect loop:** Clear browser cookies for localhost:8443.

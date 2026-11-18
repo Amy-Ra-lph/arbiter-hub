@@ -127,6 +127,7 @@ class OIDCValidator:
         decode_opts: dict = {
             "algorithms": ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
             "issuer": self._issuer,
+            "leeway": 5,
         }
         if self._audience:
             decode_opts["audience"] = self._audience

@@ -1,0 +1,24 @@
+{
+  "realm": "{{ ipaserver_realm }}",
+  "domain": "{{ ipaserver_domain }}",
+  "basedn": "{{ ipaserver_basedn | default('dc=' + ipaserver_domain | replace('.', ',dc=')) }}",
+  "server": "{{ ansible_fqdn }}",
+  "ldap_uri": "ldapi://%2Frun%2Fslapd-{{ ipaserver_realm | replace('.', '-') }}.socket",
+  "principal": "{{ kuipa_service_name }}/{{ ansible_fqdn }}@{{ ipaserver_realm }}",
+  "service": "{{ kuipa_service_name }}@{{ ansible_fqdn }}",
+  "keytab": "{{ kuipa_key_dir }}/kuipa.keytab",
+  "ca_file": "/etc/ipa/ca.crt",
+  "pkinit_anchors_file": "/var/lib/ipa-client/pki/kdc-ca-bundle.pem",
+  "key_dir": "{{ kuipa_key_dir }}",
+  "peers": [],
+  "discover_peers": {{ kuipa_discover_peers | lower }},
+  "peer_interval": 60,
+  "anchor": {{ kuipa_anchor | lower }},
+  "vouch_interval": 60,
+  "rate_limit": {
+    "per_host": { "burst": 10, "per_minute": 2 },
+    "per_source": { "burst": 60, "per_minute": 30 }
+  },
+  "trusts": [],
+  "enctypes": [20, 19, 18, 17]
+}

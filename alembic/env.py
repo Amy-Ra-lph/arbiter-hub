@@ -1,16 +1,27 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
 
 from alembic import context
 
 # Import Base to get all model metadata
+from server.db_url import build_dsn
 from server.models.db import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# DB URL override via env var — stored separately to avoid configparser
+# % interpolation errors on URL-encoded passwords.
+_db_url_override = os.environ.get("ALEMBIC_DB_URL")
+if not _db_url_override and os.environ.get("ALEMBIC_DB_PASSWORD"):
+    _db_url_override = build_dsn(
+        os.environ["ALEMBIC_DB_PASSWORD"],
+        host=os.environ.get("ALEMBIC_DB_HOST") or "arbiter-hub-db",
+    )
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -39,7 +50,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = _db_url_override or config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -58,11 +69,14 @@ async def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    if _db_url_override:
+        connectable = create_async_engine(_db_url_override, poolclass=pool.NullPool)
+    else:
+        connectable = async_engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

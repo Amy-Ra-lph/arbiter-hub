@@ -4,9 +4,25 @@
   gather_facts: false
   vars:
     arbiter_api: "{{ arbiter_api_url | default('http://localhost:8400') }}"
-    arbiter_token: "{{ arbiter_bearer_token | default('') }}"
+    arbiter_admin_password: "{{ arbiter_service_password | default('') }}"
 
   tasks:
+    - name: Obtain service token
+      ansible.builtin.uri:
+        url: "{{ arbiter_api }}/auth/local"
+        method: POST
+        body_format: json
+        body:
+          username: admin
+          password: "{{ arbiter_admin_password }}"
+        status_code: [200]
+      register: auth_result
+      when: arbiter_admin_password | length > 0
+
+    - name: Set bearer token
+      ansible.builtin.set_fact:
+        arbiter_token: "{{ auth_result.json.access_token | default(arbiter_bearer_token | default('')) }}"
+
     - name: Disconnect container from network
       ansible.builtin.command:
         cmd: podman network disconnect podman {{ workload_id }}

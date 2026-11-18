@@ -1,0 +1,11 @@
+# Arbiter Hub API — OIDC configuration drop-in
+# Managed by Ansible — manual edits will be overwritten on next deploy.
+[Container]
+Environment=ARBITER_AUTH_MODE=oidc
+Environment=ARBITER_OIDC_ISSUER=https://{{ arbiter_idm_fqdn }}/idp
+Environment=ARBITER_OIDC_CLIENT_ID={{ arbiter_oidc_client_id }}
+Environment=ARBITER_OIDC_AUDIENCE=
+Environment=ARBITER_OIDC_ROLE_CLAIM=
+Environment=ARBITER_OIDC_SCOPES="{{ arbiter_oidc_api_scopes | join(' ') }}"
+Environment=ARBITER_OIDC_UI_CLIENT_ID={{ arbiter_oidc_ui_client_id }}
+Environment=ARBITER_OIDC_UI_SCOPES="{{ arbiter_oidc_ui_scopes | join(' ') }}"

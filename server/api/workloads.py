@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,11 +37,11 @@ router = APIRouter()
 
 
 class RevokeRequest(BaseModel):
-    justification: str
+    justification: str = Field(max_length=4096)
 
 
 class RemediateRequest(BaseModel):
-    justification: str | None = None
+    justification: str | None = Field(default=None, max_length=4096)
 
 
 @router.get("/workloads", response_model=WorkloadList)
@@ -324,6 +324,8 @@ async def register_workload(
         workload_type=body.workload_type,
         backend_types=[bt.value for bt in body.backend_types],
         stale_ttl_seconds=body.stale_ttl_seconds,
+        artifact_ref=body.artifact_ref,
+        artifact_digest=body.artifact_digest,
         metadata_=body.metadata,
     )
     session.add(workload)

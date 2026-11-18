@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbiter Hub — Rebuild Pipeline</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --border: #0f3460;
+    --text: #e4e4e4;
+    --muted: #8892a4;
+    --accent: #e94560;
+    --green: #4ecca3;
+    --blue: #6c9bcf;
+    --orange: #f0a500;
+    --purple: #9b72cf;
+    --pink: #e94590;
+    --cyan: #00d2d3;
+    --red: #ee5a5a;
+    --yellow: #f7dc6f;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem;
+    min-height: 100vh;
+    min-width: fit-content;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 2rem;
+  }
+
+  .legend {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+    font-size: 0.8rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+  }
+
+  .pipeline {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* Time ruler */
+  .ruler {
+    display: flex;
+    align-items: center;
+    padding: 0 0 0.5rem 180px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+  }
+
+  .ruler-marks {
+    display: flex;
+    width: 2500px;
+    min-width: 2500px;
+    position: relative;
+    height: 20px;
+  }
+
+  .ruler-mark {
+    position: absolute;
+    font-size: 0.7rem;
+    color: var(--muted);
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  /* Phase row */
+  .phase-row {
+    display: flex;
+    align-items: stretch;
+    min-height: 60px;
+    position: relative;
+  }
+
+  .phase-row + .phase-row {
+    margin-top: 2px;
+  }
+
+  .phase-label {
+    width: 180px;
+    min-width: 180px;
+    padding: 0.5rem 1rem 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .phase-num {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  .phase-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .phase-tracks {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px 0;
+    position: relative;
+    min-width: 2500px;
+  }
+
+  .track {
+    display: flex;
+    gap: 2px;
+    min-height: 28px;
+    align-items: center;
+  }
+
+  /* Task bar */
+  .task {
+    height: 28px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+    position: relative;
+    transition: filter 0.15s;
+  }
+
+  .task:hover {
+    filter: brightness(1.2);
+    z-index: 10;
+  }
+
+  .task:hover .task-tooltip {
+    display: block;
+  }
+
+  .task-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--text);
+    white-space: normal;
+    width: 260px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+
+  .task-tooltip strong {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 0.8rem;
+  }
+
+  .task-tooltip .tt-host {
+    color: var(--cyan);
+    font-size: 0.7rem;
+  }
+
+  .task-tooltip .tt-time {
+    color: var(--orange);
+    font-size: 0.7rem;
+  }
+
+  .task-tooltip .tt-dep {
+    color: var(--muted);
+    font-size: 0.7rem;
+    margin-top: 3px;
+  }
+
+  /* Checkpoint */
+  .checkpoint {
+    height: 28px;
+    min-width: 20px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: var(--green);
+    color: #111;
+    cursor: default;
+  }
+
+  .checkpoint:hover .task-tooltip {
+    display: block;
+  }
+
+  .checkpoint .task-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: #0d1117;
+    border: 1px solid var(--green);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--text);
+    white-space: normal;
+    width: 240px;
+    z-index: 100;
+  }
+
+  /* Dependency arrow connector */
+  .dep-line {
+    position: absolute;
+    border-left: 2px dashed var(--muted);
+    opacity: 0.3;
+  }
+
+  /* Spacer between phases */
+  .phase-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0 0 0 180px;
+    opacity: 0.4;
+  }
+
+  /* Concurrent bracket */
+  .concurrent-marker {
+    position: absolute;
+    left: -12px;
+    top: 4px;
+    bottom: 4px;
+    width: 4px;
+    border-radius: 2px;
+  }
+
+  /* Node colors */
+  .node-idm { background: var(--purple); color: #fff; }
+  .node-hub { background: var(--blue); color: #fff; }
+  .node-agent { background: var(--orange); color: #111; }
+  .node-all { background: var(--cyan); color: #111; }
+  .node-mixed { background: linear-gradient(135deg, var(--purple), var(--blue), var(--orange)); color: #fff; }
+
+  /* Summary card */
+  .summary {
+    margin-top: 2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .summary-item {
+    text-align: center;
+  }
+
+  .summary-val {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--green);
+  }
+
+  .summary-label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .notes {
+    margin-top: 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    font-size: 0.8rem;
+    line-height: 1.6;
+  }
+
+  .notes h3 {
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+    color: var(--accent);
+  }
+
+  .notes ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .notes li {
+    padding: 0.25rem 0;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+
+  .notes li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--muted);
+  }
+
+  .notes code {
+    background: rgba(255,255,255,0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+  }
+
+  /* Scale factor: 1 minute = this many px */
+  .gantt-area { position: relative; }
+
+  @media (min-width: 1200px) {
+    .task { min-height: 32px; font-size: 0.78rem; }
+    .checkpoint { min-height: 32px; font-size: 0.75rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Arbiter Hub — E2E Rebuild Pipeline</h1>
+<p class="subtitle">3-node demo (idm / hub / agent) &middot; 31 playbooks &middot; 11 phases &middot; ~44 min sequential (~35 min parallelized)</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch node-all"></div> All nodes</div>
+  <div class="legend-item"><div class="legend-swatch node-idm"></div> IDM (ipaserver)</div>
+  <div class="legend-item"><div class="legend-swatch node-hub"></div> HUB (arbiter_hub)</div>
+  <div class="legend-item"><div class="legend-swatch node-agent"></div> AGENT (arbiter_agent)</div>
+  <div class="legend-item"><div class="legend-swatch node-mixed"></div> Cross-node</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--green)"></div> Checkpoint</div>
+</div>
+
+<div class="pipeline" id="pipeline"></div>
+
+<div class="summary">
+  <div class="summary-item">
+    <div class="summary-val">31</div>
+    <div class="summary-label">Playbooks</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-val">11</div>
+    <div class="summary-label">Phases</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-val">11</div>
+    <div class="summary-label">Checkpoints</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-val">~44m</div>
+    <div class="summary-label">Wall Clock</div>
+  </div>
+  <div class="summary-item">
+    <div class="summary-val">3</div>
+    <div class="summary-label">Nodes</div>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>Dependency Rules</h3>
+  <ul>
+    <li><strong>Strict sequential:</strong> P0→P1→P2→P3→P4→P5→P6→P7→P8→P9→P10 (import_playbook = serial)</li>
+    <li><strong>Safe to parallelize manually:</strong> P6 ∥ P7 (agent vs hub), P8 ∥ P9 (independent concerns, minor idm overlap)</li>
+    <li><strong>If parallelized:</strong> P6∥P7 saves ~3m, P8∥P9 saves ~3-5m → ~35m total</li>
+    <li><strong>Within P1:</strong> <code>dns-client-setup</code>, <code>install-packages</code>, <code>clone-repos</code> target different host groups — concurrent</li>
+    <li><strong>Within P6:</strong> <code>falco-deploy</code> ∥ <code>openshell-deploy</code> (independent on agent), then <code>demo-workloads</code> → <code>linux-mcp-server</code></li>
+    <li><strong>Within P8:</strong> All 5 playbooks target different services — fully concurrent</li>
+    <li><strong>P10:</strong> Validation runs last, touches all nodes</li>
+  </ul>
+
+  <h3>Skip / Resume</h3>
+  <ul>
+    <li>Skip completed phases: <code>--skip-tags phase1,phase2,phase3</code></li>
+    <li>Run checkpoints only (verify state): <code>--tags checkpoint</code></li>
+    <li>Run single phase: <code>--tags phase6</code></li>
+  </ul>
+
+  <h3>Known Issues</h3>
+  <ul>
+    <li><code>siem-bridge-deploy.yaml</code> excluded — source scripts (<code>falco_siem_bridge.py</code>) don't exist in repo</li>
+    <li><code>ahdapa-configure.yaml</code> excluded — subset of <code>oidc-configure.yaml</code></li>
+    <li><code>delegation-rules.yaml</code> excluded — subset of <code>ipa-roles.yaml</code> (groups overlap)</li>
+    <li>SPIRE join token has 600s TTL — agent must start within 10 min of server token generation</li>
+  </ul>
+
+  <h3>Likely Break Points</h3>
+  <ul>
+    <li><strong>P3 keylime-setup:</strong> swtpm SELinux policy compile fails if base policy version changes. Keylime agent registration fails if verifier TLS uses IP not hostname.</li>
+    <li><strong>P4 container-deploy:</strong> <code>registry.redhat.io</code> pull needs <code>podman login</code> (terms-based). Alembic <code>sed</code> patch is brittle. Quadlet network prefixed <code>systemd-</code>. Certmonger cert can stall.</li>
+    <li><strong>P5 oidc-configure:</strong> CORS blockinfile depends on exact anchor text in <code>ipa-idp-proxy.conf</code>. JWKS warm-up can delay API restart.</li>
+    <li><strong>P6 openshell-deploy:</strong> Gateway image tag (<code>gateway-0.0.111</code>) pinned — breaks if cleaned from Quay.</li>
+    <li><strong>P7 eda-deploy:</strong> Java OpenJDK version (<code>java-21-openjdk-headless</code>) — verify available in target RHEL version.</li>
+    <li><strong>P9 spire-deploy:</strong> Join token 600s TTL — expires if SPIRE download from GitHub is slow. Bootstrap cert fetch always errors (expected fallback to IPA CA).</li>
+  </ul>
+</div>
+
+<script>
+const PX_PER_MIN = 55;
+const phases = [
+  {
+    num: 0, name: 'Prerequisites', startMin: 0,
+    tracks: [
+      {
+        tasks: [
+          { name: 'prerequisites', host: 'localhost+hub', node: 'mixed', dur: 1, tip: 'Install ansible collections (freeipa, podman, posix), podman login registry.redhat.io' },
+          { name: 'hosts-setup', host: 'all', node: 'all', dur: 1, tip: 'Map IPs to *.arbiter.demo in /etc/hosts on all nodes, verify getent' },
+        ]
+      },
+      { tasks: [{ name: 'CP0', checkpoint: true, dur: 0.5, tip: 'Collections installed, /etc/hosts entries, registry pull test' }] }
+    ]
+  },
+  {
+    num: 1, name: 'Foundation', startMin: 2,
+    tracks: [
+      {
+        concurrent: true,
+        tasks: [
+          { name: 'dns-client-setup', host: 'hub+agent', node: 'mixed', dur: 2, tip: 'Point resolv.conf at IPA DNS, wait for SRV records' },
+          { name: 'install-packages', host: 'hub+agent', node: 'mixed', dur: 3, tip: 'podman, buildah, skopeo, tpm2-tools, python3' },
+          { name: 'clone-repos', host: 'all', node: 'all', dur: 1.5, tip: 'arbiter-hub + agentic-security-platform to /opt/' },
+        ]
+      },
+      { tasks: [{ name: 'CP1', checkpoint: true, dur: 0.5, tip: 'DNS SRV, podman version, repo cloned' }] }
+    ]
+  },
+  {
+    num: 2, name: 'Identity', startMin: 6,
+    tracks: [
+      {
+        tasks: [
+          { name: 'ipa-post-install', host: 'idm', node: 'idm', dur: 1.5, tip: 'Verify ahdapa+akamu RUNNING, init akamu ACME CA, OIDC discovery' },
+          { name: 'ipa-roles', host: 'idm', node: 'idm', dur: 2, tip: '5 groups, 5 users (alice→eve), 6 HBAC services, 5 HBAC rules' },
+        ]
+      },
+      { tasks: [{ name: 'CP2', checkpoint: true, dur: 0.5, tip: 'OIDC discovery 200, alice exists, HBAC rules, marker file' }] }
+    ]
+  },
+  {
+    num: 3, name: 'Attestation', startMin: 10,
+    tracks: [
+      {
+        tasks: [
+          { name: 'keylime-setup', host: 'all→idm→agent', node: 'mixed', dur: 5, tip: 'swtpm (all), verifier+registrar (idm), agent-rust (agent), register agents with verifier' },
+        ]
+      },
+      {
+        tasks: [
+          { name: 'cert-setup', host: 'hub↔idm', node: 'mixed', dur: 2, tip: 'mTLS certs (IPA CA or bundle), configure verifier CA trust, restart verifier' },
+        ]
+      },
+      { tasks: [{ name: 'CP3', checkpoint: true, dur: 0.5, tip: 'verifier :8881, registrar :8891, agent :9002, certs on hub' }] }
+    ]
+  },
+  {
+    num: 4, name: 'Containers', startMin: 17.5,
+    tracks: [
+      {
+        tasks: [
+          { name: 'container-deploy', host: 'hub', node: 'hub', dur: 7, tip: 'Quadlet: DB→wait→Alembic→API→seed→MCP→UI (nginx build)→host nginx TLS (certmonger)→cosign keypair' },
+        ]
+      },
+      { tasks: [{ name: 'CP4', checkpoint: true, dur: 0.5, tip: '4 containers, API /health, UI :8080, TLS :443, policies seeded' }] }
+    ]
+  },
+  {
+    num: 5, name: 'OIDC', startMin: 25,
+    tracks: [
+      {
+        tasks: [
+          { name: 'oidc-configure', host: 'idm+hub', node: 'mixed', dur: 1.5, tip: 'ahdapa TOML clients, CORS, attestation groups, hub Quadlet drop-ins, restart API' },
+        ]
+      },
+      { tasks: [{ name: 'CP5', checkpoint: true, dur: 0.5, tip: 'OIDC drop-in exists, API healthy post-restart' }] }
+    ]
+  },
+  {
+    num: 6, name: 'Agent Services', startMin: 27,
+    tracks: [
+      {
+        concurrent: true,
+        tasks: [
+          { name: 'falco-deploy', host: 'agent', node: 'agent', dur: 3, tip: 'Falco repo, RPM, eBPF driver, 3 arbiter rules, HTTP output→hub API' },
+          { name: 'openshell-deploy', host: 'agent', node: 'agent', dur: 3, tip: 'Gateway (host net), PKI gen, 3 trust-tiered sandboxes, register workloads in hub' },
+        ]
+      },
+      {
+        tasks: [
+          { name: 'demo-workloads', host: 'agent→hub', node: 'agent', dur: 2, tip: 'demo-good (running) + demo-bad (created/stopped), register with hub' },
+          { name: 'linux-mcp-server', host: 'agent', node: 'agent', dur: 1.5, tip: '19 RHEL diagnostic tools, systemd, register as attested workload' },
+        ]
+      },
+      { tasks: [{ name: 'CP6', checkpoint: true, dur: 0.5, tip: 'Falco active, 3 sandboxes, demo containers, :8402' }] }
+    ]
+  },
+  {
+    num: 7, name: 'EDA Pipeline', startMin: 33,
+    tracks: [
+      {
+        tasks: [
+          { name: 'eda-deploy', host: 'hub', node: 'hub', dur: 2.5, tip: 'ansible-rulebook, event source plugin, 3 rulebooks, 3 remediation playbooks, systemd' },
+          { name: 'webhook-setup', host: 'hub', node: 'hub', dur: 0.5, tip: 'Register state_transition webhook → EDA :5001, read secret from /etc/arbiter/' },
+        ]
+      },
+      { tasks: [{ name: 'CP7', checkpoint: true, dur: 0.5, tip: 'EDA active, :5001 listening, webhook secret exists' }] }
+    ]
+  },
+  {
+    num: 8, name: 'Demo Enrichment', startMin: 36,
+    tracks: [
+      {
+        concurrent: true,
+        tasks: [
+          { name: 'demo-agents', host: 'agent', node: 'agent', dur: 1, tip: 'governed_agent.py + rogue_agent.py + 3 honeypot canaries' },
+          { name: 'exfil-receiver', host: 'idm', node: 'idm', dur: 1, tip: 'Canary catcher on :9443, self-signed TLS, logs to /var/log/exfil/' },
+          { name: 'trust-profiles', host: 'agent', node: 'agent', dur: 0.5, tip: 'sovereign/verified/untrusted sandbox profiles' },
+          { name: 'behavioral-audit', host: 'agent', node: 'agent', dur: 0.5, tip: 'Injection/persistence/shell classifiers' },
+          { name: 'enforcement-mcp', host: 'hub', node: 'hub', dur: 1.5, tip: 'SELinux/fapolicyd/AIDE MCP server, register as attested workload' },
+        ]
+      },
+      { tasks: [{ name: 'CP8', checkpoint: true, dur: 0.5, tip: 'Agent scripts, canaries, profiles, enforcement-mcp status' }] }
+    ]
+  },
+  {
+    num: 9, name: 'Federation', startMin: 37,
+    tracks: [
+      {
+        tasks: [
+          { name: 'spire-deploy', host: 'idm→agent', node: 'mixed', dur: 3, tip: 'SPIRE server (idm), agent (agent), join-token attestation, SVID minting' },
+        ]
+      },
+      {
+        concurrent: true,
+        tasks: [
+          { name: 'oauth2-scopes', host: 'idm', node: 'idm', dur: 1, tip: 'EDA client + arbiter:attest/enroll/admin/view scopes via ahdapactl' },
+          { name: 'obo-exchange', host: 'idm', node: 'idm', dur: 1, tip: 'Federation token exchange policies for workload delegation' },
+        ]
+      },
+      { tasks: [{ name: 'CP9', checkpoint: true, dur: 0.5, tip: 'SPIRE healthy, federation policies, token exchange endpoint' }] }
+    ]
+  },
+  {
+    num: 10, name: 'Validation', startMin: 42,
+    tracks: [
+      {
+        tasks: [
+          { name: 'health-check', host: 'hub', node: 'hub', dur: 1, tip: 'API, MCP, UI :8080, TLS :443 — all verified' },
+          { name: 'e2e-test', host: 'hub', node: 'hub', dur: 1, tip: '12 tests: health, KBS, workloads, attestation, audit, backends, policies' },
+        ]
+      },
+      { tasks: [{ name: 'DONE', checkpoint: true, dur: 0.5, tip: 'Full demo operational' }] }
+    ]
+  },
+];
+
+function render() {
+  const el = document.getElementById('pipeline');
+  el.innerHTML = '';
+
+  // Ruler
+  const rulerDiv = document.createElement('div');
+  rulerDiv.className = 'ruler';
+  const marks = document.createElement('div');
+  marks.className = 'ruler-marks';
+  for (let m = 0; m <= 50; m += 5) {
+    const mark = document.createElement('div');
+    mark.className = 'ruler-mark';
+    mark.style.left = (m * PX_PER_MIN) + 'px';
+    mark.textContent = m + 'm';
+    marks.appendChild(mark);
+  }
+  rulerDiv.appendChild(marks);
+  el.appendChild(rulerDiv);
+
+  // Track concurrent phase pairs
+  const concurrentPairs = new Set();
+
+  phases.forEach((phase, pi) => {
+    // Phase row container
+    const row = document.createElement('div');
+    row.className = 'phase-row';
+
+    // Label
+    const label = document.createElement('div');
+    label.className = 'phase-label';
+    const numSpan = document.createElement('div');
+    numSpan.className = 'phase-num';
+    numSpan.textContent = 'Phase ' + phase.num;
+    const nameSpan = document.createElement('div');
+    nameSpan.className = 'phase-name';
+    nameSpan.textContent = phase.name;
+    label.appendChild(numSpan);
+    label.appendChild(nameSpan);
+
+    // Concurrent indicator
+    if (phase.concurrent_with) {
+      const pairKey = [phase.num, phase.concurrent_with].sort().join('-');
+      if (!concurrentPairs.has(pairKey)) {
+        concurrentPairs.add(pairKey);
+        const concLabel = document.createElement('div');
+        concLabel.style.cssText = 'font-size:0.65rem;color:var(--green);margin-top:2px;';
+        concLabel.textContent = '∥ P' + phase.concurrent_with;
+        label.appendChild(concLabel);
+      } else {
+        const concLabel = document.createElement('div');
+        concLabel.style.cssText = 'font-size:0.65rem;color:var(--green);margin-top:2px;';
+        concLabel.textContent = '∥ P' + phase.concurrent_with;
+        label.appendChild(concLabel);
+      }
+    }
+
+    row.appendChild(label);
+
+    // Tracks area
+    const tracksDiv = document.createElement('div');
+    tracksDiv.className = 'phase-tracks';
+
+    phase.tracks.forEach(track => {
+      const trackDiv = document.createElement('div');
+      trackDiv.className = 'track';
+
+      // Offset track to timeline position
+      const trackOffset = phase.startMin * PX_PER_MIN;
+      trackDiv.style.marginLeft = trackOffset + 'px';
+
+      if (track.concurrent && track.tasks.length > 1) {
+        const marker = document.createElement('div');
+        marker.className = 'concurrent-marker';
+        marker.style.background = 'var(--green)';
+        marker.title = 'Concurrent';
+        trackDiv.style.position = 'relative';
+        trackDiv.style.paddingLeft = '16px';
+        trackDiv.appendChild(marker);
+      }
+
+      let offset = phase.startMin;
+      track.tasks.forEach(task => {
+        const taskDiv = document.createElement('div');
+
+        if (task.checkpoint) {
+          taskDiv.className = 'checkpoint';
+          taskDiv.style.position = 'relative';
+          taskDiv.style.marginLeft = '4px';
+          taskDiv.textContent = '✓ ' + task.name;
+        } else {
+          taskDiv.className = 'task node-' + task.node;
+          taskDiv.style.width = Math.max(task.dur * PX_PER_MIN, 120) + 'px';
+          taskDiv.style.minWidth = Math.max(task.dur * PX_PER_MIN, 120) + 'px';
+          taskDiv.textContent = task.name;
+        }
+
+        // Tooltip
+        const tooltip = document.createElement('div');
+        tooltip.className = 'task-tooltip';
+        tooltip.innerHTML = `
+          <strong>${task.name}</strong>
+          ${task.host ? `<div class="tt-host">⊞ ${task.host}</div>` : ''}
+          ${task.dur ? `<div class="tt-time">⏱ ~${task.dur} min</div>` : ''}
+          <div style="margin-top:4px">${task.tip}</div>
+        `;
+        taskDiv.appendChild(tooltip);
+        trackDiv.appendChild(taskDiv);
+
+        if (!task.checkpoint && !track.concurrent) {
+          offset += task.dur;
+        }
+      });
+
+      tracksDiv.appendChild(trackDiv);
+    });
+
+    row.appendChild(tracksDiv);
+    el.appendChild(row);
+
+    // Divider between phases
+    if (pi < phases.length - 1) {
+      const divider = document.createElement('div');
+      divider.className = 'phase-divider';
+      el.appendChild(divider);
+    }
+  });
+}
+
+render();
+</script>
+</body>
+</html>

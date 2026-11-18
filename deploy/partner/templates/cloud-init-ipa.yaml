@@ -1,0 +1,23 @@
+#cloud-config
+# Cloud-init userdata for IPA Primary (IdM Identity) node
+# Placeholders (__KEY__) are replaced by deploy.sh from ipa-config.env
+
+write_files:
+  - path: /etc/idm-image-mode/config.env
+    owner: root:root
+    permissions: '0600'
+    content: |
+      __CONFIG_ENV_CONTENT__
+
+  - path: /root/.ssh/authorized_keys
+    owner: root:root
+    permissions: '0600'
+    append: true
+    content: |
+      __SSH_PUBKEY__
+
+hostname: __SHORT_HOSTNAME__
+fqdn: __FQDN__
+
+runcmd:
+  - systemctl start idm-firstboot || systemctl start arbiter-idm-firstboot || true

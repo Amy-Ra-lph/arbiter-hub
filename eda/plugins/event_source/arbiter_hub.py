@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 from typing import Any
 
 from aiohttp import web
@@ -23,7 +24,7 @@ def validate_hmac(body: bytes, signature: str, secret: str) -> bool:
 async def main(queue: Any, args: dict[str, Any]) -> None:
     host = args.get("host", "0.0.0.0")
     port = args.get("port", 5001)
-    secret = args.get("secret", "")
+    secret = args.get("secret", "") or os.environ.get("ARBITER_WEBHOOK_SECRET", "")
 
     app = web.Application()
 

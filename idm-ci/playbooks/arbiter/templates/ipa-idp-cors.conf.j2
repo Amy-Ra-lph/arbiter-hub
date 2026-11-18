@@ -1,0 +1,9 @@
+# CORS for Arbiter Hub UI → ahdapa OIDC endpoints
+# Managed by Ansible — manual edits will be overwritten on next deploy.
+
+<LocationMatch "^/idp/(token|jwks|\.well-known/)">
+    Header always set Access-Control-Allow-Origin "https://{{ arbiter_hub_fqdn }}"
+    Header always set Access-Control-Allow-Methods "POST, GET, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+    Header always set Access-Control-Max-Age "3600"
+</LocationMatch>

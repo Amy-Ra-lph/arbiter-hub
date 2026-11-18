@@ -1,0 +1,19 @@
+name: verified
+description: Sandboxed execution with active enforcement. Standard production tier.
+openshell:
+  mode: gvisor
+  resource_limits:
+    cpu: "2"
+    memory: 2Gi
+  network: egress_filtered
+falco:
+  mode: enforce
+  rules: standard
+  action: kill
+keylime:
+  attestation_interval_seconds: 900
+  ima_enabled: true
+  measured_boot: false
+network:
+  egress: filtered
+  ingress: service_ports_only

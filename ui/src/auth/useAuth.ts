@@ -58,13 +58,18 @@ export function useAuth(): AuthState {
           return;
         }
 
+        const scopes = config.scopes.includes("offline_access")
+          ? config.scopes
+          : config.scopes + " offline_access";
+
         const mgr = new UserManager({
           authority: config.issuer,
           client_id: config.client_id,
           redirect_uri: window.location.origin + "/",
           response_type: "code",
-          scope: config.scopes,
+          scope: scopes,
           automaticSilentRenew: true,
+          accessTokenExpiringNotificationTimeInSeconds: 120,
         });
 
         managerRef.current = mgr;

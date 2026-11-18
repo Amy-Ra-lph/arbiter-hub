@@ -1,0 +1,11 @@
+kuipa_ipa_server: "{{ groups['ipaserver'][0] | default('idm.arbiter.demo') }}"
+kuipa_enrollment_string: ""
+kuipa_enroll_method: "ldap-otp"
+kuipa_use_kuipa_root: false
+kuipa_root: ""
+
+kuipa_arbiter_hub_url: ""
+kuipa_arbiter_hub_token: ""
+kuipa_auto_register_workload: false
+kuipa_workload_type: "service"
+kuipa_platform_hint: "idm-client"

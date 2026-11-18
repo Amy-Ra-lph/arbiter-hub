@@ -19,6 +19,8 @@ export enum BackendType {
   TRUSTEE = "trustee",
   COSIGN = "cosign",
   REKOR = "rekor",
+  FALCO = "falco",
+  MEASURED_BOOT = "measured_boot",
 }
 
 export enum AttestationVerdict {

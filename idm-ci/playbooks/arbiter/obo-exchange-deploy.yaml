@@ -6,7 +6,7 @@
   hosts: ipaserver
   become: true
   vars:
-    ipa_admin_password: "{{ ipaserver_admin_password | default('Secret123') }}"
+    ipa_admin_password: "{{ ipaserver_admin_password }}"
     ahdapa_url: "https://{{ ansible_fqdn }}/idp"
   tasks:
     - name: Obtain admin Kerberos ticket

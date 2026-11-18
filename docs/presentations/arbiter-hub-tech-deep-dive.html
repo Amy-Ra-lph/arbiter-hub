@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbiter Hub — Technical Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;800&family=Red+Hat+Text:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Red Hat Text',sans-serif;color:#292929;background:#151515}
+.slide{width:100vw;height:100vh;display:none;flex-direction:column;position:relative;overflow:hidden}
+.slide.active{display:flex}
+.slide-content{flex:1;display:flex;flex-direction:column;justify-content:center;padding:clamp(2rem,5vw,5rem) clamp(3rem,8vw,8rem)}
+/* Title slide */
+.slide-title{background:#EE0000}
+.slide-title .slide-content{justify-content:flex-end;padding-bottom:clamp(3rem,8vh,6rem)}
+.slide-title h1{font-family:'Red Hat Display',sans-serif;font-weight:800;font-size:clamp(2.5rem,5vw,4rem);color:#fff;line-height:1.1;margin-bottom:0.5rem}
+.slide-title h2{font-family:'Red Hat Display',sans-serif;font-weight:500;font-size:clamp(1.1rem,2vw,1.6rem);color:rgba(255,255,255,0.9);line-height:1.3;margin-bottom:1.5rem}
+.slide-title .presenter{font-size:clamp(0.85rem,1.3vw,1.1rem);color:rgba(255,255,255,0.85)}
+/* Dark closing slide */
+.slide-dark{background:#151515}
+.slide-dark .slide-content{align-items:center;text-align:center}
+.slide-dark h2{font-family:'Red Hat Display',sans-serif;font-weight:700;font-size:clamp(1.8rem,3.5vw,3rem);color:#fff;margin-bottom:1rem}
+.slide-dark p{color:rgba(255,255,255,0.7);font-size:clamp(0.9rem,1.4vw,1.2rem);margin-bottom:0.3rem}
+/* Content slides */
+.slide-content-type{background:#fff}
+.slide-content-type::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:#EE0000}
+.slide-content-type .slide-content{padding-top:clamp(2rem,4vh,3.5rem)}
+.slide-content-type h2{font-family:'Red Hat Display',sans-serif;font-weight:700;font-size:clamp(1.5rem,2.8vw,2.2rem);color:#151515;margin-bottom:clamp(0.8rem,2vh,1.5rem)}
+.slide-content-type h3{font-family:'Red Hat Display',sans-serif;font-weight:700;font-size:clamp(1rem,1.6vw,1.3rem);color:#EE0000;margin-bottom:0.5rem}
+.slide-content-type p,.slide-content-type li{font-size:clamp(0.8rem,1.2vw,1.05rem);line-height:1.55;color:#4d4d4d}
+.slide-content-type ul{list-style:none;padding:0}
+.slide-content-type li{padding:0.3rem 0 0.3rem 1.2rem;position:relative}
+.slide-content-type li::before{content:'';position:absolute;left:0;top:0.7rem;width:6px;height:6px;border-radius:50%;background:#EE0000}
+/* Confidentiality */
+.confidential{position:absolute;top:clamp(0.6rem,1.2vh,1rem);right:clamp(1rem,2vw,2rem);font-size:0.65rem;font-weight:500;color:#8c8c8c;letter-spacing:0.05em;text-transform:uppercase}
+/* Logos */
+.logo{position:absolute;width:clamp(80px,10vw,140px)}
+.logo-br{bottom:clamp(1rem,2vh,2rem);right:clamp(1.5rem,3vw,3rem)}
+.logo-tl{top:clamp(1.5rem,3vh,2.5rem);left:clamp(2rem,4vw,4rem)}
+/* Slide icons */
+.slide-icon{position:absolute;right:clamp(3rem,8vw,10rem);top:clamp(3rem,12vh,10rem);width:clamp(100px,18vw,220px);opacity:0.7;pointer-events:none;z-index:0}
+/* Navigation dots */
+.nav-dots{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:100}
+.nav-dot{width:8px;height:8px;border-radius:50%;background:rgba(150,150,150,0.4);cursor:pointer;border:none;padding:0;transition:all 0.3s}
+.nav-dot.active{background:#EE0000;transform:scale(1.3)}
+/* Slide counter */
+.slide-counter{position:fixed;bottom:12px;right:20px;font-size:0.7rem;color:rgba(150,150,150,0.6);z-index:100;font-family:'Red Hat Text',sans-serif}
+/* Card grid */
+.card-grid{display:grid;gap:clamp(0.6rem,1.2vw,1rem);margin-top:clamp(0.5rem,1vh,1rem);position:relative;z-index:1}
+.card-grid-2{grid-template-columns:1fr 1fr}
+.card-grid-3{grid-template-columns:1fr 1fr 1fr}
+.card-grid-4{grid-template-columns:1fr 1fr 1fr 1fr}
+.card-grid-5{grid-template-columns:1fr 1fr 1fr 1fr 1fr}
+.card{background:#f2f2f2;border:1px solid #e0e0e0;border-radius:8px;padding:clamp(0.6rem,1.2vw,1.2rem)}
+.card h4{font-family:'Red Hat Display',sans-serif;font-weight:700;font-size:clamp(0.75rem,1.1vw,0.95rem);color:#151515;margin-bottom:0.3rem}
+.card p,.card li{font-size:clamp(0.65rem,0.95vw,0.85rem)!important;line-height:1.4!important}
+.card.card-red{border-left:3px solid #EE0000}
+.card.card-teal{border-left:3px solid #37a3a3}
+.card.card-purple{border-left:3px solid #5e40be}
+.card.card-green{border-left:3px solid #63993d}
+.card.card-orange{border-left:3px solid #f5921b}
+/* State machine */
+.state-diagram{display:flex;flex-wrap:wrap;gap:clamp(0.4rem,0.8vw,0.8rem);align-items:center;margin:clamp(0.5rem,1vh,1rem) 0}
+.state-node{padding:clamp(0.4rem,0.8vw,0.7rem) clamp(0.6rem,1.2vw,1rem);border-radius:6px;font-family:'Red Hat Display',sans-serif;font-weight:700;font-size:clamp(0.65rem,1vw,0.85rem);color:#fff;text-align:center;min-width:clamp(80px,10vw,120px)}
+.state-arrow{font-size:clamp(1rem,1.6vw,1.4rem);color:#8c8c8c}
+.state-registered{background:#4394e5}
+.state-attesting{background:#f5921b}
+.state-healthy{background:#63993d}
+.state-stale{background:#8c8c8c}
+.state-failed{background:#f0561d}
+.state-remediation{background:#5e40be}
+.state-revoked{background:#5f0000}
+/* Architecture diagram */
+.arch-diagram{display:flex;flex-direction:column;gap:clamp(0.3rem,0.6vh,0.5rem);margin:clamp(0.5rem,1vh,0.8rem) 0}
+.arch-row{display:flex;gap:clamp(0.4rem,0.8vw,0.8rem);align-items:stretch}
+.arch-box{background:#f2f2f2;border:1px solid #e0e0e0;border-radius:6px;padding:clamp(0.4rem,0.8vw,0.7rem);text-align:center;font-size:clamp(0.65rem,0.95vw,0.85rem)}
+.arch-box strong{display:block;font-family:'Red Hat Display',sans-serif;font-size:clamp(0.7rem,1vw,0.9rem);color:#151515}
+.arch-box.arch-red{border-left:3px solid #EE0000;background:#fef0f0}
+.arch-box.arch-teal{border-left:3px solid #37a3a3;background:#daf2f2}
+.arch-box.arch-purple{border-left:3px solid #5e40be;background:#ece6ff}
+.arch-arrow-down{text-align:center;font-size:1.2rem;color:#a3a3a3;line-height:1}
+/* Code block */
+.code-block{background:#292929;color:#e0e0e0;padding:clamp(0.5rem,1vw,1rem);border-radius:6px;font-family:monospace;font-size:clamp(0.6rem,0.9vw,0.8rem);overflow-x:auto;margin:0.5rem 0}
+.code-block .kw{color:#f56e6e}.code-block .str{color:#9ad8d8}.code-block .cm{color:#707070}
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:clamp(0.65rem,0.95vw,0.85rem);margin:0.5rem 0}
+.tbl th{background:#292929;color:#fff;padding:clamp(0.3rem,0.6vw,0.5rem) clamp(0.4rem,0.8vw,0.7rem);text-align:left;font-family:'Red Hat Display',sans-serif;font-weight:700;font-size:clamp(0.65rem,0.9vw,0.8rem)}
+.tbl td{padding:clamp(0.25rem,0.5vw,0.4rem) clamp(0.4rem,0.8vw,0.7rem);border-bottom:1px solid #e0e0e0}
+.tbl tr:nth-child(even){background:#f2f2f2}
+/* Flow diagram */
+.flow{display:flex;align-items:center;gap:clamp(0.3rem,0.6vw,0.5rem);flex-wrap:wrap;margin:0.5rem 0}
+.flow-step{background:#f2f2f2;border:1px solid #e0e0e0;border-radius:6px;padding:clamp(0.3rem,0.6vw,0.5rem) clamp(0.5rem,1vw,0.8rem);font-size:clamp(0.6rem,0.9vw,0.8rem);font-weight:500}
+.flow-step.flow-red{background:#fef0f0;border-color:#f9a8a8;color:#a60000}
+.flow-step.flow-green{background:#e9f7df;border-color:#afdc8f;color:#3d7317}
+.flow-step.flow-orange{background:#ffe8cc;border-color:#fccb8f;color:#9e4a06}
+.flow-arrow{color:#a3a3a3;font-size:clamp(0.9rem,1.4vw,1.2rem)}
+/* Badge */
+.badge{display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;font-size:clamp(0.55rem,0.8vw,0.7rem);font-weight:700;text-transform:uppercase;letter-spacing:0.03em}
+.badge-pass{background:#e9f7df;color:#3d7317}
+.badge-fail{background:#ffe3d9;color:#b1380b}
+.badge-fixed{background:#e0f0ff;color:#004d99}
+/* Two column layout */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:clamp(1rem,2vw,2rem)}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:clamp(0.8rem,1.5vw,1.5rem)}
+@media(max-width:768px){
+  .card-grid-3,.card-grid-4,.card-grid-5{grid-template-columns:1fr 1fr}
+  .two-col,.three-col{grid-template-columns:1fr}
+  .slide-icon{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Title -->
+<div class="slide slide-title active" data-slide="0">
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-tl" alt="Red Hat">
+  <div class="slide-content">
+    <h1>Arbiter Hub</h1>
+    <h2>Federation Attestation Platform &mdash; Technical Architecture</h2>
+    <div class="presenter">Amy Ralph &middot; Principal PM, RHEL Security &middot; October 2026</div>
+  </div>
+</div>
+
+<!-- Slide 2: Problem -->
+<div class="slide slide-content-type" data-slide="1">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0ibTI5LjEzIDYuNzMtMTEtMi4zNGEuNTcuNTcgMCAwIDAtLjI2IDBsLTExIDIuMzRhLjYxLjYxIDAgMCAwLS40OS42MVYyMGExMS42MiAxMS42MiAwIDAgMCAyMy4yNCAwVjcuMzRhLjYxLjYxIDAgMCAwLS40OS0uNjFaTTE4IDUuNjRsMTAuMzggMi4ydjUuNjFMNy42MiAxNy44NnYtMTBabTAgMjQuNzRBMTAuNCAxMC40IDAgMCAxIDcuNjIgMjB2LS44NmwyMC43Ni00LjQxVjIwQTEwLjQgMTAuNCAwIDAgMSAxOCAzMC4zOFoiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>The Problem: Fragmented Attestation</h2>
+    <div class="two-col">
+      <div>
+        <div class="card-grid" style="grid-template-columns:1fr">
+          <div class="card card-red">
+            <h4>Manual Correlation</h4>
+            <p>Operators cross-reference Keylime quotes, Cosign signatures, and Falco alerts across separate dashboards</p>
+          </div>
+          <div class="card card-red">
+            <h4>Compliance Gaps</h4>
+            <p>No unified audit trail linking hardware root-of-trust to runtime behavior for compliance reporting</p>
+          </div>
+          <div class="card card-red">
+            <h4>Slow Response</h4>
+            <p>Minutes to hours between detecting a runtime violation and revoking workload trust</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <ul>
+          <li>TPM boot attestation runs independent of container image verification</li>
+          <li>Runtime behavior monitoring has no link to supply-chain signing</li>
+          <li>Each tool produces its own verdicts in its own format</li>
+          <li>No single answer to: &ldquo;Should this workload be trusted <em>right now</em>?&rdquo;</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 3: Architecture -->
+<div class="slide slide-content-type" data-slide="2">
+  <span class="confidential">RH Employees ONLY</span>
+  <div class="slide-content">
+    <h2>Architecture Overview</h2>
+    <div class="arch-diagram">
+      <div class="arch-row">
+        <div class="arch-box" style="flex:1"><strong>Browser</strong>React SPA + PatternFly 6</div>
+        <div class="arch-box arch-red" style="flex:1"><strong>nginx :8080</strong>LB + /api/ proxy<br>Dynamic DNS resolution</div>
+      </div>
+      <div class="arch-arrow-down">&darr; /api/</div>
+      <div class="arch-row">
+        <div class="arch-box arch-red" style="flex:3"><strong>FastAPI API Tier :8400</strong>Stateless &middot; N nodes &middot; OIDC auth &middot; RBAC &middot; Rate limiting<br>Workloads &middot; Attestation &middot; Audit &middot; KBS &middot; Signing &middot; Webhooks &middot; Alerts</div>
+        <div class="arch-box arch-teal" style="flex:1"><strong>MCP :8401</strong>Model Context Protocol server</div>
+      </div>
+      <div class="arch-arrow-down">&darr;</div>
+      <div class="arch-row">
+        <div class="arch-box arch-purple" style="flex:1"><strong>PostgreSQL :5432</strong>workloads, attestation_records, state_transitions,<br>audit_log, policies, kbs_secrets, webhook_registrations</div>
+      </div>
+      <div class="arch-arrow-down">&darr; Backend dispatch</div>
+      <div class="arch-row">
+        <div class="arch-box arch-teal" style="flex:1"><strong>Keylime</strong>TPM/IMA &middot; mTLS</div>
+        <div class="arch-box arch-teal" style="flex:1"><strong>Cosign</strong>Image signatures &middot; subprocess</div>
+        <div class="arch-box arch-teal" style="flex:1"><strong>Falco</strong>eBPF runtime &middot; HTTP</div>
+        <div class="arch-box arch-teal" style="flex:1"><strong>Trustee</strong>CVM KBS &middot; internal</div>
+        <div class="arch-box arch-teal" style="flex:1"><strong>Rekor</strong>Transparency log &middot; HTTPS</div>
+      </div>
+    </div>
+    <p style="font-size:clamp(0.65rem,0.9vw,0.8rem);color:#707070;margin-top:0.5rem">All state in PostgreSQL &mdash; API nodes are stateless and horizontally scalable. Backends are pluggable via Python entry points.</p>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 4: Multi-Backend Attestation -->
+<div class="slide slide-content-type" data-slide="3">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTI3IDE4LjYyYS42Mi42MiAwIDEgMC0uNjItLjYyLjYxLjYxIDAgMCAwIC42Mi42MloiLz4KICA8cGF0aCBkPSJNMjMgMjIuMzhINS42MnYtOC43NmgyNC43NlYxOGEuNjIuNjIgMCAwIDAgMS4yNCAwdi01YS42MS42MSAwIDAgMC0uNjItLjYySDVhLjYxLjYxIDAgMCAwLS42Mi42MnYxMGEuNjEuNjEgMCAwIDAgLjYyLjYyaDE4YS42Mi42MiAwIDAgMCAwLTEuMjRaIi8+CiAgPHBhdGggZD0iTTkgMTcuMzhhLjYyLjYyIDAgMCAwIDAgMS4yNGg2YS42Mi42MiAwIDAgMCAwLTEuMjRabTIzLjEzIDMuMDEtMy0uNjRhLjU3LjU3IDAgMCAwLS4yNiAwbC0zIC42NGEuNjIuNjIgMCAwIDAtLjQ5LjYxdjMuNDVhMy42MiAzLjYyIDAgMSAwIDcuMjQgMFYyMWEuNjIuNjIgMCAwIDAtLjQ5LS42MVoiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Multi-Backend Attestation</h2>
+    <p>Each workload declares a <code>backend_types</code> array. The composite <code>/attest</code> endpoint runs all registered backends in parallel.</p>
+    <div class="card-grid card-grid-5" style="margin-top:clamp(0.6rem,1.2vh,1rem)">
+      <div class="card card-teal">
+        <h4>Keylime</h4>
+        <p>TPM 2.0 quotes + IMA log integrity via mTLS to Verifier API</p>
+      </div>
+      <div class="card card-teal">
+        <h4>Cosign</h4>
+        <p>Container image signature verification via cosign binary subprocess</p>
+      </div>
+      <div class="card card-teal">
+        <h4>Falco</h4>
+        <p>eBPF runtime behavior monitoring via health endpoint polling</p>
+      </div>
+      <div class="card card-teal">
+        <h4>Trustee</h4>
+        <p>Confidential VM attestation evidence via internal KBS API</p>
+      </div>
+      <div class="card card-teal">
+        <h4>Rekor</h4>
+        <p>Transparency log inclusion proofs via HTTPS API</p>
+      </div>
+    </div>
+    <div style="margin-top:clamp(0.6rem,1.2vh,1rem)">
+      <h3>Verdict Logic</h3>
+      <div class="code-block"><span class="cm"># Parallel execution, FAIL-trumps-UNAVAILABLE</span>
+<span class="kw">backend_types</span>: [<span class="str">"keylime"</span>, <span class="str">"cosign"</span>, <span class="str">"falco"</span>]
+
+<span class="cm"># Any FAIL &rarr; composite FAIL (workload untrusted)</span>
+<span class="cm"># All PASS &rarr; composite PASS (workload trusted)</span>
+<span class="cm"># UNAVAILABLE only if no backend returned FAIL or PASS</span></div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 5: 7-State Machine -->
+<div class="slide slide-content-type" data-slide="4">
+  <span class="confidential">RH Employees ONLY</span>
+  <div class="slide-content">
+    <h2>Workload State Machine</h2>
+    <p>7-state lifecycle governing workload trust. All transitions are recorded in the audit log with actor attribution.</p>
+    <div class="state-diagram" style="margin-top:clamp(0.8rem,1.5vh,1.2rem)">
+      <div class="state-node state-registered">REGISTERED</div>
+      <span class="state-arrow">&rarr;</span>
+      <div class="state-node state-attesting">ATTESTING</div>
+      <span class="state-arrow">&rarr;</span>
+      <div class="state-node state-healthy">HEALTHY</div>
+    </div>
+    <div style="margin-top:clamp(0.3rem,0.6vh,0.5rem)">
+      <table class="tbl">
+        <tr><th>State</th><th>Meaning</th><th>Transitions To</th></tr>
+        <tr><td><span class="badge badge-fixed">REGISTERED</span></td><td>Enrolled, never attested</td><td>&rarr; ATTESTING</td></tr>
+        <tr><td><span class="badge" style="background:#ffe8cc;color:#9e4a06">ATTESTING</span></td><td>Attestation in progress</td><td>&rarr; HEALTHY, FAILED</td></tr>
+        <tr><td><span class="badge badge-pass">HEALTHY</span></td><td>Last attestation passed</td><td>&rarr; ATTESTING, STALE, REVOKED</td></tr>
+        <tr><td><span class="badge" style="background:#f2f2f2;color:#4d4d4d">STALE</span></td><td>TTL expired without re-attestation</td><td>&rarr; ATTESTING, FAILED</td></tr>
+        <tr><td><span class="badge badge-fail">FAILED</span></td><td>Attestation failed</td><td>&rarr; UNDER_REMEDIATION, REVOKED</td></tr>
+        <tr><td><span class="badge" style="background:#ece6ff;color:#3d2785">UNDER_REMEDIATION</span></td><td>Active remediation</td><td>&rarr; ATTESTING</td></tr>
+        <tr><td><span class="badge" style="background:#3f0000;color:#fff">REVOKED</span></td><td>Trust permanently withdrawn</td><td>Terminal &mdash; no transitions</td></tr>
+      </table>
+    </div>
+    <p style="margin-top:0.5rem;font-size:clamp(0.65rem,0.9vw,0.8rem);color:#707070">Revoked is terminal by design. To re-enroll: delete the workload and register again (creates a new audit trail).</p>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 6: Attestation Flow -->
+<div class="slide slide-content-type" data-slide="5">
+  <span class="confidential">RH Employees ONLY</span>
+  <div class="slide-content">
+    <h2>Attestation Flow &mdash; What Happens on <code style="background:#f2f2f2;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.85em">POST /attest</code></h2>
+
+    <!-- Top: linear flow steps 1-4 -->
+    <div class="flow" style="margin-top:clamp(0.6rem,1.2vh,1rem)">
+      <div class="flow-step flow-red" style="font-weight:700">1. Rate Check<br><span style="font-weight:400;font-size:0.85em">10 req/min per IP</span></div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step" style="font-weight:700">2. SELECT FOR UPDATE<br><span style="font-weight:400;font-size:0.85em">Row lock prevents races</span></div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step flow-orange" style="font-weight:700">3. State &rarr; ATTESTING<br><span style="font-weight:400;font-size:0.85em">Audit log + actor recorded</span></div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step" style="font-weight:700">4. Resolve Backends<br><span style="font-weight:400;font-size:0.85em">Skip unconfigured, log warning</span></div>
+    </div>
+
+    <!-- Middle: parallel verification fan-out -->
+    <div style="margin:clamp(0.6rem,1vh,0.8rem) 0">
+      <h3 style="font-size:clamp(0.8rem,1.1vw,0.95rem)">5. Parallel Backend Verification &mdash; <code style="font-size:0.85em">asyncio.gather()</code></h3>
+      <div class="card-grid card-grid-4" style="margin-top:0.4rem">
+        <div class="card card-teal">
+          <h4>Keylime</h4>
+          <p>TPM quote via PULL-mode verifier. Checks PCR values + IMA log against allowlist.</p>
+        </div>
+        <div class="card card-purple">
+          <h4>Cosign</h4>
+          <p>Sigstore signature verification against stored public key or keyless OIDC identity.</p>
+        </div>
+        <div class="card card-orange">
+          <h4>Falco</h4>
+          <p>Runtime behavior check. Queries Falco API for recent security events on workload.</p>
+        </div>
+        <div class="card card-green">
+          <h4>Measured Boot</h4>
+          <p>PCR 11 event log validation. Golden-value comparison for boot chain integrity.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom: result processing steps 6-9 -->
+    <div class="flow" style="margin-top:clamp(0.4rem,0.8vh,0.6rem)">
+      <div class="flow-step" style="font-weight:700">6. Record per-backend<br><span style="font-weight:400;font-size:0.85em">AttestationRecord &times; N</span></div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step" style="font-weight:700">7. Composite Verdict<br><span style="font-weight:400;font-size:0.85em">Any FAIL &rarr; FAIL overall</span></div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step flow-green" style="font-weight:700">8. State Transition<br><span style="font-weight:400;font-size:0.85em">PASS &rarr; HEALTHY, FAIL &rarr; FAILED</span></div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step flow-orange" style="font-weight:700">9. Webhook Dispatch<br><span style="font-weight:400;font-size:0.85em">EDA / Ansible on state change</span></div>
+    </div>
+
+    <!-- Verdict logic summary -->
+    <div class="two-col" style="margin-top:clamp(0.5rem,1vh,0.8rem);gap:clamp(0.6rem,1.2vw,1rem)">
+      <div class="card card-red">
+        <h4>Composite Verdict Rules</h4>
+        <ul>
+          <li>All backends PASS &rarr; <span class="badge badge-pass">PASS</span></li>
+          <li>Any backend FAIL &rarr; <span class="badge badge-fail">FAIL</span></li>
+          <li>No PASS or FAIL (all ERROR/skip) &rarr; <span class="badge" style="background:#f2f2f2;color:#4d4d4d">UNAVAILABLE</span> &mdash; state unchanged</li>
+        </ul>
+      </div>
+      <div class="card card-teal">
+        <h4>Concurrency Safety</h4>
+        <ul>
+          <li><code style="font-size:0.85em">SELECT FOR UPDATE</code> &mdash; row-level pessimistic lock</li>
+          <li>State machine rejects invalid transitions (409 Conflict)</li>
+          <li>Rate limiter prevents attestation storms</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 7: Data Model -->
+<div class="slide slide-content-type" data-slide="6">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTIwLjY4NSAyNy4yOTJhLjYyNS42MjUgMCAwIDAtLjYyNS42MjV2My4yOTVhMTIuODE3IDEyLjgxNyAwIDAgMS0zLjkzNy4wMjF2LTMuMjdhLjYyNS42MjUgMCAwIDAtLjQ3NC0uNjA2IDkuNTcxIDkuNTcxIDAgMCAxLTIuNDc1LTEgLjYyNS42MjUgMCAwIDAtLjc1NS4xbC0yLjMzIDIuMzI4YTEzLjM1MiAxMy4zNTIgMCAwIDEtMi43OTMtMi43NzRsMi4zMTctMi4zMTdhLjYyNS42MjUgMCAwIDAgLjA5NS0uNzYyIDkuNTgxIDkuNTgxIDAgMCAxLTEuMDQzLTIuNDk1LjYyNS42MjUgMCAwIDAtLjYwNS0uNDY4SDQuNzc3Yy0uMTAyLS42NzMtLjE1Mi0xLjMyMi0uMTUyLTEuOTY5cy4wNS0xLjI5Ni4xNTItMS45NjlIOC4wNmEuNjI1LjYyNSAwIDAgMCAuNjA1LS40NjggOS41OCA5LjU4IDAgMCAxIDEuMDQzLTIuNDk2LjYyNi42MjYgMCAwIDAtLjA5NS0uNzYyTDcuMjk2IDkuOTg5YTEzLjM1MiAxMy4zNTIgMCAwIDEgMi43OTQtMi43NzRsMi4zMyAyLjMyOWMuMi4yLjUxLjI0MS43NTQuMDk5YTkuNTcxIDkuNTcxIDAgMCAxIDIuNDc1LTEgLjYyNS42MjUgMCAwIDAgLjQ3NC0uNjA3di0zLjI3YzEuMzc0LS4yIDIuNjIyLS4xODMgMy45MzcuMDIydjMuMjk1YS42MjUuNjI1IDAgMCAwIDEuMjUgMHYtMy44MmEuNjI1LjYyNSAwIDAgMC0uNTA2LS42MTNjLTEuOC0uMzUtMy40OTktLjM3Ny01LjQxNy0uMDNhLjYyNS42MjUgMCAwIDAtLjUxNC42MTVWNy41NmExMC44MyAxMC44MyAwIDAgMC0xLjkwMS43NjhsLTIuMzctMi4zN2EuNjI2LjYyNiAwIDAgMC0uNzkzLS4wNzVBMTQuNjI4IDE0LjYyOCAwIDAgMCA1Ljk2NCA5LjdhLjYyNi42MjYgMCAwIDAgLjA3My43OThsMi4zNTYgMi4zNTZjLS4zMy42MTQtLjYgMS4yNi0uODA2IDEuOTI3SDQuMjVhLjYyNS42MjUgMCAwIDAtLjYxNS41MWMtLjE3My45MjItLjI2IDEuODMzLS4yNiAyLjcwOXMuMDg3IDEuNzg3LjI2IDIuNzA5Yy4wNTUuMjk2LjMxNC41MS42MTUuNTFoMy4zMzhjLjIwNi42NjguNDc1IDEuMzEzLjgwNSAxLjkyN2wtMi4zNTYgMi4zNTZhLjYyNi42MjYgMCAwIDAtLjA3My43OTggMTQuNjI4IDE0LjYyOCAwIDAgMCAzLjg0NSAzLjgxN2MuMjQ4LjE2OC41OC4xMzYuNzkzLS4wNzVsMi4zNy0yLjM3YTEwLjgzIDEwLjgzIDAgMCAwIDEuOS43Njh2My4zMjVjMCAuMzAyLjIxNy41NjEuNTE1LjYxNWExNC42MSAxNC42MSAwIDAgMCAyLjYxMy4yNDUgMTQuOCAxNC44IDAgMCAwIDIuODA0LS4yNzUuNjI1LjYyNSAwIDAgMCAuNTA2LS42MTR2LTMuODE5YS42MjUuNjI1IDAgMCAwLS42MjUtLjYyNVoiLz4KICA8cGF0aCBkPSJNMjIuNTYyIDE4LjYyNWgzLjg3NmEzLjEzIDMuMTMgMCAwIDAgMy4wNjIgMi41YzEuNzIzIDAgMy4xMjUtMS40MDIgMy4xMjUtMy4xMjVzLTEuNDAyLTMuMTI1LTMuMTI1LTMuMTI1YTMuMTMgMy4xMyAwIDAgMC0zLjA2MiAyLjVoLTMuODc2YTQuNTc1IDQuNTc1IDAgMCAwLS44OTQtMi4xNmwzLjExMi0zLjExYy40OTQuMzI3IDEuMDg0LjUyIDEuNzIuNTIgMS43MjMgMCAzLjEyNS0xLjQwMiAzLjEyNS0zLjEyNVMyOC4yMjMgNi4zNzUgMjYuNSA2LjM3NSAyMy4zNzUgNy43NzcgMjMuMzc1IDkuNWMwIC42MzYuMTkzIDEuMjI2LjUyIDEuNzJsLTMuMTEgMy4xMTFBNC41OCA0LjU4IDAgMCAwIDE4IDEzLjM3NWMtMi41NSAwLTQuNjI1IDIuMDc1LTQuNjI1IDQuNjI1UzE1LjQ1IDIyLjYyNSAxOCAyMi42MjVhNC41OCA0LjU4IDAgMCAwIDIuNzg0LS45NTZsMy4xMTIgMy4xMWEzLjEwMyAzLjEwMyAwIDAgMC0uNTIxIDEuNzIxYzAgMS43MjMgMS40MDIgMy4xMjUgMy4xMjUgMy4xMjVzMy4xMjUtMS40MDIgMy4xMjUtMy4xMjUtMS40MDItMy4xMjUtMy4xMjUtMy4xMjVjLS42MzYgMC0xLjIyNi4xOTMtMS43Mi41MmwtMy4xMTEtMy4xMWMuNDctLjYyLjc4Mi0xLjM1NC44OTMtMi4xNlptNi45MzgtMi41YzEuMDM0IDAgMS44NzUuODQgMS44NzUgMS44NzVzLS44NDEgMS44NzUtMS44NzUgMS44NzUtMS44NzUtLjg0LTEuODc1LTEuODc1Ljg0MS0xLjg3NSAxLjg3NS0xLjg3NVptLTMtOC41YzEuMDM0IDAgMS44NzUuODQgMS44NzUgMS44NzVzLS44NDEgMS44NzUtMS44NzUgMS44NzVhMS44NyAxLjg3IDAgMCAxLTEuMzIzLS41NDhzMC0uMDAyLS4wMDItLjAwM2MwIDAtLjAwMiAwLS4wMDMtLjAwMmExLjg2OSAxLjg2OSAwIDAgMS0uNTQ3LTEuMzIyYzAtMS4wMzQuODQxLTEuODc1IDEuODc1LTEuODc1Wk0xNC42MjUgMThjMC0xLjg2MSAxLjUxNC0zLjM3NSAzLjM3NS0zLjM3NXMzLjM3NSAxLjUxNCAzLjM3NSAzLjM3NS0xLjUxNCAzLjM3NS0zLjM3NSAzLjM3NS0zLjM3NS0xLjUxNC0zLjM3NS0zLjM3NVptMTMuNzUgOC41YTEuODc3IDEuODc3IDAgMCAxLTEuODc1IDEuODc1IDEuODc2IDEuODc2IDAgMCAxLTEuMzI4LTMuMTk3bC4wMDMtLjAwMi4wMDItLjAwM2ExLjg3IDEuODcgMCAwIDEgMS4zMjMtLjU0OGMxLjAzNCAwIDEuODc1Ljg0IDEuODc1IDEuODc1WiIvPgo8L3N2Zz4K" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Data Model</h2>
+    <div class="two-col">
+      <div>
+        <div class="card-grid" style="grid-template-columns:1fr">
+          <div class="card card-teal">
+            <h4>PostgreSQL + SQLAlchemy 2.0</h4>
+            <p>Async engine (asyncpg), JSONB for flexible metadata, ARRAY for backend_types. UUID primary keys. Indexed on workload_id + created_at.</p>
+          </div>
+          <div class="card card-purple">
+            <h4>Audit Immutability</h4>
+            <p>BEFORE UPDATE/DELETE triggers on audit_log table prevent modification or deletion of records.</p>
+          </div>
+          <div class="card card-green">
+            <h4>Alembic Migrations</h4>
+            <p>Schema managed by Alembic. Runs in ephemeral container on same podman network before API starts.</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="code-block" style="font-size:clamp(0.6rem,0.85vw,0.75rem)"><span class="kw">Workload</span> (1) &mdash;&mdash; (*) <span class="str">AttestationRecord</span>
+    |                       |
+    |                       &rdsh; verdict, backend, detail (JSON)
+    |
+    |&mdash;&mdash; (*) <span class="str">StateTransition</span>
+    |              &rdsh; from_state, to_state, triggered_by
+    |
+    &rdsh; (scope) <span class="str">KBSSecret</span>
+                     &rdsh; encrypted_value, required_state
+
+<span class="kw">Policy</span> &mdash;&mdash; type, scope, content (JSON), active
+<span class="kw">AuditLog</span> &mdash;&mdash; actor, action, target, detail (JSON)
+<span class="kw">WebhookRegistration</span> &mdash;&mdash; url, events[], secret</div>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 7: Cosign + Sigstore -->
+<div class="slide slide-content-type" data-slide="6">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTIxLjY5IDI5LjE1IDE4IDMxLjI4IDYuNSAyNC42NFYxMS4zNkwxOCA0LjcybDExLjUgNi42NFYyMmEuNjMuNjMgMCAwIDAgMS4yNSAwVjExYS42My42MyAwIDAgMC0uMzEtLjU0bC0xMi4xMy03YS42Mi42MiAwIDAgMC0uNjIgMGwtMTIuMTMgN2EuNjMuNjMgMCAwIDAtLjMxLjU0djE0YS42My42MyAwIDAgMCAuMzEuNTRsMTIuMTMgN2EuNjQuNjQgMCAwIDAgLjYyIDBsNC0yLjMxYS42Mi42MiAwIDAgMC0uNjItMS4wOFoiLz4KICA8cGF0aCBkPSJtMzEuMTMgMjUtMy0uNjRhLjU3LjU3IDAgMCAwLS4yNiAwbC0zIC42NGEuNjEuNjEgMCAwIDAtLjQ5LjYxdjMuNDVhMy42MiAzLjYyIDAgMSAwIDcuMjQgMHYtMy40MmEuNjEuNjEgMCAwIDAtLjQ5LS42NFoiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Cosign + Sigstore Integration</h2>
+    <p>Container image signature verification as an attestation backend. Supply-chain trust anchored to cosign keypairs.</p>
+    <div class="flow" style="margin:clamp(0.8rem,1.5vh,1.2rem) 0">
+      <div class="flow-step flow-orange">cosign sign --key cosign.key --tlog-upload=false IMAGE</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">Signature pushed to registry</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step flow-green">cosign verify --key cosign.pub --insecure-ignore-tlog IMAGE</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step flow-green">PASS / FAIL verdict</div>
+    </div>
+    <div class="two-col">
+      <div>
+        <h3>Backend Implementation</h3>
+        <div class="code-block"><span class="kw">class</span> CosignBackend:
+  <span class="kw">def</span> __init__(self, cosign_binary, public_key,
+               insecure_ignore_tlog=<span class="str">False</span>):
+
+  <span class="kw">async def</span> verify(self, workload):
+    artifact_ref = workload.metadata_[<span class="str">"artifact_ref"</span>]
+    cmd = [self._binary, <span class="str">"verify"</span>,
+           <span class="str">"--key"</span>, self._public_key]
+    <span class="kw">if</span> self._insecure_ignore_tlog:
+      cmd.append(<span class="str">"--insecure-ignore-tlog"</span>)
+    cmd.append(artifact_ref)</div>
+      </div>
+      <div>
+        <h3>Deployment Notes</h3>
+        <ul>
+          <li>Cosign v2.4.1 binary mounted into API container at <code>/usr/local/bin/cosign</code></li>
+          <li>Public key at <code>/etc/arbiter/cosign/cosign.pub</code></li>
+          <li><code>--tlog-upload=false</code> for private/demo signing without Rekor transparency log</li>
+          <li><code>--insecure-ignore-tlog</code> on verify when signatures lack tlog entries</li>
+          <li>cosign v2.4.1 does NOT support the <code>--yes</code> flag</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 8: Falco eBPF Runtime -->
+<div class="slide slide-content-type" data-slide="7">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTEwLjUgMTMuNjJhNS45MyA1LjkzIDAgMCAxIDEuMDkuMTEuNjMuNjMgMCAwIDAgLjY5LS4zNiA3Ljg3IDcuODcgMCAwIDEgMTUuMSAzLjEzdi41YS42My42MyAwIDAgMCAuNTYuNjYgMy44OSAzLjg5IDAgMCAxIDMuMjQgMi41NC42My42MyAwIDAgMCAuOC4zOC42Mi42MiAwIDAgMCAuMzgtLjggNS4xNyA1LjE3IDAgMCAwLTMuNzEtMy4yNyA5LjEyIDkuMTIgMCAwIDAtMTcuMjgtNC4wNyA3LjEyIDcuMTIgMCAxIDAtLjg0IDE0LjE5SDIzYS42Mi42MiAwIDAgMCAwLTEuMjRIMTAuNWE1Ljg4IDUuODggMCAwIDEgMC0xMS43NloiLz4KICA8cGF0aCBkPSJtMzIuMTMgMjItMy0uNjRhLjU3LjU3IDAgMCAwLS4yNiAwbC0zIC42NGEuNjEuNjEgMCAwIDAtLjQ5LjYxdjMuNDVhMy42MiAzLjYyIDAgMSAwIDcuMjQgMHYtMy40MmEuNjEuNjEgMCAwIDAtLjQ5LS42NFoiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Falco eBPF Runtime Monitoring</h2>
+    <p>Falco 0.45+ with modern eBPF probe. Custom rules detect behavioral violations in attested workloads. Alerts trigger state transitions.</p>
+    <div class="two-col">
+      <div>
+        <h3>Custom Rules</h3>
+        <div class="code-block"><span class="cm"># /etc/falco/rules.d/arbiter-rules.yaml</span>
+- rule: <span class="str">Reverse Shell Detected</span>
+  condition: spawned_process and proc.name in
+    (bash, sh, dash) and fd.type=ipv4
+  output: <span class="str">"Reverse shell from %container.id"</span>
+  priority: CRITICAL
+
+- rule: <span class="str">Sensitive File Read</span>
+  condition: open_read and fd.name startswith
+    /etc/shadow
+  output: <span class="str">"Sensitive read %fd.name by %proc.name"</span>
+  priority: WARNING</div>
+      </div>
+      <div>
+        <h3>Alert Pipeline</h3>
+        <div class="flow" style="flex-direction:column;align-items:flex-start">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+            <div class="flow-step flow-red">Falco detects violation</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-step">POST /api/alerts/falco</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+            <span class="flow-arrow">&darr;</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+            <div class="flow-step flow-orange">State: HEALTHY &rarr; FAILED</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-step">Audit log + evidence</div>
+          </div>
+        </div>
+        <div class="card card-red" style="margin-top:0.5rem">
+          <h4>Localhost Authentication</h4>
+          <p>Alert endpoint accepts only from localhost &mdash; Falco runs on the same host as the API container.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 9: EDA Auto-Remediation -->
+<div class="slide slide-content-type" data-slide="8">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTE0Ljc1IDQuMzhoLTZhLjYzLjYzIDAgMCAwLS42My42MnY2YS42My42MyAwIDAgMCAuNjMuNjJoNmEuNjMuNjMgMCAwIDAgLjYzLS42MlY1YS42My42MyAwIDAgMC0uNjMtLjYyWm0tLjYzIDZIOS4zOFY1LjYyaDQuNzRabS42MyA0aC02YS42My42MyAwIDAgMC0uNjMuNjJ2NmEuNjMuNjMgMCAwIDAgLjYzLjYyaDZhLjYzLjYzIDAgMCAwIC42My0uNjJ2LTZhLjYzLjYzIDAgMCAwLS42My0uNjJabS0uNjMgNkg5LjM4di00Ljc2aDQuNzRaIi8+CiAgPHJlY3QgeD0iOC4xMyIgeT0iMjQuMzgiIHdpZHRoPSI3LjI1IiBoZWlnaHQ9IjcuMjUiIHJ4PSIuNjMiLz4KICA8cGF0aCBkPSJNMjQuMjUgMjMuMzhhLjYzLjYzIDAgMCAwLS42My42MnYxYTIuMzggMi4zOCAwIDAgMS0yLjM3IDIuMzhoLTEuNDlsLjkzLS45NGEuNjIuNjIgMCAwIDAtLjg4LS44OGwtMiAyYS41Ny41NyAwIDAgMC0uMTkuNDEuNy43IDAgMCAwIC4xOS40N2wyIDJhLjYzLjYzIDAgMCAwIC44OCAwIC42MS42MSAwIDAgMCAwLS44OGwtLjkzLS45NGgxLjQ5QTMuNjMgMy42MyAwIDAgMCAyNC44OCAyNXYtMWEuNjMuNjMgMCAwIDAtLjYzLS42MlptLTYtMTQuNzZoM0EyLjM4IDIuMzggMCAwIDEgMjMuNjIgMTF2MWEuNjMuNjMgMCAwIDAgMS4yNiAwdi0xYTMuNjMgMy42MyAwIDAgMC0zLjYzLTMuNjJoLTNhLjYyLjYyIDAgMSAwIDAgMS4yNFptMyAxMGguNDZhMi40OSAyLjQ5IDAgMCAwIC4zLjczbC0uMzIuMzNhLjYyLjYyIDAgMCAwIC44OC44OGwuMzMtLjMyYTIuNTUgMi41NSAwIDAgMCAuNzIuM1YyMWEuNjMuNjMgMCAwIDAgMS4yNSAwdi0uNDZhMi40OSAyLjQ5IDAgMCAwIC43My0uM2wuMzMuMzJhLjYyLjYyIDAgMCAwIC44OC0uODhsLS4zMi0uMzNhMi40OSAyLjQ5IDAgMCAwIC4zLS43M2guNDZhLjYzLjYzIDAgMCAwIDAtMS4yNWgtLjQ2YTIuNTUgMi41NSAwIDAgMC0uMy0uNzJsLjMyLS4zM2MuNTgtLjU2LS4zMi0xLjQ2LS44OC0uODhsLS4zMy4zMmEyLjQ5IDIuNDkgMCAwIDAtLjczLS4zVjE1YS42My42MyAwIDAgMC0xLjI1IDB2LjQ2YTIuNTUgMi41NSAwIDAgMC0uNzIuM2wtLjMzLS4zMmMtLjU2LS41OC0xLjQ2LjMyLS44OC44OGwuMzIuMzNhMi41NSAyLjU1IDAgMCAwLS4zLjcyaC0uNDZhLjYzLjYzIDAgMCAwIDAgMS4yNVptMy0yYTEuMzggMS4zOCAwIDAgMSAwIDIuNzUgMS4zOCAxLjM4IDAgMCAxIDAtMi43NVoiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Event-Driven Ansible Remediation</h2>
+    <p>State transitions dispatch HMAC-signed webhooks to EDA. The source plugin validates and forwards events to ansible-rulebook. Full loop completes in ~2 seconds.</p>
+    <div class="flow" style="margin:clamp(0.6rem,1vh,1rem) 0">
+      <div class="flow-step flow-red">Falco alert</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">API state transition</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step flow-orange">Webhook (HMAC-SHA256)</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step">EDA source plugin :5001</div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-step flow-green">ansible-rulebook</div>
+    </div>
+    <div class="card-grid card-grid-3">
+      <div class="card card-red">
+        <h4>quarantine.yml</h4>
+        <p>Network isolation of compromised workload + POST /api/workloads/{id}/remediate</p>
+      </div>
+      <div class="card card-orange">
+        <h4>re_attest.yml</h4>
+        <p>Trigger re-attestation after remediation completes. Returns workload to ATTESTING state.</p>
+      </div>
+      <div class="card card-purple">
+        <h4>forensic_collect.yml</h4>
+        <p>Evidence preservation on critical severity alerts. Captures logs, process state, network connections.</p>
+      </div>
+    </div>
+    <div class="code-block" style="margin-top:0.5rem"><span class="cm"># EDA source plugin validates HMAC before forwarding</span>
+<span class="kw">expected</span> = hmac.new(secret, body, hashlib.sha256).hexdigest()
+<span class="kw">if</span> not hmac.compare_digest(expected, signature):
+    <span class="kw">raise</span> ValueError(<span class="str">"Invalid webhook signature"</span>)</div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 10: API Surface -->
+<div class="slide slide-content-type" data-slide="9">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTMxIDI4LjYyNUg1QS42MjUuNjI1IDAgMCAxIDQuMzc1IDI4VjE4YzAtLjM0NS4yOC0uNjI1LjYyNS0uNjI1aDI2Yy4zNDUgMCAuNjI1LjI4LjYyNS42MjV2MTBjMCAuMzQ1LS4yOC42MjUtLjYyNS42MjVabS0yNS4zNzUtMS4yNWgyNC43NXYtOC43NUg1LjYyNXY4Ljc1Wm0xMC00LjM3NWEuNjI1LjYyNSAwIDAgMC0uNjI1LS42MjVIOWEuNjI1LjYyNSAwIDAgMCAwIDEuMjVoNmMuMzQ1IDAgLjYyNS0uMjguNjI1LS42MjVaTTI3IDIyLjM4YS42MjUuNjI1IDAgMSAwIDAgMS4yNS42MjUuNjI1IDAgMCAwIDAtMS4yNVptLTktNy4wMDUtLjAwMy0uMDAxYy0uMzEzLS4wMDEtLjYyLS4yNzYtLjY2LS41ODdhNC4zNzggNC4zNzggMCAwIDAtMy43NTItMy43NDkuNzA3LjcwNyAwIDAgMS0uNTg1LS42NjkuNzA4LjcwOCAwIDAgMSAuNTk0LS42NTggNC4zNzYgNC4zNzYgMCAwIDAgMy43NDItMy43NTFjLjA0Mi0uMzEuMzQ5LS41ODQuNjYtLjU4NS4yODQtLjAxNy42MjUuMjcxLjY2Ny41ODJhNC4zNzggNC4zNzggMCAwIDAgMy43NTIgMy43NTVjLjMwOC4wNC41ODIuMzQ2LjU4NS42NTcuMDAyLjMxNS0uMjcxLjYyNi0uNTgyLjY3aC0uMDAzYTQuMzc3IDQuMzc3IDAgMCAwLTMuNzUxIDMuNzUxYy0uMDQyLjMxLS4zNTEuNTg1LS42NjUuNTg1Wm0tMi40MjEtNWE1LjY1IDUuNjUgMCAwIDEgMi40MiAyLjQyIDUuNjUxIDUuNjUxIDAgMCAxIDIuNDIzLTIuNDIxQTUuNjQ4IDUuNjQ4IDAgMCAxIDE4IDcuOTU0YTUuNjUzIDUuNjUzIDAgMCAxLTIuNDIxIDIuNDIxWiIvPgo8L3N2Zz4K" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>API Surface</h2>
+    <div class="two-col">
+      <div>
+        <table class="tbl">
+          <tr><th>Endpoint</th><th>Methods</th></tr>
+          <tr><td>/workloads</td><td>GET, POST</td></tr>
+          <tr><td>/workloads/{id}</td><td>GET, DELETE</td></tr>
+          <tr><td>/workloads/{id}/attest</td><td>POST</td></tr>
+          <tr><td>/workloads/{id}/remediate</td><td>POST</td></tr>
+          <tr><td>/workloads/{id}/revoke</td><td>POST</td></tr>
+          <tr><td>/alerts/falco</td><td>POST</td></tr>
+          <tr><td>/audit</td><td>GET</td></tr>
+          <tr><td>/kbs/v0/{repo}/{type}/{tag}</td><td>GET, POST</td></tr>
+          <tr><td>/webhooks</td><td>GET, POST, DELETE</td></tr>
+          <tr><td>/signing/verify</td><td>POST</td></tr>
+          <tr><td>/health</td><td>GET</td></tr>
+          <tr><td>/metrics</td><td>GET</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>Authentication Modes</h3>
+        <div class="card-grid" style="grid-template-columns:1fr">
+          <div class="card card-green">
+            <h4>OIDC (Production)</h4>
+            <p>JWT validation via JWKS. Supports IPA (ahdapa) and Keycloak issuers. Claims-based role extraction.</p>
+          </div>
+          <div class="card card-orange">
+            <h4>Dev Mode</h4>
+            <p>X-Caller-* headers, gated behind explicit ARBITER_AUTH_MODE=dev. Never in production.</p>
+          </div>
+          <div class="card card-purple">
+            <h4>Proxy Mode</h4>
+            <p>Trusts reverse-proxy identity headers. For use behind mTLS-terminating proxy.</p>
+          </div>
+        </div>
+        <h3 style="margin-top:0.5rem">RBAC Roles</h3>
+        <p><code>attestation-admin</code> &middot; <code>attestation-reader</code> &middot; <code>policy-editor</code></p>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 11: KBS Secret Gate -->
+<div class="slide slide-content-type" data-slide="10">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTIxLjYyIDIxdi0zLjM4YTcuMTMgNy4xMyAwIDEgMC02LjI0LjQ4VjI5YS41OS41OSAwIDAgMCAuMTguNDRsMiAyYS42My42MyAwIDAgMCAuODggMGwyLTJhLjU5LjU5IDAgMCAwIC4xOC0uNDR2LTIuNzRsMS44Mi0xLjgyYS42MS42MSAwIDAgMCAwLS44OEwyMC44OCAyMmwuNTYtLjU2YS41OS41OSAwIDAgMCAuMTgtLjQ0Wm0tLjUgMy0xLjU2IDEuNTZhLjU5LjU5IDAgMCAwLS4xOC40NHYyLjc0TDE4IDMwLjEybC0xLjM4LTEuMzh2LTExYS42Ny42NyAwIDAgMC0uNDMtLjYgNS44OCA1Ljg4IDAgMSAxIDQuNTItLjM4LjY4LjY4IDAgMCAwLS4zMy41NnYzLjQ3bC0uODIuODJhLjYxLjYxIDAgMCAwIDAgLjg4WiIvPgogIDxwYXRoIGQ9Ik0xOCA3LjM4YS42My42MyAwIDEgMCAuNjIuNjMuNjMuNjMgMCAwIDAtLjYyLS42M1oiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Key Broker Service &mdash; State-Gated Secrets</h2>
+    <p>Secrets released only when a workload is in the required state with a current attestation. Row-level locking prevents races during concurrent revocation.</p>
+    <div class="two-col">
+      <div>
+        <div class="flow" style="flex-direction:column;align-items:flex-start">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0">
+            <div class="flow-step">Workload requests secret</div>
+            <span class="flow-arrow">&rarr;</span>
+            <div class="flow-step">GET /kbs/v0/repo/type/tag</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0">
+            <span class="flow-arrow">&darr;</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0">
+            <div class="flow-step flow-orange">Check: state == required_state?</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0">
+            <span class="flow-arrow">&darr;</span>
+          </div>
+          <div style="display:flex;gap:2rem;margin:0.3rem 0">
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <span style="color:#63993d;font-weight:700">YES</span>
+              <span class="flow-arrow">&rarr;</span>
+              <div class="flow-step flow-green">Decrypt + release</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <span style="color:#f0561d;font-weight:700">NO</span>
+              <span class="flow-arrow">&rarr;</span>
+              <div class="flow-step flow-red">403 Forbidden</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card-grid" style="grid-template-columns:1fr">
+          <div class="card card-teal">
+            <h4>Encryption</h4>
+            <p>AES-256 encryption with key loaded from <code>ARBITER_KBS_ENCRYPTION_KEY_FILE</code>. No fallback to zero-key (startup error if missing).</p>
+          </div>
+          <div class="card card-green">
+            <h4>Scope Filtering</h4>
+            <p>Secrets scoped to specific workloads via <code>workload_scope</code>. Prevents cross-workload secret access.</p>
+          </div>
+          <div class="card card-purple">
+            <h4>Race Protection</h4>
+            <p>Row-level SELECT FOR UPDATE on secret retrieval. Prevents release during concurrent revocation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 12: Deployment -->
+<div class="slide slide-content-type" data-slide="11">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0iTTI3IDEyLjM4aC0zLjM4VjEwYTUuNjIgNS42MiAwIDAgMC0xMS4yNCAwdjIuMzhIOWEuNjIuNjIgMCAwIDAtLjYyLjYydjE4YS42Mi42MiAwIDAgMCAuNjIuNjJoMThhLjYyLjYyIDAgMCAwIC42Mi0uNjJWMTNhLjYyLjYyIDAgMCAwLS42Mi0uNjJaTTEzLjYyIDEwYTQuMzggNC4zOCAwIDEgMSA4Ljc2IDB2Mi4zOGgtOC43NlptLTQgMjAuMzhWMTMuNjJoMTYuNzZ2My43NkgxOGEuNjIuNjIgMCAwIDAgMCAxLjI0aDguMzh2Mi43NkgxOGEuNjIuNjIgMCAwIDAgMCAxLjI0aDguMzh2Mi43NkgxOGEuNjIuNjIgMCAwIDAgMCAxLjI0aDguMzh2My43NloiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Deployment Architecture</h2>
+    <div class="two-col">
+      <div>
+        <h3>Podman Quadlet + systemd</h3>
+        <div class="code-block"><span class="cm"># Quadlet-managed container units</span>
+systemctl start arbiter-hub-db       <span class="cm"># PostgreSQL 16</span>
+systemctl start arbiter-hub-api      <span class="cm"># FastAPI :8400</span>
+systemctl start arbiter-hub-mcp      <span class="cm"># MCP :8401</span>
+<span class="cm"># + nginx UI, health-check timer</span>
+
+<span class="cm"># Restart=always + dynamic DNS in nginx</span>
+<span class="cm"># UI auto-recovers from API container restarts</span></div>
+        <h3 style="margin-top:0.6rem">3-Node Topology</h3>
+        <div class="card-grid card-grid-3">
+          <div class="card card-red"><h4>Hub</h4><p>DB, API, UI, EDA, enforcement-mcp</p></div>
+          <div class="card card-teal"><h4>Agent</h4><p>Falco, keylime_agent, OpenShell, SIEM, SPIRE</p></div>
+          <div class="card card-purple"><h4>IdM</h4><p>IPA, keylime verifier, ahdapa, SPIRE server, akamu</p></div>
+        </div>
+      </div>
+      <div>
+        <h3>IdM-CI Ansible Playbooks</h3>
+        <ul>
+          <li><code>container-deploy.yaml</code> &mdash; Quadlet setup, DB, API, migrations, cosign keypair, image signing</li>
+          <li><code>enforcement-mcp-deploy.yaml</code> &mdash; SELinux/fapolicyd MCP with attestation registration</li>
+          <li><code>linux-mcp-server-deploy.yaml</code> &mdash; 19 RHEL diagnostic tools, GSSAPI auth</li>
+          <li><code>ui-deploy.yaml</code> &mdash; nginx, health-check timer</li>
+        </ul>
+        <h3 style="margin-top:0.6rem">Container Images</h3>
+        <ul>
+          <li>UBI 10 base images on Quay</li>
+          <li>API runs as UID 1001, read-only volumes where possible</li>
+          <li>Cosign-signed with keypair generated per deployment</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 13: Security Model -->
+<div class="slide slide-content-type" data-slide="12">
+  <span class="confidential">RH Employees ONLY</span>
+  <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+CiAgPHBhdGggZD0ibTI5LjEzIDYuNzMtMTEtMi4zNGEuNTcuNTcgMCAwIDAtLjI2IDBsLTExIDIuMzRhLjYxLjYxIDAgMCAwLS40OS42MVYyMGExMS42MiAxMS42MiAwIDAgMCAyMy4yNCAwVjcuMzRhLjYxLjYxIDAgMCAwLS40OS0uNjFaTTE4IDUuNjRsMTAuMzggMi4ydjUuNjFMNy42MiAxNy44NnYtMTBabTAgMjQuNzRBMTAuNCAxMC40IDAgMCAxIDcuNjIgMjB2LS44NmwyMC43Ni00LjQxVjIwQTEwLjQgMTAuNCAwIDAgMSAxOCAzMC4zOFoiLz4KPC9zdmc+Cg==" class="slide-icon" alt="">
+  <div class="slide-content">
+    <h2>Security Model &mdash; STRIDE Assessment</h2>
+    <p>Full STRIDE threat analysis performed. 6 critical findings identified and resolved across Phases 1&ndash;2.5.</p>
+    <div class="card-grid card-grid-3">
+      <div class="card card-green">
+        <h4>Spoofing &mdash; Resolved</h4>
+        <ul>
+          <li>OIDC JWT validation with JWKS caching</li>
+          <li>X-Caller-* headers only in explicit dev mode</li>
+          <li>CSRF Origin validation on state-changing methods</li>
+        </ul>
+      </div>
+      <div class="card card-green">
+        <h4>Tampering &mdash; Mitigated</h4>
+        <ul>
+          <li>Audit log protected by DB triggers (no UPDATE/DELETE)</li>
+          <li>OCI reference regex on artifact_ref</li>
+          <li><code>--key</code> path prefix validation</li>
+        </ul>
+      </div>
+      <div class="card card-green">
+        <h4>Repudiation &mdash; Resolved</h4>
+        <ul>
+          <li>All actions attributed to JWT-verified principal</li>
+          <li>Append-only audit with actor, action, target, detail</li>
+        </ul>
+      </div>
+      <div class="card card-green">
+        <h4>Info Disclosure &mdash; Mitigated</h4>
+        <ul>
+          <li>KBS key startup error (no zero-key fallback)</li>
+          <li>CORS restricted to explicit origins</li>
+        </ul>
+      </div>
+      <div class="card card-green">
+        <h4>Denial of Service &mdash; Resolved</h4>
+        <ul>
+          <li>slowapi rate limiting on all endpoints</li>
+          <li>30s timeout on cosign subprocess calls</li>
+        </ul>
+      </div>
+      <div class="card card-green">
+        <h4>Elevation of Privilege &mdash; Resolved</h4>
+        <ul>
+          <li>RBAC roles from JWT claims (no implicit admin)</li>
+          <li>KBS port restricted to internal network</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:0.5rem;font-size:clamp(0.65rem,0.9vw,0.8rem);color:#707070">Remaining: input length validation on string fields (MEDIUM), DB password in default config (HIGH &mdash; vault in production).</p>
+  </div>
+  <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2UwMCIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGQ9Ik0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzbDMuNjYtOS4wNkE2LjQzLDYuNDMsMCwwLDAsNDIuNTMsNDRjMCw5LjIyLDM2LjMsMzkuNDUsODQuOTQsMzkuNDUsMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQyWiIvPjxwYXRoIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" class="logo logo-br" alt="Red Hat">
+</div>
+
+<!-- Slide 14: Closing -->
+<div class="slide slide-dark" data-slide="13">
+  <div class="slide-content">
+    <img src="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MTMgMTQ1Ij48dGl0bGU+UmVkIEhhdCBsb2dvPC90aXRsZT4KPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyNy40Nyw4My40OWMxMi41MSwwLDMwLjYxLTIuNTgsMzAuNjEtMTcuNDZhMTQsMTQsMCwwLDAtLjMxLTMuNDJsLTcuNDUtMzIuMzZjLTEuNzItNy4xMi0zLjIzLTEwLjM1LTE1LjczLTE2LjZDMTI0Ljg5LDguNjksMTAzLjc2LjUsOTcuNTEuNSw5MS42OS41LDkwLDgsODMuMDYsOGMtNi42OCwwLTExLjY0LTUuNi0xNy44OS01LjYtNiwwLTkuOTEsNC4wOS0xMi45MywxMi41LDAsMC04LjQxLDIzLjcyLTkuNDksMjcuMTZBNi40Myw2LjQzLDAsMCwwLDQyLjUzLDQ0YzAsOS4yMiwzNi4zLDM5LjQ1LDg0Ljk0LDM5LjQ1TTE2MCw3Mi4wN2MxLjczLDguMTksMS43Myw5LjA1LDEuNzMsMTAuMTMsMCwxNC0xNS43NCwyMS43Ny0zNi40MywyMS43N0M3OC41NCwxMDQsMzcuNTgsNzYuNiwzNy41OCw1OC40OWExOC40NSwxOC40NSwwLDAsMSwxLjUxLTcuMzNDMjIuMjcsNTIsLjUsNTUsLjUsNzQuMjJjMCwzMS40OCw3NC41OSw3MC4yOCwxMzMuNjUsNzAuMjgsNDUuMjgsMCw1Ni43LTIwLjQ4LDU2LjctMzYuNjUsMC0xMi43Mi0xMS0yNy4xNi0zMC44My0zNS43OCIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik01NzkuNzQsOTIuOGMwLDExLjg5LDcuMTUsMTcuNjcsMjAuMTksMTcuNjdhNTIuMTEsNTIuMTEsMCwwLDAsMTEuODktMS42OFY5NWEyNC44NCwyNC44NCwwLDAsMS03LjY4LDEuMTZjLTUuMzcsMC03LjM2LTEuNjgtNy4zNi02LjczVjY4LjNoMTUuNTZWNTQuMUg1OTYuNzh2LTE4bC0xNywzLjY4VjU0LjFINTY4LjQ5VjY4LjNoMTEuMjVabS01MywuMzJjMC0zLjY4LDMuNjktNS40Nyw5LjI2LTUuNDdhNDMuMTIsNDMuMTIsMCwwLDEsMTAuMSwxLjI2djcuMTVhMjEuNTEsMjEuNTEsMCwwLDEtMTAuNjMsMi42M2MtNS40NiwwLTguNzMtMi4xLTguNzMtNS41N201LjIsMTcuNTZjNiwwLDEwLjg0LTEuMjYsMTUuMzYtNC4zMXYzLjM3aDE2LjgyVjc0LjA4YzAtMTMuNTYtOS4xNC0yMS0yNC4zOS0yMS04LjUyLDAtMTYuOTQsMi0yNiw2LjFsNi4xLDEyLjUyYzYuNTItMi43NCwxMi00LjQyLDE2LjgzLTQuNDIsNywwLDEwLjYyLDIuNzMsMTAuNjIsOC4zMXYyLjczYTQ5LjUzLDQ5LjUzLDAsMCwwLTEyLjYyLTEuNThjLTE0LjMxLDAtMjIuOTMsNi0yMi45MywxNi43MywwLDkuNzgsNy43OCwxNy4yNCwyMC4xOSwxNy4yNG0tOTIuNDQtLjk0aDE4LjA5VjgwLjkyaDMwLjI5djI4LjgySDUwNlYzNi4xMkg0ODcuOTNWNjQuNDFINDU3LjY0VjM2LjEySDQzOS41NVpNMzcwLjYyLDgxLjg3YzAtOCw2LjMxLTE0LjEsMTQuNjItMTQuMUExNy4yMiwxNy4yMiwwLDAsMSwzOTcsNzIuMDlWOTEuNTRBMTYuMzYsMTYuMzYsMCwwLDEsMzg1LjI0LDk2Yy04LjIsMC0xNC42Mi02LjEtMTQuNjItMTQuMDltMjYuNjEsMjcuODdoMTYuODNWMzIuNDRsLTE3LDMuNjhWNTcuMDVhMjguMywyOC4zLDAsMCwwLTE0LjItMy42OGMtMTYuMTksMC0yOC45MiwxMi41MS0yOC45MiwyOC41YTI4LjI1LDI4LjI1LDAsMCwwLDI4LjQsMjguNiwyNS4xMiwyNS4xMiwwLDAsMCwxNC45My00LjgzWk0zMjAsNjdjNS4zNiwwLDkuODgsMy40NywxMS42Nyw4LjgzSDMwOC40N0MzMTAuMTUsNzAuMywzMTQuMzYsNjcsMzIwLDY3TTI5MS4zMyw4MmMwLDE2LjIsMTMuMjUsMjguODIsMzAuMjgsMjguODIsOS4zNiwwLDE2LjItMi41MywyMy4yNS04LjQybC0xMS4yNi0xMGMtMi42MywyLjc0LTYuNTIsNC4yMS0xMS4xNCw0LjIxYTE0LjM5LDE0LjM5LDAsMCwxLTEzLjY4LTguODNoMzkuNjVWODMuNTVjMC0xNy42Ny0xMS44OC0zMC4zOS0yOC4wOC0zMC4zOWEyOC41NywyOC41NywwLDAsMC0yOSwyOC44MU0yNjIsNTEuNThjNiwwLDkuMzYsMy43OCw5LjM2LDguMzFTMjY4LDY4LjIsMjYyLDY4LjJIMjQ0LjExVjUxLjU4Wm0tMzYsNTguMTZoMTguMDlWODIuOTJoMTMuNzdsMTMuODksMjYuODJIMjkybC0xNi4yLTI5LjQ1YTIyLjI3LDIyLjI3LDAsMCwwLDEzLjg4LTIwLjcyYzAtMTMuMjUtMTAuNDEtMjMuNDUtMjYtMjMuNDVIMjI2WiIvPjwvc3ZnPg==" style="width:clamp(120px,18vw,220px);margin-bottom:2rem" alt="Red Hat">
+    <h2>arbiter-hub</h2>
+    <p style="margin-bottom:2rem">github.com/Amy-Ra-lph/arbiter-hub</p>
+    <p style="color:rgba(255,255,255,0.9);font-size:clamp(1rem,1.6vw,1.3rem)">Amy Ralph</p>
+    <p>Principal Product Manager, RHEL Security</p>
+    <p style="color:#EE0000;margin-top:0.5rem">afarley@redhat.com</p>
+  </div>
+</div>
+
+<!-- Navigation dots -->
+<div class="nav-dots" id="navDots"></div>
+<div class="slide-counter" id="slideCounter"></div>
+
+<script>
+(function(){
+  const slides = document.querySelectorAll('.slide');
+  const totalSlides = slides.length;
+  let current = 0;
+
+  // Build nav dots
+  const dotsContainer = document.getElementById('navDots');
+  for(let i=0;i<totalSlides;i++){
+    const dot = document.createElement('button');
+    dot.className = 'nav-dot' + (i===0?' active':'');
+    dot.addEventListener('click', ()=>goTo(i));
+    dotsContainer.appendChild(dot);
+  }
+
+  function updateCounter(){
+    document.getElementById('slideCounter').textContent = (current+1)+' / '+totalSlides;
+  }
+
+  function goTo(n){
+    slides[current].classList.remove('active');
+    current = Math.max(0, Math.min(n, totalSlides-1));
+    slides[current].classList.add('active');
+    document.querySelectorAll('.nav-dot').forEach((d,i)=>d.classList.toggle('active',i===current));
+    updateCounter();
+  }
+
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key===' ')goTo(current+1);
+    else if(e.key==='ArrowLeft')goTo(current-1);
+    else if(e.key==='Home')goTo(0);
+    else if(e.key==='End')goTo(totalSlides-1);
+  });
+
+  // Touch support
+  let touchStartX=0;
+  document.addEventListener('touchstart',e=>{touchStartX=e.touches[0].clientX});
+  document.addEventListener('touchend',e=>{
+    const diff=e.changedTouches[0].clientX-touchStartX;
+    if(Math.abs(diff)>50){if(diff<0)goTo(current+1);else goTo(current-1)}
+  });
+
+  updateCounter();
+})();
+</script>
+</body>
+</html>

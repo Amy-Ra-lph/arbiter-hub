@@ -28,6 +28,7 @@ class WorkloadType(enum.StrEnum):
     AGENTIC = "agentic"
     CVM = "cvm"
     SERVICE = "service"
+    BOOTC = "bootc"
 
 
 class WorkloadState(enum.StrEnum):
@@ -37,6 +38,7 @@ class WorkloadState(enum.StrEnum):
     STALE = "stale"
     FAILED = "failed"
     UNDER_REMEDIATION = "under_remediation"
+    ROTATING = "rotating"
     REVOKED = "revoked"
 
 
@@ -53,6 +55,7 @@ class BackendType(enum.StrEnum):
     COSIGN = "cosign"
     REKOR = "rekor"
     FALCO = "falco"
+    MEASURED_BOOT = "measured_boot"
 
 
 class Base(DeclarativeBase):
@@ -77,6 +80,9 @@ class Workload(Base):
     last_attested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    artifact_ref: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    artifact_digest: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    previous_artifact_digest: Mapped[str | None] = mapped_column(String(128), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
     attestation_records: Mapped[list["AttestationRecord"]] = relationship(back_populates="workload")
@@ -194,11 +200,27 @@ class WebhookRegistration(Base):
     )
 
 
-# Create async engine
-engine = create_async_engine(settings.database_url, echo=False)
+# Engine and session factory are created lazily: settings.dsn raises when
+# neither ARBITER_DATABASE_URL nor a db_password secret is configured, and this
+# module is imported by nearly every other module (including test collection).
+_engine = None
+_session_factory = None
 
-# Create session factory
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_async_engine(settings.dsn, echo=False)
+    return _engine
+
+
+def async_session():
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = async_sessionmaker(
+            get_engine(), class_=AsyncSession, expire_on_commit=False
+        )
+    return _session_factory()
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

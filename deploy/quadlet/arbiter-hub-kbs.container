@@ -10,7 +10,12 @@ Network=arbiter-hub.network
 # KBS accessed only by API via internal network — no external port
 Volume=arbiter-hub-kbs-data.volume:/var/lib/kbs:Z
 Volume=arbiter-hub-certs.volume:/etc/arbiter/certs:ro,Z
-SecurityLabelType=arbiter_kbs_t
+# Runs as the stock container_t domain on purpose: the previous
+# SecurityLabelType=arbiter_kbs_t referenced a type no policy module defined,
+# so the label was invalid. KBS needs nothing beyond a normal container (both
+# volumes are :Z relabeled to container_file_t, no published port). If the
+# SELinux audit (poc/SELINUX-PLAN.md Tasks B/C) shows KBS denials, add a
+# reviewed module under deploy/selinux/ and restore this line.
 ReadOnly=true
 
 [Service]

@@ -1,0 +1,14 @@
+[Unit]
+Description=Arbiter Hub node firstboot provisioning
+After=network-online.target cloud-final.service
+Wants=network-online.target
+ConditionPathExists=!/var/lib/arbiter-hub/.hub-firstboot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/arbiter-hub-firstboot
+TimeoutStartSec=1800
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

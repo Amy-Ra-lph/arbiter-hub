@@ -1,0 +1,15 @@
+[Unit]
+Description=SPIRE Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=spire
+Group=spire
+ExecStart=/usr/local/bin/spire-server run -config /etc/spire/server/server.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

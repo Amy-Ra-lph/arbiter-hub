@@ -1,0 +1,34 @@
+---
+# install-packages.yaml — Install container + dev tooling on hub and agent nodes
+- name: Install packages on hub node
+  hosts: arbiter_hub
+  become: true
+  tasks:
+    - name: Install container tooling
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - buildah
+          - skopeo
+          - python3-pip
+          - git
+          - containernetworking-plugins
+        state: present
+
+- name: Install packages on agent node
+  hosts: arbiter_agent
+  become: true
+  tasks:
+    - name: Install container + TPM tooling
+      ansible.builtin.dnf:
+        name:
+          - podman
+          - buildah
+          - skopeo
+          - python3-pip
+          - git
+          - containernetworking-plugins
+          - python3-gssapi
+          - krb5-devel
+          - tpm2-tools
+        state: present

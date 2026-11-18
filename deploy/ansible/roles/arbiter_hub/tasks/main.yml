@@ -29,10 +29,11 @@
     state: directory
     mode: "0750"
 
-- name: Run IPA role setup
-  ansible.builtin.script:
-    cmd: setup-ipa-roles.sh {{ arbiter_hub_ipa_realm }}
-  args:
+- name: Run IPA role setup via playbook
+  ansible.builtin.command:
+    cmd: >-
+      ansible-playbook {{ playbook_dir }}/arbiter/ipa-roles.yaml
+      -e ipaserver_admin_password={{ arbiter_hub_ipa_admin_password | default('Secret123') }}
     creates: /etc/arbiter/.ipa-roles-configured
 
 - name: Reload systemd and start services

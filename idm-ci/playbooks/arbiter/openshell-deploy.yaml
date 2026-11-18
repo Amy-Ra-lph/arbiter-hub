@@ -1,159 +1,206 @@
 ---
-# openshell-deploy.yaml — Deploy OpenShell gateway + supervisor on agent node
+# openshell-deploy.yaml — Deploy OpenShell gateway + trust-tiered sandboxes
 #
-# Uses container images (not pip) with GSSAPI auth against IPA.
-# Gateway on port 8443, supervisor manages sandbox sessions.
-- name: Deploy OpenShell containers
+# Podman-native deployment: the OpenShell CLI's `sandbox create` requires
+# the gateway to mint JWT tokens via signing keys auto-discovered from
+# Kubernetes Secrets. In non-K8s (Podman) mode, this auto-discovery is not
+# available (v0.0.111). This playbook creates sandbox containers directly
+# with podman and registers them as Arbiter Hub workloads.
+#
+# Architecture:
+#   - Gateway runs on host network with TLS disabled (demo-only)
+#   - PKI generated via `generate-certs` for future mTLS enablement
+#   - Three sandbox containers created per trust tier (sovereign/verified/untrusted)
+#   - Sandboxes registered in Arbiter Hub with Falco backend for runtime monitoring
+#   - linux-mcp-server deployed separately (see linux-mcp-server-deploy.yaml)
+- name: Deploy OpenShell gateway and sandboxes
   hosts: arbiter_agent
   become: true
   vars:
-    openshell_gateway_image: "localhost/openshell-gateway:0.0.111-rhhi"
-    openshell_supervisor_image: "localhost/openshell-supervisor:0.0.111-rhhi"
-    openshell_gateway_port: 8443
-    openshell_config_dir: "/etc/openshell"
-    openshell_data_dir: "/var/lib/openshell"
-    ipa_server: "{{ hostvars[groups['ipaserver'][0]]['ansible_fqdn'] }}"
+    openshell_gateway_image: "quay.io/rhel-security/poc-openshell-rhhi:gateway-0.0.111"
+    openshell_sandbox_image: "registry.access.redhat.com/ubi10/ubi:latest"
+    openshell_pki_dir: "/etc/openshell/pki"
+    openshell_health_port: 17672
+    openshell_gateway_port: 8080
+    arbiter_hub_host: "{{ hostvars[groups['arbiter_hub'][0]]['inventory_hostname'] }}"
+    arbiter_hub_port: 8400
+    sandbox_tiers:
+      - name: wid-sovereign
+        tier: sovereign
+        memory: 1g
+        cpus: "2"
+        read_only: false
+      - name: wid-verified
+        tier: verified
+        memory: 512m
+        cpus: "1"
+        read_only: false
+      - name: wid-untrusted
+        tier: untrusted
+        memory: 256m
+        cpus: "1"
+        read_only: true
   tasks:
     - name: Install runtime dependencies
       ansible.builtin.dnf:
         name:
           - podman
-          - krb5-workstation
+          - python3-podman
         state: present
 
-    - name: Create config directories
+    - name: Enable podman socket for gateway container access
+      ansible.builtin.systemd:
+        name: podman.socket
+        state: started
+        enabled: true
+
+    - name: Create PKI directory
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ openshell_pki_dir }}"
         state: directory
-        mode: "0755"
-      loop:
-        - "{{ openshell_config_dir }}"
-        - "{{ openshell_data_dir }}"
-        - "{{ openshell_data_dir }}/sandboxes"
+        mode: "0750"
 
-    - name: Deploy gateway configuration
-      ansible.builtin.copy:
-        dest: "{{ openshell_config_dir }}/gateway.yaml"
-        mode: "0644"
-        content: |
-          gateway:
-            host: 0.0.0.0
-            port: {{ openshell_gateway_port }}
-            tls:
-              cert: /etc/pki/tls/certs/{{ ansible_fqdn }}.crt
-              key: /etc/pki/tls/private/{{ ansible_fqdn }}.key
+    - name: Check if PKI already generated
+      ansible.builtin.stat:
+        path: "{{ openshell_pki_dir }}/server/tls.crt"
+      register: pki_cert
 
-          auth:
-            method: gssapi
-            keytab: /etc/krb5.keytab
-            service: HTTP/{{ ansible_fqdn }}
+    - name: Generate OpenShell PKI
+      when: not pki_cert.stat.exists
+      block:
+        - name: Create temp dir for cert generation
+          ansible.builtin.tempfile:
+            state: directory
+          register: cert_tmpdir
 
-          sandbox:
-            runtime: podman
-            network_mode: slirp4netns
-            memory_limit: 512m
-            cpu_limit: "1.0"
-            read_only: true
-            data_dir: /var/lib/openshell/sandboxes
+        - name: Set temp dir permissions
+          ansible.builtin.file:
+            path: "{{ cert_tmpdir.path }}"
+            mode: "0777"
 
-          supervisor:
-            max_sessions: 10
-            idle_timeout: 3600
-            health_check_interval: 30
+        - name: Generate certs via gateway image
+          ansible.builtin.command:
+            cmd: >-
+              podman run --rm --user root
+              -v {{ cert_tmpdir.path }}:/output:Z
+              {{ openshell_gateway_image }}
+              generate-certs --output-dir /output
+              --server-san {{ ansible_fqdn }}
+              --server-san localhost
+              --server-san {{ ansible_default_ipv4.address }}
+          register: certgen
 
-    - name: Request IPA service principal for OpenShell
+        - name: Copy generated PKI to permanent location
+          ansible.builtin.copy:
+            src: "{{ cert_tmpdir.path }}/"
+            dest: "{{ openshell_pki_dir }}/"
+            remote_src: true
+            mode: "0640"
+
+        - name: Clean up temp dir
+          ansible.builtin.file:
+            path: "{{ cert_tmpdir.path }}"
+            state: absent
+
+    - name: Pull gateway image
+      containers.podman.podman_image:
+        name: "{{ openshell_gateway_image }}"
+        state: present
+
+    - name: Pull sandbox image
+      containers.podman.podman_image:
+        name: "{{ openshell_sandbox_image }}"
+        state: present
+
+    - name: Stop existing gateway
       ansible.builtin.command:
-        cmd: ipa service-add HTTP/{{ ansible_fqdn }}
-      register: svc_add
-      changed_when: svc_add.rc == 0
-      failed_when: svc_add.rc != 0 and 'already exists' not in svc_add.stderr
-      delegate_to: "{{ ipa_server }}"
-
-    - name: Retrieve keytab for OpenShell service
-      ansible.builtin.command:
-        cmd: >-
-          ipa-getkeytab -s {{ ipa_server }}
-          -p HTTP/{{ ansible_fqdn }}
-          -k /etc/krb5.keytab
-      args:
-        creates: /etc/krb5.keytab
-
-    - name: Check if OpenShell images exist
-      ansible.builtin.command:
-        cmd: podman image exists {{ item }}
-      loop:
-        - "{{ openshell_gateway_image }}"
-        - "{{ openshell_supervisor_image }}"
-      register: image_check
+        cmd: podman rm -f openshell-gateway
       failed_when: false
-      changed_when: false
+      changed_when: true
 
-    - name: Report missing images
-      ansible.builtin.debug:
-        msg: >-
-          OpenShell images need to be transferred to this node.
-          Missing: {{ image_check.results | selectattr('rc', 'ne', 0) | map(attribute='item') | list }}
-      when: image_check.results | selectattr('rc', 'ne', 0) | list | length > 0
-
-    - name: Create OpenShell gateway container
+    - name: Start OpenShell gateway
       ansible.builtin.command:
         cmd: >-
-          podman create --name openshell-gateway
-          --publish {{ openshell_gateway_port }}:{{ openshell_gateway_port }}
-          --volume {{ openshell_config_dir }}:/etc/openshell:ro
-          --volume /etc/krb5.keytab:/etc/krb5.keytab:ro
-          --volume /etc/pki/tls:/etc/pki/tls:ro
-          --volume {{ openshell_data_dir }}:/var/lib/openshell
-          --restart on-failure
+          podman run -d
+          --name openshell-gateway
+          --network host
+          --user root
+          --security-opt label=disable
+          -v /run/podman/podman.sock:/run/podman/podman.sock
+          -v {{ openshell_pki_dir }}:{{ openshell_pki_dir }}:ro
+          -e OPENSHELL_BIND_ADDRESS=0.0.0.0
+          -e OPENSHELL_HEALTH_PORT={{ openshell_health_port }}
+          -e OPENSHELL_LOG_LEVEL=info
+          -e OPENSHELL_DRIVERS=podman
+          -e OPENSHELL_PODMAN_SOCKET=/run/podman/podman.sock
+          -e OPENSHELL_DISABLE_TLS=true
           {{ openshell_gateway_image }}
-      register: gw_create
-      changed_when: gw_create.rc == 0
-      failed_when: gw_create.rc != 0 and 'already in use' not in gw_create.stderr
+      register: gateway_start
 
-    - name: Start OpenShell gateway container
-      ansible.builtin.command:
-        cmd: podman start openshell-gateway
-      register: gw_start
-      changed_when: gw_start.rc == 0
-      failed_when: gw_start.rc != 0 and 'already running' not in gw_start.stderr
-
-    - name: Create OpenShell supervisor container
-      ansible.builtin.command:
-        cmd: >-
-          podman create --name openshell-supervisor
-          --volume {{ openshell_config_dir }}:/etc/openshell:ro
-          --volume /run/podman/podman.sock:/run/podman/podman.sock
-          --volume {{ openshell_data_dir }}:/var/lib/openshell
-          --restart on-failure
-          {{ openshell_supervisor_image }}
-      register: sv_create
-      changed_when: sv_create.rc == 0
-      failed_when: sv_create.rc != 0 and 'already in use' not in sv_create.stderr
-
-    - name: Start OpenShell supervisor container
-      ansible.builtin.command:
-        cmd: podman start openshell-supervisor
-      register: sv_start
-      changed_when: sv_start.rc == 0
-      failed_when: sv_start.rc != 0 and 'already running' not in sv_start.stderr
-
-    - name: Wait for OpenShell gateway health
-      ansible.builtin.command:
-        cmd: >-
-          curl -sk https://localhost:{{ openshell_gateway_port }}/health
+    - name: Wait for gateway health
+      ansible.builtin.uri:
+        url: "http://localhost:{{ openshell_health_port }}/healthz"
+        status_code: 200
       register: gw_health
       retries: 15
-      delay: 5
-      until: gw_health.rc == 0 and 'ok' in gw_health.stdout
-      changed_when: false
-      ignore_errors: true
+      delay: 2
+      until: gw_health.status == 200
 
-    - name: Display OpenShell status
+    - name: Create trust-tiered sandbox containers
+      ansible.builtin.shell: |
+        podman rm -f {{ item.name }} 2>/dev/null || true
+        podman run -d \
+          --name {{ item.name }} \
+          --hostname {{ item.name }}.arbiter.demo \
+          --memory {{ item.memory }} \
+          --cpus {{ item.cpus }} \
+          {% if item.read_only %}--read-only --tmpfs /tmp:rw,size=64m {% endif %}\
+          --label io.arbiter.trust-tier={{ item.tier }} \
+          --label io.arbiter.workload-name={{ item.name }} \
+          --label io.openshell.managed=true \
+          {{ openshell_sandbox_image }} \
+          /bin/bash -c 'while true; do sleep 3600; done'
+      loop: "{{ sandbox_tiers }}"
+      register: sandbox_create
+
+    - name: Verify all sandboxes running
       ansible.builtin.command:
-        cmd: podman ps --filter name=openshell --format "{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}"
-      register: os_status
+        cmd: podman ps --filter label=io.openshell.managed=true --format '{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}'
+      register: sandbox_status
       changed_when: false
 
-    - name: Show status
+    - name: Display sandbox status
       ansible.builtin.debug:
-        var: os_status.stdout_lines
+        var: sandbox_status.stdout_lines
+
+    - name: Register sandbox workloads in Arbiter Hub
+      ansible.builtin.uri:
+        url: "http://{{ arbiter_hub_host }}:{{ arbiter_hub_port }}/workloads"
+        method: POST
+        headers:
+          Origin: "http://{{ arbiter_hub_host }}:{{ arbiter_hub_port }}"
+        body_format: json
+        body:
+          ipa_principal: "openshell/{{ item.name }}@ARBITER.DEMO"
+          display_name: "OpenShell Sandbox: {{ item.name }}"
+          workload_type: agentic
+          backend_types:
+            - falco
+          metadata:
+            trust_tier: "{{ item.tier }}"
+            container_name: "{{ item.name }}"
+            sandbox_image: "{{ openshell_sandbox_image }}"
+            managed_by: openshell-sandbox-deploy
+        status_code:
+          - 200
+          - 201
+          - 409
+      loop: "{{ sandbox_tiers }}"
+      register: workload_reg
+
+    - name: Display registration results
+      ansible.builtin.debug:
+        msg: "{{ item.item.name }}: HTTP {{ item.status }}"
+      loop: "{{ workload_reg.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"

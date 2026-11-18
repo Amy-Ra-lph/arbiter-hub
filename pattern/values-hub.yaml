@@ -1,0 +1,37 @@
+---
+# values-hub.yaml — OpenShift hub site overrides (ArgoCD-managed)
+#
+# Deploys the hub-plane containers (API, UI, DB, MCP, enforcement-mcp)
+# as Kubernetes Deployments/StatefulSets behind OpenShift Routes.
+#
+# Identity and agent planes stay on bare-metal VMs managed by AAP —
+# IPA needs a real hostname and Keylime/Falco need kernel-level access.
+target: openshift
+
+hub:
+  # OpenShift uses Routes for TLS termination, not host nginx + certmonger
+  tls:
+    enabled: true
+    route:
+      enabled: true
+      termination: edge
+  # OpenShift uses PVCs instead of Quadlet volumes
+  database:
+    storageClass: ""  # uses cluster default; override for specific provisioner
+    storageSize: 10Gi
+  # Pull secrets for Quay and registry.redhat.io images
+  imagePullSecrets:
+    - name: quay-pull-secret
+  # Replica counts (scale up for HA; DB stays at 1 unless using CrunchyData)
+  replicas:
+    api: 1
+    mcp: 1
+    ui: 1
+
+# Identity plane stays bare-metal — IPA server requires real DNS + Kerberos
+identity:
+  managed: false  # AAP handles this
+
+# Agent plane stays bare-metal — TPM/eBPF require host kernel access
+agent:
+  managed: false  # AAP handles this
