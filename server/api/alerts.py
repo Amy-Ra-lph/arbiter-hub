@@ -6,8 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.api.webhooks import dispatch_webhooks
-from server.auth.dependencies import get_caller, require_permission
-from server.auth.models import CallerIdentity
+from server.auth.dependencies import get_caller
 from server.models.db import (
     AttestationRecord,
     AttestationVerdict,

@@ -4,13 +4,15 @@
 # Global OAuth2 subsystem configuration (singleton).
 #
 
-from ipalib import _
-from ipalib import Str, Bool, Int
+import os
+
+from ipalib import Bool, Int, Str, _
 from ipalib.plugable import Registry
 from ipaserver.plugins.baseldap import (
-    LDAPObject, LDAPUpdate, LDAPRetrieve,
+    LDAPObject,
+    LDAPRetrieve,
+    LDAPUpdate,
 )
-import os
 
 _MANAGED_PERMS_READY = os.path.exists('/var/lib/ipa-wid/.phase1-complete')
 

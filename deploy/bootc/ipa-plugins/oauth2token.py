@@ -8,13 +8,11 @@
 import base64
 import json
 import os
-import time
 
 import requests as http_requests
-from requests_gssapi import HTTPSPNEGOAuth
-
-from ipalib import _, Command, Str, output
+from ipalib import Command, Str, _, output
 from ipalib.plugable import Registry
+from requests_gssapi import HTTPSPNEGOAuth
 
 register = Registry()
 
@@ -153,6 +151,7 @@ def _ahdapa_gssapi_token(server_hostname):
     if the keytab is missing or GSSAPI fails.
     """
     import subprocess
+
     import gssapi
 
     if not os.path.exists(_AHDAPA_KEYTAB):
@@ -412,13 +411,13 @@ class oauth2token_introspect(Command):
         if active:
             username = introspection.get('username', 'unknown')
             scope = introspection.get('scope', '')
-            summary = u'Token is ACTIVE (user=%s, scope=%s)' % (
+            summary = 'Token is ACTIVE (user=%s, scope=%s)' % (
                 username, scope)
         else:
-            summary = u'Token is INACTIVE or expired'
+            summary = 'Token is INACTIVE or expired'
 
         return dict(
             summary=summary,
             result=result,
-            value=u'active' if active else u'inactive',
+            value='active' if active else 'inactive',
         )

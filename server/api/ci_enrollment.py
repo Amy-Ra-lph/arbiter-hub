@@ -1,13 +1,13 @@
 import logging
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, StringConstraints
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing_extensions import Annotated
 
 from server.api.webhooks import dispatch_webhooks
 from server.auth.dependencies import require_permission

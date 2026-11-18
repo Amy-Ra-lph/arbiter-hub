@@ -6,14 +6,18 @@
 # and lifecycle controls (expiry, kill switch).
 #
 
-from ipalib import _, errors
-from ipalib import Str, Bool
+import os
+
+from ipalib import Bool, Str, _
 from ipalib.plugable import Registry
 from ipaserver.plugins.baseldap import (
-    LDAPObject, LDAPCreate, LDAPDelete, LDAPUpdate,
-    LDAPSearch, LDAPRetrieve,
+    LDAPCreate,
+    LDAPDelete,
+    LDAPObject,
+    LDAPRetrieve,
+    LDAPSearch,
+    LDAPUpdate,
 )
-import os
 
 _MANAGED_PERMS_READY = os.path.exists('/var/lib/ipa-wid/.phase1-complete')
 

@@ -6,19 +6,22 @@
 # with what scopes, and on which hosts.
 #
 
-import ldap.filter
+import os
+from datetime import UTC, datetime
 
-from ipalib import _, errors, output
-from ipalib import Str, Bool, Command
-from datetime import datetime, timezone
+import ldap.filter
+from ipalib import Bool, Command, Str, _, errors, output
 from ipalib.plugable import Registry
 from ipapython.dn import DN
 from ipaserver.plugins.baseldap import (
-    LDAPObject, LDAPCreate, LDAPDelete, LDAPUpdate,
-    LDAPSearch, LDAPRetrieve,
+    LDAPCreate,
+    LDAPDelete,
+    LDAPObject,
+    LDAPRetrieve,
+    LDAPSearch,
+    LDAPUpdate,
 )
 from ipaserver.plugins.wid_locator import WIDServiceLocator
-import os
 
 _MANAGED_PERMS_READY = os.path.exists('/var/lib/ipa-wid/.phase1-complete')
 
@@ -238,8 +241,8 @@ class oauth2delegation_check(Command):
             wl = self.api.Command.oauth2workload_show(workload)['result']
         except errors.NotFound:
             return dict(
-                summary=u'DENIED: workload identity "%s" not found' % workload,
-                result=dict(allowed=False, reason=u'workload_not_found'),
+                summary='DENIED: workload identity "%s" not found' % workload,
+                result=dict(allowed=False, reason='workload_not_found'),
             )
 
         wl_enabled = wl.get('oauth2enabled', [True])
@@ -247,8 +250,8 @@ class oauth2delegation_check(Command):
             wl_enabled = wl_enabled[0] if wl_enabled else True
         if wl_enabled is False or str(wl_enabled).upper() == 'FALSE':
             return dict(
-                summary=u'DENIED: workload "%s" is disabled' % workload,
-                result=dict(allowed=False, reason=u'workload_disabled'),
+                summary='DENIED: workload "%s" is disabled' % workload,
+                result=dict(allowed=False, reason='workload_disabled'),
             )
 
         # Step 2: Search for delegation rules matching this workload
@@ -276,9 +279,9 @@ class oauth2delegation_check(Command):
 
         if not entries:
             return dict(
-                summary=u'DENIED: no delegation rules for workload "%s"'
+                summary='DENIED: no delegation rules for workload "%s"'
                         % workload,
-                result=dict(allowed=False, reason=u'no_delegation_rules'),
+                result=dict(allowed=False, reason='no_delegation_rules'),
             )
 
         # Step 3: Evaluate each rule against the request
@@ -297,8 +300,8 @@ class oauth2delegation_check(Command):
                 try:
                     expiry = datetime.strptime(
                         str(not_after), '%Y%m%d%H%M%SZ'
-                    ).replace(tzinfo=timezone.utc)
-                    if datetime.now(timezone.utc) > expiry:
+                    ).replace(tzinfo=UTC)
+                    if datetime.now(UTC) > expiry:
                         continue
                 except (ValueError, TypeError):
                     pass  # malformed date — skip check, don't block
@@ -345,9 +348,9 @@ class oauth2delegation_check(Command):
                 # Phase 2: NSS fallback for AD trust users
                 if not target_matched:
                     try:
-                        import pwd
                         import grp
                         import os
+                        import pwd
                         pw = pwd.getpwnam(target_user)
                         gids = os.getgrouplist(target_user, pw.pw_gid)
                         user_groups = set()
@@ -446,8 +449,8 @@ class oauth2delegation_check(Command):
                             try:
                                 exp_dt = datetime.strptime(
                                     str(v_expiry), '%Y%m%d%H%M%SZ'
-                                ).replace(tzinfo=timezone.utc)
-                                if datetime.now(timezone.utc) > exp_dt:
+                                ).replace(tzinfo=UTC)
+                                if datetime.now(UTC) > exp_dt:
                                     continue  # vendor expired
                             except (ValueError, TypeError):
                                 pass
@@ -463,7 +466,7 @@ class oauth2delegation_check(Command):
 
             result = dict(
                 allowed=True,
-                reason=u'authorized',
+                reason='authorized',
                 rule=rule_name,
                 permitted_scopes=sorted(effective_scopes),
             )
@@ -494,14 +497,14 @@ class oauth2delegation_check(Command):
             }
 
             return dict(
-                summary=u'ALLOWED: rule "%s" authorizes %s to act as %s'
+                summary='ALLOWED: rule "%s" authorizes %s to act as %s'
                         % (rule_name, workload, target_user),
                 result=result,
             )
 
         # No rule matched all criteria
         return dict(
-            summary=u'DENIED: no matching rule for %s acting as %s'
+            summary='DENIED: no matching rule for %s acting as %s'
                     % (workload, target_user),
-            result=dict(allowed=False, reason=u'no_matching_rule'),
+            result=dict(allowed=False, reason='no_matching_rule'),
         )

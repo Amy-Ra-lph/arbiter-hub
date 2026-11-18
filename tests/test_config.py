@@ -38,7 +38,8 @@ async def test_app_with_client(client):
     assert response.status_code == 404
 
 
-def test_dsn_uses_secret_file(tmp_path):
+def test_dsn_uses_secret_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("ARBITER_DATABASE_URL", raising=False)
     (tmp_path / "arbiter_db_password").write_text("a/b+c=")
     settings = Settings(_secrets_dir=str(tmp_path))
     assert settings.dsn == (

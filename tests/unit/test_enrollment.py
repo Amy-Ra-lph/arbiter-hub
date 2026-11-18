@@ -3,8 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.backends.base import EnrollResult
-from server.backends.keylime import DEFAULT_TPM_ENC_ALGS, DEFAULT_TPM_HASH_ALGS, DEFAULT_TPM_SIGN_ALGS, KeylimeBackend
+from server.backends.keylime import (
+    DEFAULT_TPM_ENC_ALGS,
+    DEFAULT_TPM_HASH_ALGS,
+    DEFAULT_TPM_SIGN_ALGS,
+    KeylimeBackend,
+)
 
 
 @pytest.fixture

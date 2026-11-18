@@ -5,19 +5,21 @@
 # Links workload identities to SPIFFE IDs, IPA users, and OAuth2 clients.
 #
 
-import json
+import os
 import time
-import ldap.filter as ldap_filter
 
-from ipalib import _, errors, output
-from ipalib import Str, StrEnum, Bool, Int, Command
+import ldap.filter as ldap_filter
+from ipalib import Bool, Command, Int, Str, StrEnum, _, errors, output
 from ipalib.plugable import Registry
 from ipapython.dn import DN
 from ipaserver.plugins.baseldap import (
-    LDAPObject, LDAPCreate, LDAPDelete, LDAPUpdate,
-    LDAPSearch, LDAPRetrieve,
+    LDAPCreate,
+    LDAPDelete,
+    LDAPObject,
+    LDAPRetrieve,
+    LDAPSearch,
+    LDAPUpdate,
 )
-import os
 
 _MANAGED_PERMS_READY = os.path.exists('/var/lib/ipa-wid/.phase1-complete')
 
@@ -63,7 +65,7 @@ class oauth2workload(LDAPObject):
             cli_name='type',
             label=_('Workload type'),
             doc=_('Type of non-human identity: agent, service, or workload'),
-            values=(u'agent', u'service', u'workload'),
+            values=('agent', 'service', 'workload'),
         ),
         # DESIGN: SPIFFE ID format is spiffe://<trust-domain>/<path> per the
         # SPIFFE spec. Stored as-is — no validation here because the trust
@@ -450,6 +452,6 @@ class oauth2workload_show_card(Command):
             card['description'] = description
 
         return dict(
-            summary=u'Agent card for "%s"' % cn,
+            summary='Agent card for "%s"' % cn,
             result=card,
         )

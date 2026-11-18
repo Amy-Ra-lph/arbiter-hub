@@ -6,8 +6,8 @@ Config-driven in Phase 1. SRV record discovery planned for Phase 2.
 import configparser
 import logging
 from pathlib import Path
-from urllib.request import urlopen
 from urllib.error import URLError
+from urllib.request import urlopen
 
 log = logging.getLogger(__name__)
 

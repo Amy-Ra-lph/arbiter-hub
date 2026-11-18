@@ -4,7 +4,6 @@
 import argparse
 import asyncio
 import json
-import sys
 import time
 from uuid import uuid4
 

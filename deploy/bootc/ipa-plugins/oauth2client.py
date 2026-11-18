@@ -9,12 +9,15 @@ import hashlib
 import os
 import re
 
-from ipalib import _
-from ipalib import Command, Str, StrEnum, Bool, Int, output
+from ipalib import Bool, Command, Int, Str, StrEnum, _, output
 from ipalib.plugable import Registry
 from ipaserver.plugins.baseldap import (
-    LDAPObject, LDAPCreate, LDAPDelete, LDAPUpdate,
-    LDAPSearch, LDAPRetrieve,
+    LDAPCreate,
+    LDAPDelete,
+    LDAPObject,
+    LDAPRetrieve,
+    LDAPSearch,
+    LDAPUpdate,
 )
 
 _MANAGED_PERMS_READY = os.path.exists('/var/lib/ipa-wid/.phase1-complete')
@@ -70,8 +73,8 @@ class oauth2client(LDAPObject):
             label=_('Grant type'),
             doc=_('OAuth2 grant type (authorization_code, client_credentials, '
                   'implicit, device_code)'),
-            values=(u'authorization_code', u'client_credentials',
-                    u'implicit', u'device_code', u'password'),
+            values=('authorization_code', 'client_credentials',
+                    'implicit', 'device_code', 'password'),
         ),
         Str(
             'oauth2scope*',
@@ -87,8 +90,8 @@ class oauth2client(LDAPObject):
             cli_name='client_type',
             label=_('Client type'),
             doc=_('Client type: confidential or public'),
-            values=(u'confidential', u'public'),
-            default=u'confidential',
+            values=('confidential', 'public'),
+            default='confidential',
         ),
         Int(
             'oauth2tokenlifetime?',
@@ -313,15 +316,15 @@ class oauth2client_generate_secret(Command):
         result = {
             'dn': str(dn),
             'cn': [cn],
-            'oauth2clientsecret': [u'** SECRET SET **'],
+            'oauth2clientsecret': ['** SECRET SET **'],
             'secret': [plaintext],
         }
 
         return dict(
-            summary=(u'Generated new secret for OAuth2 client "%s".\n'
-                     u'Client secret: %s\n'
-                     u'IMPORTANT: Copy this secret now. It will not be '
-                     u'shown again.' % (cn, plaintext)),
+            summary=('Generated new secret for OAuth2 client "%s".\n'
+                     'Client secret: %s\n'
+                     'IMPORTANT: Copy this secret now. It will not be '
+                     'shown again.' % (cn, plaintext)),
             result=result,
             value=cn,
         )

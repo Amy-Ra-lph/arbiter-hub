@@ -1,9 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import TypeVar
+from typing import Annotated, TypeVar
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
-from typing_extensions import Annotated
 
 ConstrainedName = Annotated[str, StringConstraints(min_length=1, max_length=255)]
 ConstrainedPrincipal = Annotated[str, StringConstraints(min_length=1, max_length=512)]

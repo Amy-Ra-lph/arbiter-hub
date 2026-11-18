@@ -1,7 +1,7 @@
 import pytest
 
 from server.models.db import WorkloadState
-from server.state.machine import InvalidTransitionError, VALID_TRANSITIONS, validate_transition
+from server.state.machine import VALID_TRANSITIONS, InvalidTransitionError, validate_transition
 
 
 def test_healthy_can_transition_to_rotating():

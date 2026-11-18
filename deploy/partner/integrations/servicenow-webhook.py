@@ -19,11 +19,11 @@ Hub EDA configuration:
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import urllib.request
 from base64 import b64encode
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SNOW_INSTANCE = os.environ.get("SNOW_INSTANCE", "")
 SNOW_USER = os.environ.get("SNOW_USER", "")
@@ -197,7 +197,7 @@ def main():
 
     print(f"ServiceNow webhook receiver starting on port {port}")
     print(f"SNOW instance: {SNOW_INSTANCE or '(not configured — dry mode)'}")
-    print(f"Listening for POST /webhook from Hub EDA")
+    print("Listening for POST /webhook from Hub EDA")
 
     server = HTTPServer(("0.0.0.0", port), WebhookHandler)
     try:
