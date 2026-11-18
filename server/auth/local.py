@@ -26,9 +26,7 @@ LOCAL_ALGORITHM = "HS256"
 
 
 def _hash_password(password: str, salt: str) -> str:
-    return hashlib.pbkdf2_hmac(
-        "sha256", password.encode(), salt.encode(), iterations=600_000
-    ).hex()
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations=600_000).hex()
 
 
 class LocalAuthProvider:

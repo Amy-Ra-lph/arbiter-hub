@@ -65,8 +65,16 @@ class StalenessScheduler:
             )
 
             try:
-                await transition(session, workload, WorkloadState.ATTESTING, "reattest_scheduler",
-                                 justification=f"TTL {elapsed / workload.stale_ttl_seconds:.0%} elapsed, proactive re-attestation")
+                await transition(
+                    session,
+                    workload,
+                    WorkloadState.ATTESTING,
+                    "reattest_scheduler",
+                    justification=(
+                        f"TTL {elapsed / workload.stale_ttl_seconds:.0%}"
+                        " elapsed, proactive re-attestation"
+                    ),
+                )
 
                 backends = []
                 for bt in workload.backend_types:
@@ -76,8 +84,13 @@ class StalenessScheduler:
                         log.warning("backend %s not configured, skipped for re-attest", bt)
 
                 if not backends:
-                    await transition(session, workload, WorkloadState.FAILED, "reattest_scheduler",
-                                     justification="no backends available")
+                    await transition(
+                        session,
+                        workload,
+                        WorkloadState.FAILED,
+                        "reattest_scheduler",
+                        justification="no backends available",
+                    )
                     continue
 
                 raw_results = await asyncio.gather(
@@ -89,34 +102,49 @@ class StalenessScheduler:
                     if isinstance(raw, Exception):
                         log.error("re-attest backend %s raised %s", bt, raw)
                         from server.backends.base import AttestationResult
-                        att_results.append(AttestationResult(
-                            verdict=AttestationVerdict.ERROR,
-                            backend=bt,
-                            evidence_hash="",
-                            detail={"error": str(raw)},
-                        ))
+
+                        att_results.append(
+                            AttestationResult(
+                                verdict=AttestationVerdict.ERROR,
+                                backend=bt,
+                                evidence_hash="",
+                                detail={"error": str(raw)},
+                            )
+                        )
                     else:
                         att_results.append(raw)
 
                 for ar in att_results:
-                    session.add(AttestationRecord(
-                        workload_id=workload.id,
-                        backend=ar.backend,
-                        verdict=ar.verdict,
-                        evidence_hash=ar.evidence_hash,
-                        detail=ar.detail,
-                    ))
+                    session.add(
+                        AttestationRecord(
+                            workload_id=workload.id,
+                            backend=ar.backend,
+                            verdict=ar.verdict,
+                            evidence_hash=ar.evidence_hash,
+                            detail=ar.detail,
+                        )
+                    )
 
                 composite = compute_composite_verdict(att_results)
                 if composite == AttestationVerdict.PASS:
                     backends_str = "+".join(ar.backend for ar in att_results)
-                    await transition(session, workload, WorkloadState.HEALTHY, "reattest_scheduler",
-                                     justification=f"all backends passed ({backends_str})")
+                    await transition(
+                        session,
+                        workload,
+                        WorkloadState.HEALTHY,
+                        "reattest_scheduler",
+                        justification=f"all backends passed ({backends_str})",
+                    )
                     workload.last_attested_at = datetime.now(UTC)
                     count += 1
                 elif composite == AttestationVerdict.FAIL:
-                    await transition(session, workload, WorkloadState.FAILED, "reattest_scheduler",
-                                     justification="proactive re-attestation failed")
+                    await transition(
+                        session,
+                        workload,
+                        WorkloadState.FAILED,
+                        "reattest_scheduler",
+                        justification="proactive re-attestation failed",
+                    )
 
             except Exception:
                 log.exception("Re-attestation failed for %s", workload.display_name)

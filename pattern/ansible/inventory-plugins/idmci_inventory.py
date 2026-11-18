@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 
 DOCUMENTATION = r"""
@@ -65,6 +64,7 @@ DOCUMENTATION = r"""
 
 try:
     from ansible.plugins.inventory import BaseInventoryPlugin
+
     HAS_ANSIBLE = True
 except ImportError:
     HAS_ANSIBLE = False
@@ -76,6 +76,7 @@ except ImportError:
 
 try:
     import requests
+
     HAS_REQUESTS = True
 except ImportError:
     HAS_REQUESTS = False
@@ -125,8 +126,7 @@ def _beaker_job_hosts(job_id: str) -> dict[str, str]:
     headers = {"Accept": "application/json"}
 
     try:
-        resp = requests.get(url, headers=headers, timeout=30,
-                            verify=True, auth=None)
+        resp = requests.get(url, headers=headers, timeout=30, verify=True, auth=None)
         resp.raise_for_status()
     except Exception:
         # Fall back to metadata-only if Beaker unreachable
@@ -149,6 +149,7 @@ def _beaker_job_hosts(job_id: str) -> dict[str, str]:
 def _resolve_host_ip(fqdn: str) -> str | None:
     """Resolve FQDN to IP via DNS. Returns None on failure."""
     import socket
+
     try:
         return socket.gethostbyname(fqdn)
     except socket.gaierror:
@@ -182,8 +183,7 @@ def build_inventory(
                 "ansible_user": ssh_user,
                 "ansible_ssh_private_key_file": os.path.expanduser(ssh_key_file),
                 "ansible_ssh_common_args": (
-                    "-o StrictHostKeyChecking=no "
-                    "-o UserKnownHostsFile=/dev/null"
+                    "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
                 ),
                 "global_domain": domain,
             },
@@ -233,6 +233,7 @@ def build_inventory(
 
 
 if HAS_ANSIBLE:
+
     class InventoryModule(BaseInventoryPlugin):
         NAME = "idmci_inventory"
 
@@ -286,14 +287,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="IdM-CI dynamic inventory")
     parser.add_argument("--list", action="store_true", help="Output full inventory")
     parser.add_argument("--host", help="Output host vars for a single host")
-    parser.add_argument("--metadata", default="idm-ci/metadata-arbiter-demo-3node.yaml",
-                        help="Path to IdM-CI metadata YAML")
-    parser.add_argument("--beaker-job", default=None,
-                        help="Beaker job ID (J:NNNN) for live IP lookup")
-    parser.add_argument("--ssh-key", default="~/.ssh/idm_ci_key",
-                        help="SSH private key path")
-    parser.add_argument("--domain", default=None,
-                        help="Override domain from metadata")
+    parser.add_argument(
+        "--metadata",
+        default="idm-ci/metadata-arbiter-demo-3node.yaml",
+        help="Path to IdM-CI metadata YAML",
+    )
+    parser.add_argument(
+        "--beaker-job", default=None, help="Beaker job ID (J:NNNN) for live IP lookup"
+    )
+    parser.add_argument("--ssh-key", default="~/.ssh/idm_ci_key", help="SSH private key path")
+    parser.add_argument("--domain", default=None, help="Override domain from metadata")
     args = parser.parse_args()
 
     inv = build_inventory(

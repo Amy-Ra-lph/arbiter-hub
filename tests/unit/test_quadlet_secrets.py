@@ -15,8 +15,7 @@ def test_api_unit_mounts_both_secrets(unit):
     text = unit.read_text()
     assert "Secret=arbiter-hub-db-password,type=mount,target=arbiter_db_password" in text
     assert (
-        "Secret=arbiter-hub-admin-password,type=mount,target=arbiter_local_admin_password"
-        in text
+        "Secret=arbiter-hub-admin-password,type=mount,target=arbiter_local_admin_password" in text
     )
 
 
@@ -27,9 +26,12 @@ def test_api_unit_has_no_password_env(unit):
     assert "ARBITER_DATABASE_URL" not in text
 
 
-@pytest.mark.parametrize("unit", [
-    REPO / "deploy/quadlet/arbiter-hub-api.container",
-    REPO / "deploy/quadlet/arbiter-hub-db.container",
-])
+@pytest.mark.parametrize(
+    "unit",
+    [
+        REPO / "deploy/quadlet/arbiter-hub-api.container",
+        REPO / "deploy/quadlet/arbiter-hub-db.container",
+    ],
+)
 def test_secret_dependent_unit_disables_start_rate_limit(unit):
     assert "StartLimitIntervalSec=0" in unit.read_text()

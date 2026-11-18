@@ -1,8 +1,7 @@
 import re
 from pathlib import Path
 
-SCRIPT = (Path(__file__).resolve().parents[2]
-          / "deploy/bootc/server-firstboot.sh").read_text()
+SCRIPT = (Path(__file__).resolve().parents[2] / "deploy/bootc/server-firstboot.sh").read_text()
 
 
 def test_umask_set_before_secret_writes():

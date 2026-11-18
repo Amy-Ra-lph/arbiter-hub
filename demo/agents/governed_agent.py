@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Well-behaved agentic workload: authenticates, attests, uses MCP tools within sandbox boundaries."""
+"""Well-behaved agentic workload.
+
+Authenticates, attests, uses MCP tools within sandbox boundaries.
+"""
 
 import argparse
 import asyncio
@@ -11,11 +14,15 @@ import httpx
 
 
 def log_event(action: str, **kwargs):
-    print(json.dumps({"ts": time.time(), "agent": "governed", "action": action, **kwargs}), flush=True)
+    print(
+        json.dumps({"ts": time.time(), "agent": "governed", "action": action, **kwargs}), flush=True
+    )
 
 
 class GovernedAgent:
-    def __init__(self, hub_url: str, idp_url: str, client_id: str, client_secret: str, target_host: str):
+    def __init__(
+        self, hub_url: str, idp_url: str, client_id: str, client_secret: str, target_host: str
+    ):
         self.hub_url = hub_url.rstrip("/")
         self.idp_url = idp_url.rstrip("/")
         self.client_id = client_id
@@ -31,12 +38,15 @@ class GovernedAgent:
         discovery.raise_for_status()
         token_endpoint = discovery.json()["token_endpoint"]
 
-        resp = await client.post(token_endpoint, data={
-            "grant_type": "client_credentials",
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "scope": "openid profile attestation-agent",
-        })
+        resp = await client.post(
+            token_endpoint,
+            data={
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "scope": "openid profile attestation-agent",
+            },
+        )
         resp.raise_for_status()
         self.token = resp.json()["access_token"]
         log_event("authenticated", token_len=len(self.token))
@@ -47,17 +57,21 @@ class GovernedAgent:
 
     async def register_workload(self, client: httpx.AsyncClient) -> str:
         log_event("register_workload", principal=self.principal)
-        resp = await client.post(f"{self.hub_url}/workloads", headers=self._auth_headers(), json={
-            "ipa_principal": self.principal,
-            "display_name": f"Governed Agent ({self.principal.split('/')[1].split('@')[0]})",
-            "workload_type": "agentic",
-            "backend_types": ["falco"],
-            "metadata": {
-                "agent_type": "governed",
-                "sandbox": "wid-sovereign",
-                "managed_by": "governed_agent.py",
+        resp = await client.post(
+            f"{self.hub_url}/workloads",
+            headers=self._auth_headers(),
+            json={
+                "ipa_principal": self.principal,
+                "display_name": f"Governed Agent ({self.principal.split('/')[1].split('@')[0]})",
+                "workload_type": "agentic",
+                "backend_types": ["falco"],
+                "metadata": {
+                    "agent_type": "governed",
+                    "sandbox": "wid-sovereign",
+                    "managed_by": "governed_agent.py",
+                },
             },
-        })
+        )
         if resp.status_code == 409:
             log_event("workload_exists", principal=self.principal)
             search = await client.get(f"{self.hub_url}/workloads", headers=self._auth_headers())
@@ -102,7 +116,9 @@ class GovernedAgent:
         log_event("kbs_released", resource=resource)
         return resp.json()
 
-    async def call_mcp_tool(self, client: httpx.AsyncClient, mcp_url: str, tool: str, args: dict) -> dict:
+    async def call_mcp_tool(
+        self, client: httpx.AsyncClient, mcp_url: str, tool: str, args: dict
+    ) -> dict:
         log_event("mcp_call", tool=tool, args=args)
         resp = await client.post(f"{mcp_url}/tools/call", json={"name": tool, "arguments": args})
         if resp.status_code != 200:
@@ -136,12 +152,20 @@ class GovernedAgent:
 
 def main():
     parser = argparse.ArgumentParser(description="Governed agentic workload for Arbiter Hub demo")
-    parser.add_argument("--hub-url", default="http://hub.arbiter.demo:8400", help="Arbiter Hub API URL")
-    parser.add_argument("--idp-url", default="https://idm.arbiter.demo/idp", help="ahdapa OIDC issuer URL")
+    parser.add_argument(
+        "--hub-url", default="http://hub.arbiter.demo:8400", help="Arbiter Hub API URL"
+    )
+    parser.add_argument(
+        "--idp-url", default="https://idm.arbiter.demo/idp", help="ahdapa OIDC issuer URL"
+    )
     parser.add_argument("--client-id", default="arbiter-hub", help="OAuth2 client ID")
     parser.add_argument("--client-secret", required=True, help="OAuth2 client secret")
-    parser.add_argument("--target-host", default="agent.arbiter.demo", help="Target host for MCP diagnostics")
-    parser.add_argument("--loop", type=int, default=0, help="Loop interval in seconds (0=single run)")
+    parser.add_argument(
+        "--target-host", default="agent.arbiter.demo", help="Target host for MCP diagnostics"
+    )
+    parser.add_argument(
+        "--loop", type=int, default=0, help="Loop interval in seconds (0=single run)"
+    )
     args = parser.parse_args()
 
     agent = GovernedAgent(
@@ -153,6 +177,7 @@ def main():
     )
 
     if args.loop > 0:
+
         async def loop():
             while True:
                 try:
@@ -160,6 +185,7 @@ def main():
                 except Exception as e:
                     log_event("cycle_error", error=str(e))
                 await asyncio.sleep(args.loop)
+
         asyncio.run(loop())
     else:
         asyncio.run(agent.run_diagnostic_cycle())

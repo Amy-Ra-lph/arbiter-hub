@@ -76,26 +76,30 @@ EXAMPLE_QUARANTINED = {
         "desc": "IMA measurement mismatch detected on workload db-server",
         "uid": "arbiter-hub-002",
     },
-    "resources": [
-        {"type": "workload", "name": "db-server", "uid": "wl-67890"}
-    ],
+    "resources": [{"type": "workload", "name": "db-server", "uid": "wl-67890"}],
 }
 
 
 def create_snow_incident(event):
     """Map OCSF event to ServiceNow Incident API call."""
     if not all([SNOW_INSTANCE, SNOW_USER, SNOW_PASSWORD]):
-        print(f"SNOW not configured — would create incident for: "
-              f"{event.get('message', 'unknown')}")
+        print(f"SNOW not configured — would create incident for: {event.get('message', 'unknown')}")
         return None
 
     resources = event.get("resources", [{}])
     workload_name = resources[0].get("name", "unknown") if resources else "unknown"
     finding = event.get("finding", {})
-    new_state = event.get("message", "").split("→")[-1].strip() if "→" in event.get("message", "") else "UNKNOWN"
+    new_state = (
+        event.get("message", "").split("→")[-1].strip()
+        if "→" in event.get("message", "")
+        else "UNKNOWN"
+    )
 
     incident = {
-        "short_description": f"Arbiter Hub: {workload_name} — {finding.get('title', 'Attestation Event')}",
+        "short_description": (
+            f"Arbiter Hub: {workload_name}"
+            f" — {finding.get('title', 'Attestation Event')}"
+        ),
         "description": (
             f"Workload: {workload_name}\n"
             f"State: {new_state}\n"

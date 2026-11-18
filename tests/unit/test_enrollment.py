@@ -37,7 +37,9 @@ def mock_workload():
 async def test_enroll_missing_uuid():
     backend = KeylimeBackend(
         verifier_url="https://verifier.test:8881",
-        ca_cert="", client_cert="", client_key="",
+        ca_cert="",
+        client_cert="",
+        client_key="",
     )
     workload = MagicMock()
     workload.metadata_ = {}
@@ -50,7 +52,9 @@ async def test_enroll_missing_uuid():
 async def test_enroll_missing_ip():
     backend = KeylimeBackend(
         verifier_url="https://verifier.test:8881",
-        ca_cert="", client_cert="", client_key="",
+        ca_cert="",
+        client_cert="",
+        client_key="",
     )
     workload = MagicMock()
     workload.metadata_ = {"keylime_agent_uuid": "test-uuid"}
@@ -70,21 +74,27 @@ async def test_enroll_builds_correct_payload(keylime_backend, mock_workload):
     verifier_client.__aexit__ = AsyncMock(return_value=False)
 
     registrar_client = AsyncMock()
-    registrar_client.get = AsyncMock(return_value=AsyncMock(
-        raise_for_status=MagicMock(),
-        json=MagicMock(return_value={
-            "results": {
-                "aik_tpm": "test-ak-data",
-                "mtls_cert": "test-cert-data",
-                "ip": "192.0.2.10",
-            }
-        }),
-    ))
+    registrar_client.get = AsyncMock(
+        return_value=AsyncMock(
+            raise_for_status=MagicMock(),
+            json=MagicMock(
+                return_value={
+                    "results": {
+                        "aik_tpm": "test-ak-data",
+                        "mtls_cert": "test-cert-data",
+                        "ip": "192.0.2.10",
+                    }
+                }
+            ),
+        )
+    )
     registrar_client.__aenter__ = AsyncMock(return_value=registrar_client)
     registrar_client.__aexit__ = AsyncMock(return_value=False)
 
-    with patch.object(keylime_backend, "_build_client", return_value=verifier_client), \
-         patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client):
+    with (
+        patch.object(keylime_backend, "_build_client", return_value=verifier_client),
+        patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client),
+    ):
         result = await keylime_backend.enroll(mock_workload, {})
 
     assert result.success is True
@@ -117,10 +127,12 @@ async def test_enroll_custom_tpm_policy(keylime_backend, mock_workload):
     verifier_client.__aexit__ = AsyncMock(return_value=False)
 
     registrar_client = AsyncMock()
-    registrar_client.get = AsyncMock(return_value=AsyncMock(
-        raise_for_status=MagicMock(),
-        json=MagicMock(return_value={"results": {}}),
-    ))
+    registrar_client.get = AsyncMock(
+        return_value=AsyncMock(
+            raise_for_status=MagicMock(),
+            json=MagicMock(return_value={"results": {}}),
+        )
+    )
     registrar_client.__aenter__ = AsyncMock(return_value=registrar_client)
     registrar_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -129,8 +141,10 @@ async def test_enroll_custom_tpm_policy(keylime_backend, mock_workload):
         "ak_tpm": "override-ak",
     }
 
-    with patch.object(keylime_backend, "_build_client", return_value=verifier_client), \
-         patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client):
+    with (
+        patch.object(keylime_backend, "_build_client", return_value=verifier_client),
+        patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client),
+    ):
         result = await keylime_backend.enroll(mock_workload, custom_policy)
 
     assert result.success is True
@@ -145,7 +159,9 @@ async def test_enroll_custom_tpm_policy(keylime_backend, mock_workload):
 async def test_enroll_no_registrar():
     backend = KeylimeBackend(
         verifier_url="https://verifier.test:8881",
-        ca_cert="", client_cert="", client_key="",
+        ca_cert="",
+        client_cert="",
+        client_key="",
     )
     workload = MagicMock()
     workload.metadata_ = {
@@ -182,10 +198,12 @@ async def test_enroll_verifier_error(keylime_backend, mock_workload):
             response=MagicMock(text='{"error": "missing field"}'),
         )
     )
-    mock_client.get = AsyncMock(return_value=AsyncMock(
-        raise_for_status=MagicMock(),
-        json=MagicMock(return_value={"results": {}}),
-    ))
+    mock_client.get = AsyncMock(
+        return_value=AsyncMock(
+            raise_for_status=MagicMock(),
+            json=MagicMock(return_value={"results": {}}),
+        )
+    )
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
 
@@ -209,18 +227,20 @@ async def test_enroll_tpm_policy_dict_without_mask(keylime_backend, mock_workloa
     verifier_client.__aexit__ = AsyncMock(return_value=False)
 
     registrar_client = AsyncMock()
-    registrar_client.get = AsyncMock(return_value=AsyncMock(
-        raise_for_status=MagicMock(),
-        json=MagicMock(return_value={"results": {}}),
-    ))
+    registrar_client.get = AsyncMock(
+        return_value=AsyncMock(
+            raise_for_status=MagicMock(),
+            json=MagicMock(return_value={"results": {}}),
+        )
+    )
     registrar_client.__aenter__ = AsyncMock(return_value=registrar_client)
     registrar_client.__aexit__ = AsyncMock(return_value=False)
 
-    with patch.object(keylime_backend, "_build_client", return_value=verifier_client), \
-         patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client):
-        result = await keylime_backend.enroll(
-            mock_workload, {"tpm_policy": {"22": ["sha256:xyz"]}}
-        )
+    with (
+        patch.object(keylime_backend, "_build_client", return_value=verifier_client),
+        patch.object(keylime_backend, "_build_registrar_client", return_value=registrar_client),
+    ):
+        result = await keylime_backend.enroll(mock_workload, {"tpm_policy": {"22": ["sha256:xyz"]}})
 
     assert result.success is True
     payload = verifier_client.post.call_args.kwargs["json"]
@@ -265,14 +285,17 @@ async def test_registrar_fetch_failure_continues(keylime_backend, mock_workload)
 
 def test_enroll_workload_permission_in_admin_role():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "enroll_workload" in ROLE_PERMISSIONS["attestation-admin"]
 
 
 def test_enroll_workload_permission_in_operator_role():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "enroll_workload" in ROLE_PERMISSIONS["attestation-operator"]
 
 
 def test_enroll_workload_permission_not_in_viewer():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "enroll_workload" not in ROLE_PERMISSIONS["attestation-viewer"]

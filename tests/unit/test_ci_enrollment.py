@@ -6,26 +6,31 @@ from server.auth.rbac import check_permission
 
 def test_ci_enroll_permission_in_pipeline_role():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "ci_enroll" in ROLE_PERMISSIONS["attestation-pipeline"]
 
 
 def test_ci_enroll_permission_in_admin_role():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "ci_enroll" in ROLE_PERMISSIONS["attestation-admin"]
 
 
 def test_ci_enroll_permission_not_in_viewer():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "ci_enroll" not in ROLE_PERMISSIONS["attestation-viewer"]
 
 
 def test_ci_enroll_permission_not_in_agent():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "ci_enroll" not in ROLE_PERMISSIONS["attestation-agent"]
 
 
 def test_ci_enroll_permission_not_in_operator():
     from server.auth.rbac import ROLE_PERMISSIONS
+
     assert "ci_enroll" not in ROLE_PERMISSIONS["attestation-operator"]
 
 

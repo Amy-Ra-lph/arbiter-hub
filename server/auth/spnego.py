@@ -51,9 +51,7 @@ class SPNEGOProvider:
         os.environ["KRB5_KTNAME"] = keytab_path
 
         if service_principal:
-            self._server_name = gssapi.Name(
-                service_principal, gssapi.NameType.kerberos_principal
-            )
+            self._server_name = gssapi.Name(service_principal, gssapi.NameType.kerberos_principal)
         else:
             self._server_name = None
 

@@ -32,7 +32,9 @@ router = APIRouter(prefix="/ci")
 
 
 class CIEnrollRequest(BaseModel):
-    ipa_principal: Annotated[str, StringConstraints(min_length=1, max_length=512, pattern=r"^[a-zA-Z0-9_./@-]+$")]
+    ipa_principal: Annotated[
+        str, StringConstraints(min_length=1, max_length=512, pattern=r"^[a-zA-Z0-9_./@-]+$")
+    ]
     display_name: Annotated[str, StringConstraints(min_length=1, max_length=256)]
     workload_type: WorkloadType
     backend_types: list[str] = Field(min_length=1, max_length=10)
@@ -81,13 +83,17 @@ async def ci_enroll(
                 detail={"action": "in_progress"},
             )
         if existing.current_state in (WorkloadState.FAILED, WorkloadState.REVOKED):
-            for att in (await session.execute(
-                select(AttestationRecord).where(AttestationRecord.workload_id == existing.id)
-            )).scalars():
+            for att in (
+                await session.execute(
+                    select(AttestationRecord).where(AttestationRecord.workload_id == existing.id)
+                )
+            ).scalars():
                 await session.delete(att)
-            for trans in (await session.execute(
-                select(StateTransition).where(StateTransition.workload_id == existing.id)
-            )).scalars():
+            for trans in (
+                await session.execute(
+                    select(StateTransition).where(StateTransition.workload_id == existing.id)
+                )
+            ).scalars():
                 await session.delete(trans)
             audit_cleanup = AuditLog(
                 actor=caller.principal,
@@ -164,7 +170,9 @@ async def ci_enroll(
                             justification="cosign verification passed",
                         )
                     except InvalidTransitionError:
-                        log.warning("state transition failed during ci_enroll for %s", body.ipa_principal)
+                        log.warning(
+                            "state transition failed during ci_enroll for %s", body.ipa_principal
+                        )
                 else:
                     try:
                         await transition(
@@ -182,7 +190,9 @@ async def ci_enroll(
                             justification=f"cosign verification {result.verdict.value}",
                         )
                     except InvalidTransitionError:
-                        log.warning("state transition failed during ci_enroll for %s", body.ipa_principal)
+                        log.warning(
+                            "state transition failed during ci_enroll for %s", body.ipa_principal
+                        )
                 attestation_triggered = True
             except KeyError:
                 log.info("cosign backend not configured, skipping auto-attest")

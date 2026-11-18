@@ -10,9 +10,7 @@ def test_encodes_base64_password():
 
 
 def test_defaults():
-    assert build_dsn("pw") == (
-        "postgresql+asyncpg://arbiter:pw@arbiter-hub-db:5432/arbiter"
-    )
+    assert build_dsn("pw") == ("postgresql+asyncpg://arbiter:pw@arbiter-hub-db:5432/arbiter")
 
 
 def test_rejects_empty_password():

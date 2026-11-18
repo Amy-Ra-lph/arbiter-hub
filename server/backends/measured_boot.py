@@ -75,7 +75,10 @@ class MeasuredBootBackend:
                 evidence_hash="",
                 detail={
                     "error": "uki_pcrsig required in workload metadata",
-                    "hint": "Set metadata.uki_pcrsig to the expected PCR 11 values from UKI .pcrsig section",
+                    "hint": (
+                        "Set metadata.uki_pcrsig to the expected"
+                        " PCR 11 values from UKI .pcrsig section"
+                    ),
                 },
             )
 
@@ -144,9 +147,7 @@ class MeasuredBootBackend:
                 pass
         return pcrs
 
-    def _evaluate_pcr11(
-        self, actual: dict | str | list, expected: dict
-    ) -> AttestationVerdict:
+    def _evaluate_pcr11(self, actual: dict | str | list, expected: dict) -> AttestationVerdict:
         """Compare actual PCR 11 value against expected UKI .pcrsig values.
 
         Expected format from UKI .pcrsig:
@@ -208,7 +209,10 @@ class MeasuredBootBackend:
                     healthy=True,
                     backend="measured_boot",
                     last_check=datetime.now(UTC),
-                    detail=f"keylime verifier reachable, {len(agents)} agents, PCR 11 evaluation active",
+                    detail=(
+                        f"keylime verifier reachable, {len(agents)} agents,"
+                        " PCR 11 evaluation active"
+                    ),
                 )
         except Exception as e:
             return BackendHealth(

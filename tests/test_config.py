@@ -42,9 +42,7 @@ def test_dsn_uses_secret_file(tmp_path, monkeypatch):
     monkeypatch.delenv("ARBITER_DATABASE_URL", raising=False)
     (tmp_path / "arbiter_db_password").write_text("a/b+c=")
     settings = Settings(_secrets_dir=str(tmp_path))
-    assert settings.dsn == (
-        "postgresql+asyncpg://arbiter:a%2Fb%2Bc%3D@arbiter-hub-db:5432/arbiter"
-    )
+    assert settings.dsn == ("postgresql+asyncpg://arbiter:a%2Fb%2Bc%3D@arbiter-hub-db:5432/arbiter")
 
 
 def test_explicit_database_url_wins(tmp_path, monkeypatch):
@@ -66,5 +64,6 @@ def test_db_module_imports_without_db_config(tmp_path, monkeypatch):
     import importlib
 
     import server.models.db as db
+
     importlib.reload(db)
     assert callable(db.async_session)

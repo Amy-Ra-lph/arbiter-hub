@@ -46,9 +46,7 @@ async def _handle_falco_alert(alert: dict, session: AsyncSession) -> dict:
     workloads = result.scalars().all()
 
     if not workloads and container_name:
-        stmt = select(Workload).where(
-            Workload.metadata_["container_name"].astext == container_name
-        )
+        stmt = select(Workload).where(Workload.metadata_["container_name"].astext == container_name)
         result = await session.execute(stmt)
         workloads = result.scalars().all()
 

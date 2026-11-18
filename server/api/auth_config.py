@@ -20,8 +20,7 @@ async def get_auth_config():
         "issuer": settings.oidc_issuer,
         "client_id": settings.oidc_ui_client_id or settings.oidc_client_id,
         "scopes": settings.oidc_ui_scopes or settings.oidc_scopes,
-        "local_auth_enabled": settings.local_admin_enabled
-        or settings.auth_mode == "local",
+        "local_auth_enabled": settings.local_admin_enabled or settings.auth_mode == "local",
         "spnego_enabled": settings.spnego_enabled,
     }
 
@@ -86,7 +85,7 @@ async def negotiate_login(request: Request):
             headers={"WWW-Authenticate": "Negotiate"},
         )
 
-    negotiate_token = auth_header[len("Negotiate "):]
+    negotiate_token = auth_header[len("Negotiate ") :]
 
     try:
         provider = _get_spnego_provider()

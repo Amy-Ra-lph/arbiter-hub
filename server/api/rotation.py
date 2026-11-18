@@ -47,7 +47,10 @@ async def rotate_image(
     if workload.current_state != WorkloadState.HEALTHY:
         raise HTTPException(
             status_code=409,
-            detail=f"image rotation requires HEALTHY state, workload is {workload.current_state.value}",
+            detail=(
+                "image rotation requires HEALTHY state,"
+                f" workload is {workload.current_state.value}"
+            ),
         )
 
     if workload.artifact_digest == body.artifact_digest:
@@ -73,12 +76,14 @@ async def rotate_image(
     workload.artifact_ref = body.artifact_ref
     workload.artifact_digest = body.artifact_digest
     workload.metadata_["rotation_history"] = workload.metadata_.get("rotation_history", [])
-    workload.metadata_["rotation_history"].append({
-        "from_digest": previous_digest,
-        "to_digest": body.artifact_digest,
-        "to_ref": body.artifact_ref,
-        "triggered_by": caller.principal,
-    })
+    workload.metadata_["rotation_history"].append(
+        {
+            "from_digest": previous_digest,
+            "to_digest": body.artifact_digest,
+            "to_ref": body.artifact_ref,
+            "triggered_by": caller.principal,
+        }
+    )
 
     attestation_triggered = False
     if body.auto_attest:
@@ -149,7 +154,10 @@ async def rotate_and_verify(
     if workload.current_state != WorkloadState.HEALTHY:
         raise HTTPException(
             status_code=409,
-            detail=f"image rotation requires HEALTHY state, workload is {workload.current_state.value}",
+            detail=(
+                "image rotation requires HEALTHY state,"
+                f" workload is {workload.current_state.value}"
+            ),
         )
 
     if workload.artifact_digest == body.artifact_digest:
@@ -163,7 +171,10 @@ async def rotate_and_verify(
     previous_digest = workload.artifact_digest
 
     await transition(
-        session, workload, WorkloadState.ROTATING, caller.principal,
+        session,
+        workload,
+        WorkloadState.ROTATING,
+        caller.principal,
         justification=f"rotate-and-verify: {previous_digest or 'none'} → {body.artifact_digest}",
     )
 
@@ -172,7 +183,10 @@ async def rotate_and_verify(
     workload.artifact_digest = body.artifact_digest
 
     await transition(
-        session, workload, WorkloadState.ATTESTING, "rotation_auto_attest",
+        session,
+        workload,
+        WorkloadState.ATTESTING,
+        "rotation_auto_attest",
     )
 
     registry: BackendRegistry = getattr(request.app.state, "backend_registry", None)
@@ -196,18 +210,28 @@ async def rotate_and_verify(
     for (bt, _), raw in zip(backends, raw_results):
         if isinstance(raw, Exception):
             from server.backends.base import AttestationResult
-            att_results.append(AttestationResult(
-                verdict=AttestationVerdict.ERROR, backend=bt,
-                evidence_hash="", detail={"error": str(raw)},
-            ))
+
+            att_results.append(
+                AttestationResult(
+                    verdict=AttestationVerdict.ERROR,
+                    backend=bt,
+                    evidence_hash="",
+                    detail={"error": str(raw)},
+                )
+            )
         else:
             att_results.append(raw)
 
     for ar in att_results:
-        session.add(AttestationRecord(
-            workload_id=workload.id, backend=ar.backend,
-            verdict=ar.verdict, evidence_hash=ar.evidence_hash, detail=ar.detail,
-        ))
+        session.add(
+            AttestationRecord(
+                workload_id=workload.id,
+                backend=ar.backend,
+                verdict=ar.verdict,
+                evidence_hash=ar.evidence_hash,
+                detail=ar.detail,
+            )
+        )
 
     composite = compute_composite_verdict(att_results)
 
@@ -220,13 +244,18 @@ async def rotate_and_verify(
     await session.commit()
 
     await dispatch_webhooks(
-        session, "image_rotation_verified", workload.id,
-        WorkloadState.HEALTHY.value, workload.current_state.value,
+        session,
+        "image_rotation_verified",
+        workload.id,
+        WorkloadState.HEALTHY.value,
+        workload.current_state.value,
         {
             "previous_digest": previous_digest,
             "new_digest": body.artifact_digest,
             "verdict": composite.value,
-            "per_backend": [{"backend": ar.backend, "verdict": ar.verdict.value} for ar in att_results],
+            "per_backend": [
+                {"backend": ar.backend, "verdict": ar.verdict.value} for ar in att_results
+            ],
         },
     )
 

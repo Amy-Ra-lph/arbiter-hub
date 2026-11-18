@@ -44,10 +44,12 @@ async def test_verify_pass_matching_pcr11(backend):
     verifier_response = {
         "results": {
             "operational_state": 3,
-            "tpm_policy": json.dumps({
-                "mask": "0x408",
-                "11": expected_hash,
-            }),
+            "tpm_policy": json.dumps(
+                {
+                    "mask": "0x408",
+                    "11": expected_hash,
+                }
+            ),
         }
     }
 
@@ -77,10 +79,12 @@ async def test_verify_fail_mismatched_pcr11(backend):
     verifier_response = {
         "results": {
             "operational_state": 3,
-            "tpm_policy": json.dumps({
-                "mask": "0x408",
-                "11": "wrong_hash_value_does_not_match_expected",
-            }),
+            "tpm_policy": json.dumps(
+                {
+                    "mask": "0x408",
+                    "11": "wrong_hash_value_does_not_match_expected",
+                }
+            ),
         }
     }
 
@@ -182,4 +186,5 @@ def test_bootc_workload_type_exists():
 
 def test_measured_boot_backend_type_exists():
     from server.models.db import BackendType
+
     assert BackendType.MEASURED_BOOT == "measured_boot"

@@ -18,7 +18,13 @@ class InvalidTransitionError(Exception):
 VALID_TRANSITIONS: dict[WorkloadState, set[WorkloadState]] = {
     WorkloadState.REGISTERED: {WorkloadState.ATTESTING},
     WorkloadState.ATTESTING: {WorkloadState.HEALTHY, WorkloadState.FAILED},
-    WorkloadState.HEALTHY: {WorkloadState.ATTESTING, WorkloadState.STALE, WorkloadState.FAILED, WorkloadState.REVOKED, WorkloadState.ROTATING},
+    WorkloadState.HEALTHY: {
+        WorkloadState.ATTESTING,
+        WorkloadState.STALE,
+        WorkloadState.FAILED,
+        WorkloadState.REVOKED,
+        WorkloadState.ROTATING,
+    },
     WorkloadState.STALE: {WorkloadState.ATTESTING},
     WorkloadState.FAILED: {WorkloadState.UNDER_REMEDIATION, WorkloadState.REVOKED},
     WorkloadState.UNDER_REMEDIATION: {WorkloadState.ATTESTING},
@@ -84,8 +90,13 @@ async def check_stale_workloads(session: AsyncSession) -> list[uuid.UUID]:
     for workload in result.scalars():
         elapsed = (now - workload.last_attested_at).total_seconds()
         if elapsed >= workload.stale_ttl_seconds:
-            await transition(session, workload, WorkloadState.STALE, "staleness_scheduler",
-                            justification=f"TTL expired ({elapsed:.0f}s > {workload.stale_ttl_seconds}s)")
+            await transition(
+                session,
+                workload,
+                WorkloadState.STALE,
+                "staleness_scheduler",
+                justification=f"TTL expired ({elapsed:.0f}s > {workload.stale_ttl_seconds}s)",
+            )
             stale_ids.append(workload.id)
     await session.commit()
     return stale_ids

@@ -49,7 +49,10 @@ class KeylimeBackend:
         return httpx.AsyncClient(**kwargs)
 
     def _build_registrar_client(self) -> httpx.AsyncClient:
-        """Registrar uses a different server cert; disable verification but send mTLS client cert."""
+        """Registrar uses a different server cert.
+
+        Disable verification but send mTLS client cert.
+        """
         kwargs: dict = {"timeout": self._timeout, "verify": False}
         if self._client_cert and self._client_key:
             import ssl
@@ -67,9 +70,7 @@ class KeylimeBackend:
             return None
         try:
             async with self._build_registrar_client() as client:
-                resp = await client.get(
-                    f"{self._registrar_url}/v2.5/agents/{agent_id}"
-                )
+                resp = await client.get(f"{self._registrar_url}/v2.5/agents/{agent_id}")
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get("results", {})
@@ -157,15 +158,11 @@ class KeylimeBackend:
             "runtime_policy_key": policy.get("runtime_policy_key", ""),
             "metadata": policy.get("metadata", "{}"),
             "revocation_key": policy.get("revocation_key", ""),
-            "accept_tpm_hash_algs": policy.get(
-                "accept_tpm_hash_algs", DEFAULT_TPM_HASH_ALGS
-            ),
+            "accept_tpm_hash_algs": policy.get("accept_tpm_hash_algs", DEFAULT_TPM_HASH_ALGS),
             "accept_tpm_encryption_algs": policy.get(
                 "accept_tpm_encryption_algs", DEFAULT_TPM_ENC_ALGS
             ),
-            "accept_tpm_signing_algs": policy.get(
-                "accept_tpm_signing_algs", DEFAULT_TPM_SIGN_ALGS
-            ),
+            "accept_tpm_signing_algs": policy.get("accept_tpm_signing_algs", DEFAULT_TPM_SIGN_ALGS),
             "ima_sign_verification_keys": policy.get("ima_sign_verification_keys", ""),
             "mb_refstate": policy.get("mb_refstate", ""),
             "mb_policy": policy.get("mb_policy", ""),
@@ -192,7 +189,8 @@ class KeylimeBackend:
                             and op_state.lower() in ("get quote", "provide v")
                         ):
                             log.info(
-                                "Agent %s already enrolled and attesting (state=%s), skipping re-enrollment",
+                                "Agent %s already enrolled and attesting"
+                                " (state=%s), skipping re-enrollment",
                                 agent_id,
                                 op_state,
                             )
