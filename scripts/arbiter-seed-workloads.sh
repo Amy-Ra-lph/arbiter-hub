@@ -27,7 +27,7 @@ ok()   { echo "[  ok] $*"; PASS=$((PASS + 1)); TOTAL=$((TOTAL + 1)); }
 fail() { echo "[FAIL] $*" >&2; FAIL=$((FAIL + 1)); TOTAL=$((TOTAL + 1)); }
 
 get_token() {
-    kinit -k -t /etc/krb5.keytab "HTTP/${HUB}.@${REALM}" 2>/dev/null || \
+    kinit -k -t /etc/krb5.keytab "HTTP/${HUB}@${REALM}" 2>/dev/null || \
         kinit -k -t /etc/krb5.keytab "HTTP/$(hostname -f)@${REALM}" 2>/dev/null || \
         { log "FATAL: kinit failed"; exit 1; }
 
